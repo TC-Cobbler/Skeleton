@@ -282,6 +282,7 @@ function formatReport(r: TakeBackReport, clean: boolean): string {
   section("Orphaned IDs", r.orphanedIds.map((o) => `${o.id} (was <${o.lastSeen.element}> ${o.lastSeen.file}:${o.lastSeen.line})`));
   section("Duplicate IDs", r.duplicateIds.map((d) => `${d.id}${d.isNew ? " (new)" : ""}: ${d.occurrences.map((o) => `${o.file}:${o.line}`).join(", ")}`));
   section("Un-ID'd editable nodes", r.unIdedEditable.map((n) => `<${n.element}> ${n.file}:${n.line}`));
+  section("Un-ID'd locked elements (contract rule 1)", r.unIdedLocked.map((n) => `<${n.element}> ${n.file}:${n.line}`));
   section("New violations", r.newViolations.map((v) => `${v.kind} ${v.value} ${v.file}:${v.line}`));
   section("New locked blocks", r.newLockedBlocks.map((b) => `${b.element} [${b.reason}] ${b.file}:${b.line}`));
   const tt = r.tokenTampering;
