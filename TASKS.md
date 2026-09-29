@@ -11,7 +11,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **Gate** = phase exit c
 Goal: prove the code can round-trip before building anything around it. This phase is CLI only.
 
 - [x] **T0.1** Hand-scaffold a fixture project: Vite + React + TS + Tailwind v4 + shadcn (Button, Card, Table only) + Stack primitive. Commit it as `fixtures/base`.
-- [ ] **T0.2** Pick the AST library. Build the same edit (insert a JSX child at an index) twice, once with Babel (`@babel/parser` + `recast`) and once with ts-morph. Compare on:
+- [x] **T0.2** Pick the AST library. Build the same edit (insert a JSX child at an index) twice, once with Babel (`@babel/parser` + `recast`) and once with ts-morph. Compare on:
   - formatting and comment preservation
   - TS generics / type annotations surviving
   - diff size

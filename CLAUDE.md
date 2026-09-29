@@ -31,7 +31,7 @@ Read these before starting any task:
 
 - **Language:** TypeScript (strict), throughout
 - **Shell:** Electron. The main process runs Node; the renderer runs React. (Phase 1+.)
-- **AST:** Babel with recast, or ts-morph. **Not yet decided; see T0.2.** Don't assume either until `docs/decisions/001-ast.md` exists.
+- **AST:** `@babel/parser` + `recast` (see `docs/decisions/001-ast.md`)
 - **Tests:** Vitest
 - **Package manager:** pnpm
 - **Formatting:** Prettier, applied to the user project's changed nodes only
