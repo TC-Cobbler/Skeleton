@@ -1,5 +1,6 @@
 import * as t from "@babel/types";
-import { parseModule } from "./parse.js";
+import { print } from "recast";
+import { parseJsxExpression, parseModule } from "./parse.js";
 
 export const UI_ID_ATTR = "data-ui-id";
 export const UI_ID_PATTERN = /^ui_[a-z0-9]{5}$/;
@@ -83,4 +84,18 @@ function nameOf(name: t.JSXOpeningElement["name"]): string {
   if (t.isJSXIdentifier(name)) return name.name;
   if (t.isJSXNamespacedName(name)) return `${name.namespace.name}:${name.name.name}`;
   return `${nameOf(name.object)}.${name.property.name}`;
+}
+
+/**
+ * Give every element in a JSX template that lacks a `data-ui-id` a freshly minted one
+ * (first attribute). Used for palette templates before `insert`.
+ */
+export function fillMissingIds(jsx: string, taken: Set<string>, random: Random = Math.random): string {
+  const el = parseJsxExpression(jsx);
+  t.traverseFast(el, (n) => {
+    if (!t.isJSXElement(n)) return;
+    const has = n.openingElement.attributes.some((a) => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name, { name: UI_ID_ATTR }));
+    if (!has) n.openingElement.attributes.unshift(t.jsxAttribute(t.jsxIdentifier(UI_ID_ATTR), t.stringLiteral(mintId(taken, random))));
+  });
+  return print(el).code;
 }

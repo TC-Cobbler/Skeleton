@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIdIndex, collectIds, isUiId, mintId } from "../src/index.js";
+import { buildIdIndex, collectIds, fillMissingIds, isUiId, mintId } from "../src/index.js";
 import { readFixture } from "./helpers.js";
 
 describe("isUiId", () => {
@@ -47,5 +47,14 @@ describe("buildIdIndex", () => {
   it("reports malformed and non-literal IDs", () => {
     const src = `export default () => <div data-ui-id="UI_1"><p data-ui-id={id} /></div>;`;
     expect(collectIds(src).malformed).toHaveLength(2);
+  });
+});
+
+describe("fillMissingIds", () => {
+  it("adds IDs only where missing", () => {
+    const taken = new Set(["ui_keep1"]);
+    const out = fillMissingIds(`<Card data-ui-id="ui_keep1"><CardContent>Hi</CardContent></Card>`, taken);
+    expect(out).toMatch(/^<Card data-ui-id="ui_keep1"><CardContent data-ui-id="ui_[a-z0-9]{5}">Hi<\/CardContent><\/Card>$/);
+    expect(taken.size).toBe(2);
   });
 });

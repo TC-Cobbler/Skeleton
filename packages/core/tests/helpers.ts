@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
 import { collectIds, diffSources, parseModule, type EditResult } from "../src/index.js";
@@ -62,4 +62,19 @@ export function linesOf(source: string, needle: string, endNeedle?: string): Lin
   const end = lines.findIndex((l, i) => i >= start && l.includes(endNeedle));
   if (end < 0) throw new Error(`"${endNeedle}" not found after "${needle}"`);
   return { start: start + 1, end: end + 1 };
+}
+
+/** All files under `fixtures/<dir>/src` plus the fixture root files, keyed by project-relative path. */
+export function readFixtureSnapshot(dir: string): Record<string, string> {
+  const base = repoRoot + "fixtures/" + dir + "/";
+  const out: Record<string, string> = {};
+  const walk = (rel: string) => {
+    for (const entry of readdirSync(base + rel, { withFileTypes: true })) {
+      const path = rel + entry.name;
+      if (entry.isDirectory()) walk(path + "/");
+      else out[path] = readFileSync(base + path, "utf8");
+    }
+  };
+  walk("src/");
+  return out;
 }

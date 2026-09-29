@@ -31,7 +31,7 @@ Goal: prove the code can round-trip before building anything around it. This pha
 - [x] **T0.5** ID minting: `ui_` + 5 lowercase alphanumerics, unique within the project. Build a project-wide ID index.
 - [x] **T0.6** Token writer: read and write `@theme` variables in `globals.css`, covering both light and `.dark` blocks. Must not touch anything else in the file.
 - [x] **T0.7** Write the round-trip contract text (PRD §13) as `CLAUDE.md` in the fixture.
-- [ ] **T0.8** Take-back analyser: given a before/after commit pair, report:
+- [x] **T0.8** Take-back analyser: given a before/after commit pair, report:
   - orphaned IDs
   - duplicate IDs
   - new un-IDed editable nodes

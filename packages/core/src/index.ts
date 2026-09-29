@@ -11,6 +11,7 @@ export {
   mintId,
   collectIds,
   buildIdIndex,
+  fillMissingIds,
   type Random,
   type IdIndex,
   type IdOccurrence,
@@ -39,3 +40,15 @@ export {
   type RemoveOptions,
 } from "./ops.js";
 export { readTokens, writeTokens, TokenError, type Token, type TokenBlock, type TokenUpdate } from "./tokens.js";
+export { findViolations, type Violation, type ViolationKind } from "./violations.js";
+export {
+  analyseTakeBack,
+  isCleanTakeBack,
+  DEFAULT_ANALYSER_CONFIG,
+  type AnalyserConfig,
+  type LockedBlock,
+  type NodeLocation,
+  type Snapshot,
+  type TakeBackReport,
+  type TokenChange,
+} from "./analyse.js";
