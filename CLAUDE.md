@@ -98,10 +98,10 @@ Fixed, and can't be configured in v1:
 
 ## Commands
 
-Fill these in as the repo takes shape:
 ```
 pnpm install
-pnpm test            # all packages
+pnpm test            # all packages (Vitest projects)
 pnpm test:core       # core fixtures only
-pnpm spike <cmd>     # Phase 0 CLI
+pnpm typecheck       # tsc -b across the workspace
+pnpm spike <cmd>     # Phase 0 CLI (pnpm spike help)
 ```
