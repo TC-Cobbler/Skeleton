@@ -91,3 +91,18 @@ Same setup as loop 1, on a fresh copy of `fixtures/base` (with the updated contr
 ### Gate 0: PASSED
 
 5 consecutive loops with zero agent-authored lines altered by edit ops, 100% ID survival, tokens intact, and a passing build after each step. A2 and A4 (locked-block ratio) remain open design questions for the user; they aren't gate failures.
+
+## Follow-up: A2 and A4 resolved
+
+The user decided that as much as possible should stay editable, as long as it's safe. This is implemented as described in `docs/decisions/002-editability.md`: protected props instead of locking logic-bearing elements, wrapped elements editable in place, and text-level attribute edits.
+
+**Checked on the Gate 0 project** (`loop2`, final state):
+
+- **In-place edits worked and the build passed:** restyling and resizing a filter Button with `variant={…}` and `onClick`, the `.map` row template, a Badge inside it, the Button wrapped by `NewOrderDialog`, and the placeholder in a conditional branch. Each diff touched only the targeted opening tag.
+- **These were refused, each with a message naming the node and the reason:**
+  - changing a protected prop (`variant`)
+  - moving the wrapped Button out
+  - removing a logic-bearing Button without confirmation
+  - removing the row template
+  - editing the custom component itself
+- **Coverage:** every ID'd element in both post-agent pages is editable, except the custom component `NewOrderDialog` itself.

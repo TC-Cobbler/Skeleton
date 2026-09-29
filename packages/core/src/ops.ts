@@ -102,6 +102,7 @@ export function move(source: string, ref: NodeRef, newParentId: string, index: n
   const target = refLabel(ref);
   return runOp(op, target, source, options, (ctx) => {
     const { node, parent } = ctx.resolve(ref);
+    ctx.requireMovableParent(node, parent);
     const dest = ctx.editable(newParentId);
     if (node === dest || isAncestor(ctx.indexed, node, dest)) {
       throw new EditOpError(op, target, `cannot move a node into itself or its own descendant (${newParentId})`);
@@ -268,7 +269,7 @@ function reindent(source: string, node: t.Node, oldIndent: string, newIndent: st
 }
 
 export interface RemoveOptions extends OpOptions {
-  /** Allow removing a node that is, or contains, a locked block. The UI confirms first. */
+  /** Allow removing a node that is or contains agent logic (locked blocks, logic-bearing props). The UI confirms first. */
   allowLocked?: boolean;
 }
 
@@ -278,8 +279,9 @@ export function remove(source: string, ref: NodeRef, options: RemoveOptions = {}
   const target = refLabel(ref);
   return runOp(op, target, source, options, (ctx) => {
     const { node, parent } = ctx.resolve(ref);
-    if (!options.allowLocked && containsLocked(node)) {
-      throw new EditOpError(op, target, "node is or contains a locked block; pass allowLocked to confirm");
+    ctx.requireMovableParent(node, parent);
+    if (!options.allowLocked && containsLogic(node)) {
+      throw new EditOpError(op, target, "node is or contains agent logic (a locked block or logic-bearing props); pass allowLocked to confirm");
     }
     const removedIds: string[] = [];
     t.traverseFast(ctx.ast(node), (n) => {
@@ -300,21 +302,15 @@ export function setProp(source: string, id: string, key: string, value: PropValu
     if (PROTECTED_PROPS.has(key) || /^on[A-Z]/.test(key) || !/^[A-Za-z][\w-]*$/.test(key)) {
       throw new EditOpError(op, id, `prop "${key}" cannot be set with setProp`);
     }
-    const el = ctx.element(ctx.editable(id));
+    const node = ctx.editable(id);
+    if (node.protectedProps.includes(key)) {
+      throw new EditOpError(op, id, `prop "${key}" carries agent logic and is protected`);
+    }
+    const el = ctx.element(node);
     return {
       removedIds: [],
       addedIds: [],
-      apply: () => {
-        const attrs = el.openingElement.attributes;
-        const existing = findAttr(el, key);
-        if (value === null) {
-          if (existing) attrs.splice(attrs.indexOf(existing), 1);
-          return;
-        }
-        const attrValue = typeof value === "string" ? t.stringLiteral(value) : t.jsxExpressionContainer(literal(value));
-        if (existing) existing.value = attrValue;
-        else attrs.push(t.jsxAttribute(t.jsxIdentifier(key), attrValue));
-      },
+      apply: () => editAttrText(ctx.source, el, key, value === null ? null : attrValueText(value)),
     };
   });
 }
@@ -331,7 +327,7 @@ export function setClass(source: string, id: string, add: string[], removeClasse
     let current: string[] = [];
     if (existing) {
       if (!t.isStringLiteral(existing.value)) {
-        throw new EditOpError(op, id, "className is not a string literal");
+        throw new EditOpError(op, id, "className is not a string literal (it carries agent logic and is protected)");
       }
       current = existing.value.value.split(/\s+/).filter(Boolean);
     }
@@ -354,15 +350,8 @@ export function setClass(source: string, id: string, add: string[], removeClasse
       removedIds: [],
       addedIds: [],
       apply: () => {
-        if (unchanged) return;
-        const attrs = el.openingElement.attributes;
-        if (next.length === 0) {
-          if (existing) attrs.splice(attrs.indexOf(existing), 1);
-        } else if (existing) {
-          existing.value = t.stringLiteral(next.join(" "));
-        } else {
-          attrs.push(t.jsxAttribute(t.jsxIdentifier("className"), t.stringLiteral(next.join(" "))));
-        }
+        if (unchanged) return ctx.source;
+        return editAttrText(ctx.source, el, "className", next.length === 0 ? null : attrValueText(next.join(" ")));
       },
     };
   });
@@ -378,8 +367,10 @@ interface OpContext {
   indexed: IndexedTree;
   /** An editable (non-locked) node by ID. */
   editable(id: string): UiNode;
-  /** Any tree node by ref, with its (editable) parent. */
+  /** Any tree node by ref, with its parent. */
   resolve(ref: NodeRef): { node: UiNode; parent: UiNode };
+  /** Throws if `parent` is a locked block: its wrapped elements are edited in place only. */
+  requireMovableParent(node: UiNode, parent: UiNode): void;
   ast(node: UiNode): JsxChild;
   element(node: UiNode): t.JSXElement;
 }
@@ -428,6 +419,15 @@ function runOp(op: string, target: string, source: string, options: OpOptions, p
       const node = parent.children[ref.index];
       if (!node) throw new EditOpError(op, target, `${ref.parentId} has no child at index ${ref.index}`);
       return { node, parent };
+    },
+    requireMovableParent(node, parent) {
+      if (parent.kind === "locked") {
+        throw new EditOpError(
+          op,
+          target,
+          `${node.id ?? node.name} is wrapped by locked ${parent.name} (${parent.lockReason ?? "locked"}); it can be edited in place but not moved out or removed`,
+        );
+      }
     },
     ast(node) {
       const n = indexed.astOf.get(node);
@@ -552,13 +552,46 @@ function cloneName(name: t.JSXOpeningElement["name"]): t.JSXOpeningElement["name
   return t.cloneNode(name, true, true);
 }
 
-function literal(value: number | boolean): t.Expression {
-  if (typeof value === "boolean") return t.booleanLiteral(value);
-  return value < 0 ? t.unaryExpression("-", t.numericLiteral(-value)) : t.numericLiteral(value);
+/** Source text for a literal JSX attribute value. */
+function attrValueText(value: string | number | boolean): string {
+  if (typeof value === "string") {
+    return value.includes('"') ? `{${JSON.stringify(value)}}` : `"${value}"`;
+  }
+  return `{${String(value)}}`;
 }
 
-function containsLocked(node: UiNode): boolean {
-  return node.kind === "locked" || node.children.some(containsLocked);
+/**
+ * Set, add or (with `valueText === null`) remove one attribute as a text edit, so
+ * the rest of the opening tag keeps its exact layout. A new attribute goes after
+ * the last attribute (or the element name); a removed one takes the whitespace
+ * before it with it.
+ */
+function editAttrText(source: string, el: t.JSXElement, key: string, valueText: string | null): string {
+  const opening = el.openingElement;
+  const existing = findAttr(el, key);
+  const pos = (n: t.Node): [number, number] => {
+    if (n.start == null || n.end == null) throw new Error(`editAttrText: <${nameOf(el)}> has no source position`);
+    return [n.start, n.end];
+  };
+  if (existing) {
+    const [start, end] = pos(existing);
+    if (valueText === null) {
+      let from = start;
+      while (from > 0 && /\s/.test(source[from - 1] as string)) from--;
+      return source.slice(0, from) + source.slice(end);
+    }
+    const valueStart = existing.value ? pos(existing.value)[0] : end;
+    const prefix = existing.value ? source.slice(start, valueStart) : `${key}=`;
+    return source.slice(0, start) + prefix + valueText + source.slice(existing.value ? pos(existing.value)[1] : end);
+  }
+  if (valueText === null) return source;
+  const last = opening.attributes[opening.attributes.length - 1];
+  const at = pos(last ?? opening.name)[1];
+  return source.slice(0, at) + ` ${key}=${valueText}` + source.slice(at);
+}
+
+function containsLogic(node: UiNode): boolean {
+  return node.kind === "locked" || node.protectedProps.length > 0 || node.children.some(containsLogic);
 }
 
 function isAncestor(indexed: IndexedTree, ancestor: UiNode, node: UiNode): boolean {

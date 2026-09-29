@@ -21,11 +21,21 @@ export interface UiNode {
   name: string;
   /** Why the node is locked. Null unless `kind === "locked"`. */
   lockReason: string | null;
+  /**
+   * Props whose values carry logic (non-literal expressions, `key`, `ref`, non-literal
+   * `data-ui-id`). The element stays editable; these props are never touched.
+   */
+  protectedProps: string[];
   /** Direct text content (whitespace-collapsed), null when there is none. */
   text: string | null;
-  /** Editable children. Always empty for locked blocks: their internals are opaque. */
+  /**
+   * Child nodes. For a locked block these are the JSX elements it wraps that can be
+   * edited in place (children of a custom component, conditional branches, a `.map`
+   * row template). Their parent is locked, so they can't be moved out, removed, or
+   * given new siblings.
+   */
   children: UiNode[];
-  /** IDs carried anywhere inside a locked block (for reporting; never editable). */
+  /** IDs carried anywhere inside a locked block (for reporting). */
   containedIds: string[];
   range: SourceRange;
 }
@@ -49,8 +59,8 @@ export const DEFAULT_CATALOGUE: Catalogue = {
   primitive: /^(@\/|(\.\.?\/)+)components\/layout(\/[\w-]+)?$/,
 };
 
-/** Props an element may carry and still be treated as editable. */
-const LOCKING_ATTRS = new Set(["key", "ref"]);
+/** Props that are always protected, whatever their value. */
+const ALWAYS_PROTECTED = new Set(["key", "ref"]);
 
 export function buildTree(source: string, catalogue: Catalogue = DEFAULT_CATALOGUE): PageTree {
   return buildIndexedTree(parseModule(source), catalogue).tree;
@@ -79,21 +89,34 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
     return { tree: { roots: [], rootError: "default export returns no JSX" }, astOf, parentOf };
   }
 
-  const classifyElement = (el: t.JSXElement): { kind: NodeKind; name: string; lockReason: string | null } => {
+  const classifyElement = (
+    el: t.JSXElement,
+  ): { kind: NodeKind; name: string; lockReason: string | null; protectedProps: string[] } => {
     const name = elementName(el.openingElement.name);
+    const protectedProps: string[] = [];
     for (const attr of el.openingElement.attributes) {
-      if (t.isJSXSpreadAttribute(attr)) return { kind: "locked", name, lockReason: "spread props" };
+      // A spread can set any prop, className included, so nothing on the element is safe to edit.
+      if (t.isJSXSpreadAttribute(attr)) return { kind: "locked", name, lockReason: "spread props", protectedProps: [] };
       const attrName = t.isJSXIdentifier(attr.name) ? attr.name.name : `${attr.name.namespace.name}:${attr.name.name.name}`;
-      if (LOCKING_ATTRS.has(attrName)) return { kind: "locked", name, lockReason: `${attrName} prop` };
-      if (!isLiteralAttrValue(attr.value)) return { kind: "locked", name, lockReason: `logic in ${attrName} prop` };
+      if (ALWAYS_PROTECTED.has(attrName) || !isLiteralAttrValue(attr.value)) protectedProps.push(attrName);
     }
     const tag = el.openingElement.name;
-    if (!t.isJSXIdentifier(tag)) return { kind: "locked", name, lockReason: "member or namespaced element" };
-    if (/^[a-z]/.test(tag.name)) return { kind: "plain", name, lockReason: null };
+    if (!t.isJSXIdentifier(tag)) return { kind: "locked", name, lockReason: "member or namespaced element", protectedProps };
+    if (/^[a-z]/.test(tag.name)) return { kind: "plain", name, lockReason: null, protectedProps };
     const from = imports.get(tag.name);
-    if (from !== undefined && catalogue.palette.test(from)) return { kind: "palette", name, lockReason: null };
-    if (from !== undefined && catalogue.primitive.test(from)) return { kind: "primitive", name, lockReason: null };
-    return { kind: "locked", name, lockReason: "custom component" };
+    if (from !== undefined && catalogue.palette.test(from)) return { kind: "palette", name, lockReason: null, protectedProps };
+    if (from !== undefined && catalogue.primitive.test(from)) return { kind: "primitive", name, lockReason: null, protectedProps };
+    return { kind: "locked", name, lockReason: "custom component", protectedProps };
+  };
+
+  const attach = (parent: UiNode, children: (JsxChild | t.Expression)[]) => {
+    for (const child of children) {
+      const childNode = visit(child);
+      if (childNode) {
+        parent.children.push(childNode);
+        parentOf.set(childNode, parent);
+      }
+    }
   };
 
   const visit = (node: JsxChild | t.Expression): UiNode | null => {
@@ -103,26 +126,20 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
       if (t.isStringLiteral(node.expression)) return null; // {" "} is text
     }
     if (t.isJSXElement(node)) {
-      const { kind, name, lockReason } = classifyElement(node);
+      const { kind, name, lockReason, protectedProps } = classifyElement(node);
       const uiNode: UiNode = {
         kind,
         id: readUiId(node),
         name,
         lockReason,
+        protectedProps,
         text: kind === "locked" ? null : directText(node),
         children: [],
         containedIds: kind === "locked" ? idsWithin(node, true) : [],
         range: rangeOf(node),
       };
-      if (kind !== "locked") {
-        for (const child of node.children) {
-          const childNode = visit(child);
-          if (childNode) {
-            uiNode.children.push(childNode);
-            parentOf.set(childNode, uiNode);
-          }
-        }
-      }
+      // A locked element's JSX children are still plain JSX in this file: expose them.
+      attach(uiNode, node.children);
       astOf.set(uiNode, node);
       return uiNode;
     }
@@ -132,12 +149,14 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
       id: null,
       name: label,
       lockReason: reason,
+      protectedProps: [],
       text: null,
       children: [],
       containedIds: idsWithin(node, false),
       range: rangeOf(node),
     };
-    if (t.isJSXElement(node) || isJsxChild(node)) astOf.set(uiNode, node);
+    attach(uiNode, wrappedElements(node));
+    if (isJsxChild(node)) astOf.set(uiNode, node);
     return uiNode;
   };
 
@@ -175,11 +194,40 @@ function isJsxChild(node: t.Node): node is JsxChild {
   );
 }
 
+/**
+ * JSX elements inside a locked expression that can be edited in place: fragment
+ * children, conditional branches, and the element a `.map()` callback returns.
+ */
+function wrappedElements(node: JsxChild | t.Expression): (JsxChild | t.Expression)[] {
+  if (t.isJSXFragment(node)) return node.children;
+  const expr = t.isJSXExpressionContainer(node) ? node.expression : node;
+  if (t.isJSXEmptyExpression(expr) || t.isJSXSpreadChild(expr) || t.isJSXText(expr)) return [];
+  const branches = (e: t.Expression): t.Expression[] => {
+    // A nested .map() becomes its own locked node, which exposes its row template in turn.
+    if (t.isJSXElement(e) || t.isJSXFragment(e) || isMapCall(e)) return [e];
+    if (t.isConditionalExpression(e)) return [...branches(e.consequent), ...branches(e.alternate)];
+    if (t.isLogicalExpression(e)) return branches(e.right);
+    return [];
+  };
+  if (t.isConditionalExpression(expr) || t.isLogicalExpression(expr)) return branches(expr);
+  if (isMapCall(expr)) {
+    const callback = expr.arguments[0];
+    if (t.isArrowFunctionExpression(callback) || t.isFunctionExpression(callback)) {
+      return collectReturnedExpressions(callback).flatMap(branches);
+    }
+  }
+  return [];
+}
+
+function isMapCall(expr: t.Node): expr is t.CallExpression {
+  return t.isCallExpression(expr) && t.isMemberExpression(expr.callee) && t.isIdentifier(expr.callee.property, { name: "map" });
+}
+
 function describeLockedExpression(node: JsxChild | t.Expression): { label: string; reason: string } {
   if (t.isJSXFragment(node)) return { label: "fragment", reason: "fragment" };
   if (t.isJSXSpreadChild(node)) return { label: "spread", reason: "spread children" };
   const expr = t.isJSXExpressionContainer(node) ? node.expression : node;
-  if (t.isCallExpression(expr) && t.isMemberExpression(expr.callee) && t.isIdentifier(expr.callee.property, { name: "map" })) {
+  if (isMapCall(expr)) {
     return { label: "map", reason: ".map() loop" };
   }
   if (t.isConditionalExpression(expr) || t.isLogicalExpression(expr)) {

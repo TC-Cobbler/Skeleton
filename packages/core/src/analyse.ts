@@ -173,7 +173,7 @@ export function isCleanTakeBack(report: TakeBackReport): boolean {
 
 /** Locks that come from a JSX element (as opposed to `.map`, conditionals and other expressions). */
 function isElementLock(reason: string): boolean {
-  return reason === "custom component" || reason === "spread props" || reason.endsWith(" prop") || reason === "member or namespaced element";
+  return reason === "custom component" || reason === "spread props" || reason === "member or namespaced element";
 }
 
 function violationKey(v: Violation): string {

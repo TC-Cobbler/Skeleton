@@ -42,9 +42,8 @@ describe("insert", () => {
     expect(r.source).toMatch(/ui_ins05[\s\S]*ui_ins06/);
   });
 
-  it("refuses locked parents, parents inside locked blocks, duplicate or missing IDs", () => {
-    expect(() => insert(agent, "ui_btn01", 0, `<b data-ui-id="ui_zzzzz" />`)).toThrow(/locked block/);
-    expect(() => insert(agent, "ui_row01", 0, `<b data-ui-id="ui_zzzzz" />`)).toThrow(/inside a locked block/);
+  it("refuses locked parents, duplicate or missing IDs", () => {
+    expect(() => insert(agent, "ui_ordt1", 0, `<b data-ui-id="ui_zzzzz" />`)).toThrow(/locked block/);
     expect(() => insert(home, "ui_act10", 0, `<b data-ui-id="ui_new0r" />`)).toThrow(/already exists/);
     expect(() => insert(home, "ui_act10", 0, `<b />`)).toThrow(/no literal data-ui-id/);
     expect(() => insert(home, "ui_act10", 9, `<b data-ui-id="ui_zzzzz" />`)).toThrow(/out of range/);
@@ -143,7 +142,18 @@ describe("setProp", () => {
     for (const key of ["data-ui-id", "className", "onClick", "key", "ref", "style"]) {
       expect(() => setProp(home, "ui_new0r", key, "x"), key).toThrow(/cannot be set/);
     }
-    expect(() => setProp(agent, "ui_btn01", "variant", "ghost")).toThrow(/locked block/);
+    expect(() => setProp(agent, "ui_ordt1", "rows", "x")).toThrow(/locked block/);
+  });
+
+  it("edits literal props on a logic-bearing element but never its logic props", () => {
+    const r = setProp(agent, "ui_btn01", "variant", "ghost");
+    assertSurgical(agent, r, [linesOf(agent, 'data-ui-id="ui_btn01"')]);
+    expect(r.source).toContain(`<Button data-ui-id="ui_btn01" onClick={() => addRow({ id: String(rows.length), label: "x" })} variant="ghost">Add</Button>`);
+    expect(() => setProp(agent, "ui_btn01", "onClick", null)).toThrow(/cannot be set/);
+    expect(() => setProp(agent, "ui_row01", "key", "x")).toThrow(/cannot be set/);
+    const src = `import { Button } from "@/components/ui/button";\nexport default function P() {\n  return <Button data-ui-id="ui_aaaaa" variant={v ? "a" : "b"} size="sm" />;\n}\n`;
+    expect(() => setProp(src, "ui_aaaaa", "variant", "ghost")).toThrow(/carries agent logic and is protected/);
+    expect(setProp(src, "ui_aaaaa", "size", "lg").source).toContain(`variant={v ? "a" : "b"} size="lg"`);
   });
 });
 
@@ -169,7 +179,46 @@ describe("setClass", () => {
 
   it("refuses non-literal className and locked targets", () => {
     const src = `import { Stack } from "@/components/layout";\nexport default function P() {\n  return <Stack data-ui-id="ui_aaaaa"><div data-ui-id="ui_bbbbb" className={x} /></Stack>;\n}\n`;
-    expect(() => setClass(src, "ui_bbbbb", ["p-2"], [])).toThrow(/locked block/);
+    expect(() => setClass(src, "ui_bbbbb", ["p-2"], [])).toThrow(/className is not a string literal/);
+    expect(() => setClass(agent, "ui_ordt1", ["p-2"], [])).toThrow(/locked block/);
+  });
+
+  it("styles logic-bearing elements and wrapped elements in place", () => {
+    const btn = setClass(agent, "ui_btn01", ["w-full"], []);
+    assertSurgical(agent, btn, [linesOf(agent, 'data-ui-id="ui_btn01"')]);
+    const row = setClass(agent, "ui_row01", ["py-2"], []);
+    assertSurgical(agent, row, [linesOf(agent, 'data-ui-id="ui_row01"')]);
+    expect(row.source).toContain(`<div key={r.id} data-ui-id="ui_row01" className="py-2">`);
+    const branch = setClass(agent, "ui_load1", ["text-muted-foreground"], []);
+    assertSurgical(agent, branch, [linesOf(agent, 'data-ui-id="ui_load1"')]);
+    const wrapped = setProp(readFixture("pathological/post-agent-pass1.tsx"), "ui_new0r", "size", "sm");
+    expect(wrapped.source).toContain(`<Button data-ui-id="ui_new0r" size="sm">New order</Button>`);
+  });
+});
+
+describe("wrapped elements stay put", () => {
+  const pass1 = readFixture("pathological/post-agent-pass1.tsx");
+
+  it("refuses to move or remove an element out of a locked wrapper", () => {
+    expect(() => move(pass1, { id: "ui_new0r" }, "ui_act10", 0)).toThrow(/wrapped by locked NewOrderDialog/);
+    expect(() => remove(pass1, { id: "ui_new0r" })).toThrow(/wrapped by locked NewOrderDialog/);
+    expect(() => move(agent, { id: "ui_row01" }, "ui_bar01", 0)).toThrow(/wrapped by locked map/);
+    expect(() => remove(agent, { id: "ui_load1" }, { allowLocked: true })).toThrow(/wrapped by locked conditional/);
+  });
+
+  it("refuses to move a node into a locked wrapper", () => {
+    expect(() => move(agent, { id: "ui_btn02" }, "ui_ordt1", 0)).toThrow(/locked block/);
+  });
+
+  it("allows inserting into a wrapped element (its own children are ordinary)", () => {
+    const r = insert(agent, "ui_row01", 0, `<b data-ui-id="ui_zzzzz">x</b>`);
+    assertSurgical(agent, r, [linesOf(agent, 'data-ui-id="ui_row01"', "</div>")]);
+  });
+
+  it("asks for confirmation before removing logic-bearing elements", () => {
+    expect(() => remove(agent, { id: "ui_btn01" })).toThrow(/agent logic/);
+    const r = remove(agent, { id: "ui_btn01" }, { allowLocked: true });
+    assertSurgical(agent, r, [linesOf(agent, 'data-ui-id="ui_btn01"')], ["ui_btn01"]);
   });
 });
 
@@ -337,5 +386,44 @@ describe("insert: import text placement", () => {
     expect(r.source).toContain(`  TableRow,\n  TableFooter,\n} from "@/components/ui/table";`);
     expect(r.diff.linesAdded).toBe(2);
     expect(r.diff.linesRemoved).toBe(0);
+  });
+});
+
+describe("attribute edits are text-level", () => {
+  const src = [
+    `import { Stack } from "@/components/layout";`,
+    `export default function P() {`,
+    `  return (`,
+    `    <Stack`,
+    `      data-ui-id="ui_aaaaa"`,
+    `      direction='horizontal'`,
+    `      onClick={() => go()}`,
+    `      className="gap-2"`,
+    `    >`,
+    `      x`,
+    `    </Stack>`,
+    `  );`,
+    `}`,
+    ``,
+  ].join("\n");
+
+  it("changes one value in a multi-line tag and nothing else", () => {
+    const r = setProp(src, "ui_aaaaa", "direction", "vertical");
+    expect(r.diff.patch.split("\n").filter((l) => /^[-+] /.test(l))).toEqual([`-      direction='horizontal'`, `+      direction="vertical"`]);
+  });
+
+  it("removes an attribute line from a multi-line tag", () => {
+    const r = setClass(src, "ui_aaaaa", [], ["gap-2"]);
+    expect(r.source).toContain(`      onClick={() => go()}\n    >`);
+    expect(r.diff.linesRemoved).toBe(1);
+    expect(r.diff.linesAdded).toBe(0);
+  });
+
+  it("appends a new attribute after the last one", () => {
+    expect(setProp(src, "ui_aaaaa", "wrap", true).source).toContain(`      className="gap-2" wrap={true}\n    >`);
+  });
+
+  it("writes values containing quotes as expressions", () => {
+    expect(setProp(home, "ui_new0r", "title", `Say "hi"`).source).toContain(`title={"Say \\"hi\\""}`);
   });
 });

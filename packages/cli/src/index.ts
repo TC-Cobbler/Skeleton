@@ -268,7 +268,8 @@ function formatTree(node: UiNode, indent: string): string {
   const lock = node.lockReason ? ` [${node.lockReason}]` : "";
   const text = node.text ? ` "${node.text}"` : "";
   const inside = node.containedIds.length ? ` contains ${node.containedIds.join(", ")}` : "";
-  let out = `${indent}${node.kind.padEnd(9)} ${node.name}${id}${lock}${text}${inside}  L${node.range.startLine}\n`;
+  const guarded = node.protectedProps.length ? ` protects ${node.protectedProps.join(", ")}` : "";
+  let out = `${indent}${node.kind.padEnd(9)} ${node.name}${id}${lock}${guarded}${text}${inside}  L${node.range.startLine}\n`;
   for (const child of node.children) out += formatTree(child, indent + "  ");
   return out;
 }

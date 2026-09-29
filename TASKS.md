@@ -21,7 +21,9 @@ Goal: prove the code can round-trip before building anything around it. This pha
   - `palette`
   - `primitive`
   - `plain` (element with ID)
-  - `locked` (custom component, `.map`, conditional, logic-bearing)
+  - `locked` (custom component, `.map`, conditional, spread props)
+
+  Logic-bearing props are protected rather than locking the element, and elements wrapped by locked blocks stay editable in place: see `docs/decisions/002-editability.md`.
 - [x] **T0.4** Edit ops as pure functions (`source in → source out`). Each must produce a minimal diff:
   - [x] `insert(parentId, index, node)`
   - [x] `move(id, newParentId, index)` (locked blocks included)

@@ -47,17 +47,18 @@ describe("analyseTakeBack", () => {
 
     expect(report.orphanedIds.map((o) => o.id).sort()).toEqual(["ui_crdt1", "ui_exp0r"]);
     expect(report.duplicateIds.map((d) => [d.id, d.occurrences.length, d.isNew])).toEqual([["ui_crdh1", 2, true]]);
-    // The div is locked by its style object, so only the stripped Button counts.
-    expect(report.unIdedEditable.map((n) => n.element)).toEqual(["Button"]);
+    // The div's style object is protected, but the div itself is editable and un-ID'd.
+    expect(report.unIdedEditable.map((n) => n.element)).toEqual(["Button", "div"]);
     expect(report.newViolations.map((v) => [v.kind, v.value])).toEqual([
       ["arbitrary-value", "p-[13px]"],
       ["hard-coded-colour", "bg-red-500"],
       ["arbitrary-value", "max-md:hover:rounded-[4px]"],
       ["inline-style", `style={{ color: "#f00" }}`],
     ]);
+    // The row template inside .map is now inspected too, so its {o.id} expression is reported.
     expect(report.newLockedBlocks.map((b) => [b.element, b.reason])).toEqual([
-      ["div", "logic in style prop"],
       ["map", ".map() loop"],
+      ["expression", "MemberExpression expression"],
     ]);
     expect(report.tokenTampering).toEqual({
       changes: [{ name: "--radius-card", block: "theme-inline", before: "calc(var(--radius) * 1.25)", after: "1rem" }],

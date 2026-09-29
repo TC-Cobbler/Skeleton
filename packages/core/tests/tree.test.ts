@@ -34,7 +34,7 @@ describe("buildTree on pathological agent page", () => {
   const tree = buildTree(readFixture("pathological/agent-page.tsx"));
   const root = tree.roots[0];
 
-  it("locks .map, conditionals, custom components and logic-bearing props", () => {
+  it("locks .map, conditionals and custom components; logic-bearing props only protect the prop", () => {
     expect(root?.children.map(summary)).toEqual([
       "primitive:Stack#ui_bar01",
       "locked:map",
@@ -43,20 +43,24 @@ describe("buildTree on pathological agent page", () => {
       "primitive:Stack#ui_empty",
       "locked:expression",
     ]);
-    expect(findNodeById(tree.roots, "ui_btn01")?.kind).toBe("locked");
-    expect(findNodeById(tree.roots, "ui_btn01")?.lockReason).toBe("logic in onClick prop");
-    expect(findNodeById(tree.roots, "ui_btn02")?.kind).toBe("palette");
+    const btn = findNodeById(tree.roots, "ui_btn01");
+    expect(btn?.kind).toBe("palette");
+    expect(btn?.protectedProps).toEqual(["onClick"]);
+    expect(findNodeById(tree.roots, "ui_btn02")?.protectedProps).toEqual([]);
     expect(findNodeById(tree.roots, "ui_ordt1")?.kind).toBe("locked");
   });
 
-  it("does not expose IDs inside locked blocks as tree nodes", () => {
-    expect(findNodeById(tree.roots, "ui_row01")).toBeNull();
-    expect(root?.children[1]?.containedIds).toEqual(["ui_row01"]);
+  it("exposes elements wrapped by locked blocks for in-place editing", () => {
+    const map = root?.children[1];
+    expect(map?.containedIds).toEqual(["ui_row01"]);
+    expect(map?.children.map(summary)).toEqual(["plain:div#ui_row01"]);
+    expect(findNodeById(tree.roots, "ui_row01")?.protectedProps).toEqual(["key"]);
+    expect(root?.children[2]?.children.map(summary)).toEqual(["plain:p#ui_load1"]);
   });
 
   it("ignores JSX comments", () => {
     const bar = findNodeById(tree.roots, "ui_bar01");
-    expect(bar?.children.map(summary)).toEqual(["locked:Button#ui_btn01", "palette:Button#ui_btn02"]);
+    expect(bar?.children.map(summary)).toEqual(["palette:Button#ui_btn01", "palette:Button#ui_btn02"]);
   });
 });
 
@@ -68,11 +72,53 @@ describe("buildTree conservatism", () => {
     expect(tree.roots[0]?.kind).toBe("locked");
   });
 
-  it("locks spread props, key, ref and member elements", () => {
+  it("locks spread props and member elements", () => {
     const imports = `import { Stack } from "@/components/layout";`;
-    for (const el of [`<Stack {...p} />`, `<Stack key="a" />`, `<Stack ref={r} />`, `<Motion.div />`, `<Stack className={cn("a")} />`]) {
+    for (const el of [`<Stack {...p} />`, `<Stack className="a" {...p} />`, `<Motion.div />`]) {
       expect(buildTree(page(el, imports)).roots[0]?.kind, el).toBe("locked");
     }
+  });
+
+  it("protects key, ref and non-literal props without locking the element", () => {
+    const imports = `import { Stack } from "@/components/layout";`;
+    const cases: [string, string[]][] = [
+      [`<Stack key="a" />`, ["key"]],
+      [`<Stack ref={r} />`, ["ref"]],
+      [`<Stack className={cn("a")} />`, ["className"]],
+      [`<Stack data-ui-id={id} onClick={go} gap={4} />`, ["data-ui-id", "onClick"]],
+    ];
+    for (const [el, props] of cases) {
+      const root = buildTree(page(el, imports)).roots[0];
+      expect(root?.kind, el).toBe("primitive");
+      expect(root?.protectedProps, el).toEqual(props);
+    }
+  });
+
+  it("exposes children of custom components and conditional/map branches", () => {
+    const src = page(
+      `<Dialog><Button data-ui-id="ui_aaaaa" /></Dialog>`,
+      `import { Button } from "@/components/ui/button";\nimport { Dialog } from "./Dialog";`,
+    );
+    const root = buildTree(src).roots[0];
+    expect(root?.kind).toBe("locked");
+    expect(root?.children.map(summary)).toEqual(["palette:Button#ui_aaaaa"]);
+    const nested = buildTree(
+      `export default function P() {\n  return <div data-ui-id="ui_bbbbb">{a ? <p data-ui-id="ui_ccccc" /> : b && <i data-ui-id="ui_ddddd" />}{xs.map((x) => { const y = x; return <b key={y} data-ui-id="ui_eeeee" />; })}{render()}</div>;\n}\n`,
+    ).roots[0];
+    expect(nested?.children.map((c) => [summary(c), c.children.map(summary)])).toEqual([
+      ["locked:conditional", ["plain:p#ui_ccccc", "plain:i#ui_ddddd"]],
+      ["locked:map", ["plain:b#ui_eeeee"]],
+      ["locked:expression", []],
+    ]);
+  });
+
+  it("exposes a .map nested in a conditional branch", () => {
+    const src = `export default function P() {\n  return <div data-ui-id="ui_aaaaa">{xs.length === 0 ? <p data-ui-id="ui_bbbbb" /> : xs.map((x) => <b key={x} data-ui-id="ui_ccccc" />)}</div>;\n}\n`;
+    const cond = buildTree(src).roots[0]?.children[0];
+    expect(cond?.children.map((c) => [summary(c), c.children.map(summary)])).toEqual([
+      ["plain:p#ui_bbbbb", []],
+      ["locked:map", ["plain:b#ui_ccccc"]],
+    ]);
   });
 
   it("keeps literal expression props editable", () => {
