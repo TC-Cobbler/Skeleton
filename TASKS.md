@@ -38,7 +38,7 @@ Goal: prove the code can round-trip before building anything around it. This pha
   - new violations (arbitrary values, inline styles, hard-coded colours)
   - new locked blocks
   - token file tampering
-- [ ] **T0.9** **Manual loop test.** On the fixture, run 5 rounds of the following:
+- [x] **T0.9** **Manual loop test.** On the fixture, run 5 rounds of the following:
   1. Apply scripted edits via the CLI.
   2. Write a handoff task.
   3. Run Claude Code with a real task (fetch data into the Table, add a dialog, etc.).
