@@ -29,9 +29,12 @@ export function assertSurgical(before: string, result: EditResult, allowed: Line
   const diff = diffSources(before, result.source);
   expect(result.diff.patch).toBe(diff.patch);
   for (const hunk of diff.hunks) {
-    const first = hunk.oldLines === 0 ? hunk.oldStart + 1 : hunk.oldStart;
-    const last = hunk.oldLines === 0 ? hunk.oldStart : hunk.oldStart + hunk.oldLines - 1;
-    const inside = allowed.some((r) => first >= r.start && last <= r.end);
+    // jsdiff's structured hunks put a pure insertion *before* old line `oldStart`.
+    const first = hunk.oldStart;
+    const last = hunk.oldLines === 0 ? hunk.oldStart - 1 : hunk.oldStart + hunk.oldLines - 1;
+    const inside = allowed.some((r) =>
+      hunk.oldLines === 0 ? first >= r.start && first <= r.end + 1 : first >= r.start && last <= r.end,
+    );
     expect(inside, `hunk at old lines ${first}-${last} outside ${JSON.stringify(allowed)}\n${diff.patch}`).toBe(true);
   }
 

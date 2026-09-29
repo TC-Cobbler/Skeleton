@@ -187,3 +187,57 @@ describe("chained ops keep agent code byte-identical", () => {
     expect(src).toContain(`<Button data-ui-id="ui_btn01" onClick={() => addRow({ id: String(rows.length), label: "x" })}>Add</Button>`);
   });
 });
+
+describe("move: pathological (spike-log S2)", () => {
+  it("keeps a multi-line locked wrapper's indentation when reordering", () => {
+    const src = readFixture("pathological/post-agent-pass1.tsx");
+    const r = move(src, { parentId: "ui_act10", index: 0 }, "ui_act10", 1);
+    assertSurgical(src, r, [linesOf(src, 'data-ui-id="ui_act10"', "</Stack>")]);
+    expect(r.source).toContain(
+      [
+        `      <Stack data-ui-id="ui_act10" direction="horizontal" className="gap-2">`,
+        `        <Button data-ui-id="ui_exp0r" variant="secondary">`,
+        `          Export`,
+        `        </Button>`,
+        `        <NewOrderDialog onCreate={addOrder}>`,
+        `          <Button data-ui-id="ui_new0r">New order</Button>`,
+        `        </NewOrderDialog>`,
+        `      </Stack>`,
+      ].join("\n"),
+    );
+  });
+
+  it("re-indents a moved block to its new depth", () => {
+    const r = move(agent, { parentId: "ui_root1", index: 1 }, "ui_bar01", 2);
+    expect(r.source).toContain(
+      [
+        `        </Button>`,
+        `        {rows.map((r) => (`,
+        `          <div key={r.id} data-ui-id="ui_row01">`,
+        `            {r.label}`,
+        `          </div>`,
+        `        ))}`,
+        `      </Stack>`,
+        `      {loading ?`,
+      ].join("\n"),
+    );
+  });
+
+  it("never re-indents inside a template literal", () => {
+    const src = readFixture("pathological/template-literal-block.tsx");
+    const r = move(src, { id: "ui_tln00" }, "ui_tlc00", 1);
+    assertSurgical(src, r, [linesOf(src, 'data-ui-id="ui_tla00"', "Deep")]);
+    expect(r.source).toContain(
+      [
+        `          <p data-ui-id="ui_tlp00">Deep</p>`,
+        `          <Notice`,
+        `            data-ui-id="ui_tln00"`,
+        "            body={`line one",
+        `  indented line two`,
+        "line three`}",
+        `          />`,
+        `        </Stack>`,
+      ].join("\n"),
+    );
+  });
+});

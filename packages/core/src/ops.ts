@@ -54,7 +54,7 @@ export function insert(source: string, parentId: string, index: number, jsx: str
       if (!id) throw new EditOpError(op, parentId, `inserted <${nameOf(n)}> has no literal ${UI_ID_ATTR}`);
       newIds.push(id);
     });
-    return { removedIds: [], addedIds: newIds, apply: () => insertChild(ctx, op, parentId, ctx.element(parent), index, node) };
+    return { removedIds: [], addedIds: newIds, apply: () => insertChild(ctx.source, op, parentId, ctx.element(parent), index, node) };
   });
 }
 
@@ -68,17 +68,79 @@ export function move(source: string, ref: NodeRef, newParentId: string, index: n
     if (node === dest || isAncestor(ctx.indexed, node, dest)) {
       throw new EditOpError(op, target, `cannot move a node into itself or its own descendant (${newParentId})`);
     }
+    const child = ctx.ast(node);
     return {
       removedIds: [],
       addedIds: [],
+      // Moved as text: recast reprints a moved multi-line node with broken
+      // indentation. Pass 1 removes the node via the AST and prints. Pass 2
+      // re-parses, inserts a placeholder exactly like `insert`, prints, and
+      // swaps the placeholder for the node's original source, re-indented.
       apply: () => {
-        const destEl = ctx.element(dest);
-        const child = ctx.ast(node);
         detachChild(ctx.element(parent), child);
-        insertChild(ctx, op, target, destEl, index, child);
+        const removed = printModule(ctx.ast0);
+        const ast2 = parseModule(removed);
+        const destNode = findNodeById(buildIndexedTree(ast2, options.catalogue ?? DEFAULT_CATALOGUE).tree.roots, newParentId);
+        const destAst = destNode ? findElementById(ast2, newParentId) : null;
+        if (!destAst) throw new EditOpError(op, target, `${newParentId} not found after removal`);
+        insertChild(removed, op, target, destAst, index, placeholderElement());
+        const output = printModule(ast2);
+        const at = output.indexOf(PLACEHOLDER_TEXT);
+        if (at < 0 || output.indexOf(PLACEHOLDER_TEXT, at + 1) >= 0) {
+          throw new EditOpError(op, target, "move placeholder not found exactly once in output");
+        }
+        const prefix = output.slice(output.lastIndexOf("\n", at) + 1, at);
+        const newIndent = /^[ \t]*/.exec(prefix)?.[0] ?? "";
+        const text = reindent(ctx.source, child, lineIndent(ctx.source, child), newIndent);
+        return output.slice(0, at) + text + output.slice(at + PLACEHOLDER_TEXT.length);
       },
     };
   });
+}
+
+const PLACEHOLDER_NAME = "__skeleton_move_placeholder__";
+const PLACEHOLDER_TEXT = `<${PLACEHOLDER_NAME} />`;
+
+function findElementById(ast: t.File, id: string): t.JSXElement | null {
+  let hit: t.JSXElement | null = null;
+  t.traverseFast(ast, (n) => {
+    if (!hit && t.isJSXElement(n)) {
+      const attr = findAttr(n, UI_ID_ATTR);
+      if (attr && t.isStringLiteral(attr.value) && attr.value.value === id) hit = n;
+    }
+  });
+  return hit;
+}
+
+function placeholderElement(): t.JSXElement {
+  return t.jsxElement(t.jsxOpeningElement(t.jsxIdentifier(PLACEHOLDER_NAME), [], true), null, [], true);
+}
+
+/**
+ * Original source of `node`, with continuation lines moved from `oldIndent` to
+ * `newIndent`. Lines that start inside a template literal are left alone, since
+ * their whitespace is part of the string.
+ */
+function reindent(source: string, node: t.Node, oldIndent: string, newIndent: string): string {
+  const start = node.start ?? -1;
+  const end = node.end ?? -1;
+  if (start < 0 || end < 0) throw new Error("reindent: node has no source position");
+  const templates: [number, number][] = [];
+  t.traverseFast(node, (n) => {
+    if (t.isTemplateLiteral(n) && n.start != null && n.end != null) templates.push([n.start, n.end]);
+  });
+  const text = source.slice(start, end);
+  if (oldIndent === newIndent) return text;
+  let out = "";
+  let offset = start;
+  for (const [i, line] of text.split("\n").entries()) {
+    const insideTemplate = templates.some(([a, b]) => offset > a && offset < b);
+    if (i === 0) out += line;
+    else if (!insideTemplate && line.startsWith(oldIndent)) out += "\n" + newIndent + line.slice(oldIndent.length);
+    else out += "\n" + line;
+    offset += line.length + 1;
+  }
+  return out;
 }
 
 export interface RemoveOptions extends OpOptions {
@@ -176,6 +238,8 @@ export function setClass(source: string, id: string, add: string[], removeClasse
 
 interface OpContext {
   source: string;
+  /** The parsed module the op mutates. */
+  ast0: t.File;
   indexed: IndexedTree;
   /** An editable (non-locked) node by ID. */
   editable(id: string): UiNode;
@@ -188,7 +252,8 @@ interface OpContext {
 interface OpPlan {
   removedIds: string[];
   addedIds: string[];
-  apply(): void;
+  /** Mutates the AST, or returns the finished source (for text-level ops like move). */
+  apply(): void | string;
 }
 
 function runOp(op: string, target: string, source: string, options: OpOptions, plan: (ctx: OpContext) => OpPlan): EditResult {
@@ -210,6 +275,7 @@ function runOp(op: string, target: string, source: string, options: OpOptions, p
   };
   const ctx: OpContext = {
     source,
+    ast0: ast,
     indexed,
     editable(id) {
       const node = find(id);
@@ -244,8 +310,8 @@ function runOp(op: string, target: string, source: string, options: OpOptions, p
   for (const id of addedIds) {
     if (idsBefore.has(id)) throw new EditOpError(op, target, `ID ${id} already exists in this file`);
   }
-  apply();
-  const output = printModule(ast);
+  const applied = apply();
+  const output = typeof applied === "string" ? applied : printModule(ast);
 
   // Verify: output parses, and IDs survive exactly as expected.
   let idsAfter: Map<string, number>;
@@ -298,13 +364,13 @@ function detachChild(parent: t.JSXElement, child: JsxChild): void {
   if (!kids.some(isNodeChild) && kids.every((k) => t.isJSXText(k) && k.value.trim() === "")) kids.length = 0;
 }
 
-function insertChild(ctx: OpContext, op: string, target: string, parent: t.JSXElement, index: number, child: JsxChild): void {
+function insertChild(source: string, op: string, target: string, parent: t.JSXElement, index: number, child: JsxChild): void {
   const kids = parent.children;
   const nodeIdx = kids.map((k, i) => (isNodeChild(k) ? i : -1)).filter((i) => i >= 0);
   if (!Number.isInteger(index) || index < 0 || index > nodeIdx.length) {
     throw new EditOpError(op, target, `index ${index} out of range (0..${nodeIdx.length})`);
   }
-  const parentIndent = lineIndent(ctx.source, parent);
+  const parentIndent = lineIndent(source, parent);
   const childIndent = existingChildIndent(kids) ?? parentIndent + "  ";
   const newline = (indent: string) => t.jsxText("\n" + indent);
 
