@@ -1,0 +1,16 @@
+{
+  "name": "@skeleton/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "skeleton-spike": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "spike": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@skeleton/core": "workspace:*"
+  }
+}
