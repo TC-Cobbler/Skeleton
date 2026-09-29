@@ -17,19 +17,19 @@ Goal: prove the code can round-trip before building anything around it. This pha
   - diff size
 
   Record the choice in `docs/decisions/001-ast.md`.
-- [ ] **T0.3** Parser: page file → element tree, keyed by `data-ui-id`. Classify each node as one of:
+- [x] **T0.3** Parser: page file → element tree, keyed by `data-ui-id`. Classify each node as one of:
   - `palette`
   - `primitive`
   - `plain` (element with ID)
   - `locked` (custom component, `.map`, conditional, logic-bearing)
-- [ ] **T0.4** Edit ops as pure functions (`source in → source out`). Each must produce a minimal diff:
-  - [ ] `insert(parentId, index, node)`
-  - [ ] `move(id, newParentId, index)` (locked blocks included)
-  - [ ] `remove(id)`
-  - [ ] `setProp(id, key, value)`
-  - [ ] `setClass(id, add[], remove[])`
-- [ ] **T0.5** ID minting: `ui_` + 5 lowercase alphanumerics, unique within the project. Build a project-wide ID index.
-- [ ] **T0.6** Token writer: read and write `@theme` variables in `globals.css`, covering both light and `.dark` blocks. Must not touch anything else in the file.
+- [x] **T0.4** Edit ops as pure functions (`source in → source out`). Each must produce a minimal diff:
+  - [x] `insert(parentId, index, node)`
+  - [x] `move(id, newParentId, index)` (locked blocks included)
+  - [x] `remove(id)`
+  - [x] `setProp(id, key, value)`
+  - [x] `setClass(id, add[], remove[])`
+- [x] **T0.5** ID minting: `ui_` + 5 lowercase alphanumerics, unique within the project. Build a project-wide ID index.
+- [x] **T0.6** Token writer: read and write `@theme` variables in `globals.css`, covering both light and `.dark` blocks. Must not touch anything else in the file.
 - [ ] **T0.7** Write the round-trip contract text (PRD §13) as `CLAUDE.md` in the fixture.
 - [ ] **T0.8** Take-back analyser: given a before/after commit pair, report:
   - orphaned IDs
