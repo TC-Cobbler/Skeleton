@@ -66,3 +66,28 @@ Every failure from the T0.9 manual loop test goes here. Each core bug gets a pat
 - **S5 (fixed).** `insert` takes `imports` and adds them as text: appended inside an existing `import { … } from "<module>"` (single- or multi-line), or as a new line after the last import. It refuses the edit, naming the component, if any component in the template would still be unresolved. The CLI resolves palette and primitive imports from the project's `src/components/ui` and `src/components/layout` exports.
 - **A1 (tightened).** The analyser reports `unIdedLocked`: locked JSX elements (custom components, wrappers) in page files that have no ID. The fixture contract now says a wrapper component is a new element and needs its own ID. These are reported, not auto-repaired, because an agent-owned element isn't Skeleton's to rewrite.
 - **Not changed; waiting on a decision.** A2 (agent code swallowing Skeleton elements into locked blocks) and A4 (logic-bearing props lock the element). Both need a scope decision from the user.
+
+## Loop 2 (Gate 0 run): 2026-09-30
+
+Same setup as loop 1, on a fresh copy of `fixtures/base` (with the updated contract) and the T0.10 tooling. The tasks were similar to loop 1's, plus new searches, cross-filter behaviour, and inserts of agent-added components (`Input`, `Badge`) that needed import resolution. Artefacts: `fixtures/post-agent/loop-02/` and `loop-02.bundle`.
+
+| Round | Analyser | Agent lines altered by edit ops | IDs | Tokens | Build after every step |
+|---|---|---|---|---|---|
+| 1 | clean (the wrapper `NewOrderDialog` now has its own ID) | 0 | ✓ | ✓ | ✓ |
+| 2 | clean | 0 | ✓ | ✓ | ✓ |
+| 3 | clean | 0 | ✓ | ✓ | ✓ |
+| 4 | clean (the agent requested `--success`/`--warning` tokens instead of hard-coding colours) | 0 | ✓ | ✓ | ✓ |
+| 5 | clean | 0 | ✓ | ✓ | ✓ |
+
+"Agent lines altered" was checked after each "edits after pass" commit by diffing the commit with indentation ignored. The only changed lines were the targeted opening tags and token declarations.
+
+**Whole run:** 0 orphaned and 0 duplicate IDs from handoff #1 to the end, with 72 IDs total. All 7 Skeleton token edits are present with their final values, and the agent never touched `globals.css`. It introduced no violations. Locked share: 17 of 53 tree nodes.
+
+**New notes (not failures):**
+
+- **G1 (Phase 2 note): a wrapper's ID may not reach the page.** A wrapper component's ID (`ui_hskdg` on `NewOrderDialog`) never shows up in the rendered page, because the component renders no element of its own. The overlay can't pick it up by clicking; it has to be selectable from the layers tree.
+- **G2 (note): an `asChild` trigger can't carry its own ID.** The agent left `DialogTrigger asChild` with no ID, inside its own component file, because an ID there would clash with the child's. Page-level checks don't cover component files, so it wasn't flagged. The contract may want an explicit exception for `asChild` wrappers.
+
+### Gate 0: PASSED
+
+5 consecutive loops with zero agent-authored lines altered by edit ops, 100% ID survival, tokens intact, and a passing build after each step. A2 and A4 (locked-block ratio) remain open design questions for the user; they aren't gate failures.

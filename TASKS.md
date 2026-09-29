@@ -56,6 +56,8 @@ Goal: prove the code can round-trip before building anything around it. This pha
 
 If this can't be reached, stop and rethink the architecture before touching UI.
 
+**Gate 0: passed** (2026-09-30). 5/5 consecutive clean loops, logged in `docs/spike-log.md` (loop 2); artefacts in `fixtures/post-agent/loop-02`.
+
 ---
 
 ## Phase 1 — Shell + scaffold
