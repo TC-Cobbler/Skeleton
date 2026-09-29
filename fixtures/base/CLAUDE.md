@@ -23,7 +23,7 @@ Your tasks for this pass are in `HANDOFF.md`.
 - If you need a new token, request it under **Agent replies** in `HANDOFF.md`.
 
 ### 4. Keep layout in primitives
-- Use `Stack`, `Grid`, `Container` and `Spacer` from `src/components/layout` for layout, not ad-hoc flex or grid `div`s.
+- Use `Stack` from `src/components/layout` for layout (`direction="horizontal"` or the default vertical; gap, padding and alignment go in `className`), not ad-hoc flex or grid `div`s.
 - Use the shadcn components in `src/components/ui` wherever one fits.
 
 ### 5. Isolate logic from layout
@@ -56,5 +56,3 @@ Your tasks for this pass are in `HANDOFF.md`.
 ## Project docs
 
 - `PRD.md` covers what the app is.
-- `TASKS.md` tracks progress.
-- `ROADMAP.md` covers what's later.
