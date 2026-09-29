@@ -13,6 +13,7 @@ describe("analyseTakeBack", () => {
       orphanedIds: [],
       duplicateIds: [],
       unIdedEditable: [],
+      unIdedLocked: [],
       newViolations: [],
       newLockedBlocks: [],
       tokenTampering: null,
@@ -87,6 +88,18 @@ describe("analyseTakeBack", () => {
     const report = analyseTakeBack(before, { ...before, [HOME]: "export default function (" });
     expect(report.parseErrors.map((e) => e.file)).toEqual([HOME]);
     expect(isCleanTakeBack(report)).toBe(false);
+  });
+});
+
+describe("un-ID'd locked elements (spike-log A1)", () => {
+  it("reports an agent wrapper with no ID around a Skeleton element", () => {
+    const home = (before[HOME] as string).replace(
+      `<Button data-ui-id="ui_new0r">New order</Button>`,
+      `<NewOrderDialog onCreate={add}>\n          <Button data-ui-id="ui_new0r">New order</Button>\n        </NewOrderDialog>`,
+    );
+    const report = analyseTakeBack(before, { ...before, [HOME]: home });
+    expect(report.unIdedLocked.map((n) => [n.element, n.line])).toEqual([["NewOrderDialog", 20]]);
+    expect(isCleanTakeBack(report)).toBe(true);
   });
 });
 

@@ -48,6 +48,8 @@ export interface TakeBackReport {
   duplicateIds: { id: string; occurrences: IdOccurrence[]; isNew: boolean }[];
   /** Editable (non-locked) nodes in page files with no data-ui-id. */
   unIdedEditable: NodeLocation[];
+  /** Locked JSX elements (custom components, wrappers) in page files with no data-ui-id. Contract rule 1. */
+  unIdedLocked: NodeLocation[];
   newViolations: Violation[];
   newLockedBlocks: LockedBlock[];
   /** Null when the token file is byte-identical. */
@@ -98,6 +100,7 @@ export function analyseTakeBack(before: Snapshot, after: Snapshot, config: Analy
 
   // Page trees: un-ID'd editable nodes and locked blocks
   const unIdedEditable: NodeLocation[] = [];
+  const unIdedLocked: NodeLocation[] = [];
   const lockedBlocks = (snap: Snapshot, file: string): { block: LockedBlock; text: string }[] => {
     const source = snap[file];
     if (source === undefined) return [];
@@ -117,9 +120,10 @@ export function analyseTakeBack(before: Snapshot, after: Snapshot, config: Analy
     const source = afterSrc[file] as string;
     const tree = buildTree(source, config.catalogue);
     walkTree(tree.roots, (node) => {
-      if (node.kind !== "locked" && node.id === null) {
-        unIdedEditable.push({ file, line: node.range.startLine, element: node.name });
-      }
+      if (node.id !== null) return;
+      const at = { file, line: node.range.startLine, element: node.name };
+      if (node.kind !== "locked") unIdedEditable.push(at);
+      else if (node.lockReason !== null && isElementLock(node.lockReason)) unIdedLocked.push(at);
     });
     const previous = new Set(safe(file, () => lockedBlocks(beforeSrc, file), []).map((b) => b.text));
     for (const { block, text } of lockedBlocks(afterSrc, file)) {
@@ -149,6 +153,7 @@ export function analyseTakeBack(before: Snapshot, after: Snapshot, config: Analy
     orphanedIds,
     duplicateIds,
     unIdedEditable,
+    unIdedLocked,
     newViolations,
     newLockedBlocks,
     tokenTampering: compareTokenFiles(before[config.tokenFile], after[config.tokenFile]),
@@ -164,6 +169,11 @@ export function isCleanTakeBack(report: TakeBackReport): boolean {
     report.tokenTampering === null &&
     report.parseErrors.length === 0
   );
+}
+
+/** Locks that come from a JSX element (as opposed to `.map`, conditionals and other expressions). */
+function isElementLock(reason: string): boolean {
+  return reason === "custom component" || reason === "spread props" || reason.endsWith(" prop") || reason === "member or namespaced element";
 }
 
 function violationKey(v: Violation): string {

@@ -11,7 +11,7 @@ Your tasks for this pass are in `HANDOFF.md`.
 ### 1. Never remove or change a `data-ui-id`
 - Every JSX element you create gets an ID in the same format: `ui_` + 5 lowercase alphanumerics (e.g. `ui_k3m9x`), unique within the project.
 - Before minting an ID, search the project to make sure it's unused.
-- Wrapping an element (e.g. in a conditional or a provider) keeps the ID on the original element.
+- Wrapping an element (e.g. in a conditional, a provider or a dialog trigger) keeps the ID on the original element. A wrapper *component* you write around it (`<OrderDialog>…</OrderDialog>`) is a new element, so it gets its own new ID too.
 
 ### 2. Style only with tokens
 - Use Tailwind classes that map to `@theme` tokens: `rounded-card`, `p-4`, `text-lg`, `bg-primary`, and so on.

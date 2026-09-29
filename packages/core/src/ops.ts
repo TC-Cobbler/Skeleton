@@ -1,3 +1,4 @@
+import { parse as babelParse } from "@babel/parser";
 import * as t from "@babel/types";
 import { diffSources, type SourceDiff } from "./diff.js";
 import { EditOpError, ParseError } from "./errors.js";
@@ -31,30 +32,67 @@ export interface OpOptions {
 // ---------------------------------------------------------------------------
 // Public ops
 
+/** A named import an inserted template needs, e.g. `{ name: "Input", from: "@/components/ui/input" }`. */
+export interface ImportSpec {
+  name: string;
+  from: string;
+}
+
+export interface InsertOptions extends OpOptions {
+  /** Imports to add if the file lacks them. Every component in `jsx` must end up resolvable. */
+  imports?: ImportSpec[];
+}
+
 /**
  * Insert `jsx` (a single JSX element) as a child of `parentId` at `index`,
  * counted over node children (elements and expression blocks, not text).
  * Every element in `jsx` must already carry a `data-ui-id` not used in the file.
+ * The template text is written verbatim (re-indented), so format it first.
  */
-export function insert(source: string, parentId: string, index: number, jsx: string, options: OpOptions = {}): EditResult {
+export function insert(source: string, parentId: string, index: number, jsx: string, options: InsertOptions = {}): EditResult {
   const op = "insert";
   return runOp(op, parentId, source, options, (ctx) => {
     const parent = ctx.editable(parentId);
+    const template = jsx.trim();
     let node: t.JSXElement;
     try {
-      node = parseJsxExpression(jsx);
+      node = parseJsxExpression(template);
     } catch (cause) {
       throw new EditOpError(op, parentId, cause instanceof ParseError ? cause.message : String(cause), { cause });
     }
     const newIds: string[] = [];
+    const components = new Set<string>();
     t.traverseFast(node, (n) => {
+      if (t.isJSXOpeningElement(n) && t.isJSXIdentifier(n.name) && /^[A-Z]/.test(n.name.name)) components.add(n.name.name);
+      if (t.isJSXOpeningElement(n) && t.isJSXMemberExpression(n.name)) {
+        throw new EditOpError(op, parentId, "member-expression elements are not supported in templates");
+      }
       if (!t.isJSXElement(n)) return;
       const attr = findAttr(n, UI_ID_ATTR);
       const id = attr && t.isStringLiteral(attr.value) ? attr.value.value : null;
       if (!id) throw new EditOpError(op, parentId, `inserted <${nameOf(n)}> has no literal ${UI_ID_ATTR}`);
       newIds.push(id);
     });
-    return { removedIds: [], addedIds: newIds, apply: () => insertChild(ctx.source, op, parentId, ctx.element(parent), index, node) };
+    return {
+      removedIds: [],
+      addedIds: newIds,
+      apply: () => {
+        const toAdd = importsToAdd(op, parentId, ctx.ast0, options.imports ?? []);
+        const bound = topLevelBindings(ctx.ast0);
+        for (const spec of toAdd) bound.add(spec.name);
+        const missing = [...components].filter((c) => !bound.has(c));
+        if (missing.length > 0) {
+          throw new EditOpError(op, parentId, `template uses ${missing.join(", ")} but the file doesn't import or declare it; pass imports`);
+        }
+        insertChild(ctx.source, op, parentId, ctx.element(parent), index, placeholderElement());
+        const templateSource = `(${template})`;
+        const parsed = parseStandaloneJsx(templateSource);
+        const inserted = spliceAtPlaceholder(op, parentId, printModule(ctx.ast0), (indent) =>
+          reindent(templateSource, parsed, "", indent),
+        );
+        return addImportsText(inserted, toAdd);
+      },
+    };
   });
 }
 
@@ -84,21 +122,15 @@ export function move(source: string, ref: NodeRef, newParentId: string, index: n
         const destAst = destNode ? findElementById(ast2, newParentId) : null;
         if (!destAst) throw new EditOpError(op, target, `${newParentId} not found after removal`);
         insertChild(removed, op, target, destAst, index, placeholderElement());
-        const output = printModule(ast2);
-        const at = output.indexOf(PLACEHOLDER_TEXT);
-        if (at < 0 || output.indexOf(PLACEHOLDER_TEXT, at + 1) >= 0) {
-          throw new EditOpError(op, target, "move placeholder not found exactly once in output");
-        }
-        const prefix = output.slice(output.lastIndexOf("\n", at) + 1, at);
-        const newIndent = /^[ \t]*/.exec(prefix)?.[0] ?? "";
-        const text = reindent(ctx.source, child, lineIndent(ctx.source, child), newIndent);
-        return output.slice(0, at) + text + output.slice(at + PLACEHOLDER_TEXT.length);
+        return spliceAtPlaceholder(op, target, printModule(ast2), (indent) =>
+          reindent(ctx.source, child, lineIndent(ctx.source, child), indent),
+        );
       },
     };
   });
 }
 
-const PLACEHOLDER_NAME = "__skeleton_move_placeholder__";
+const PLACEHOLDER_NAME = "__skeleton_placeholder__";
 const PLACEHOLDER_TEXT = `<${PLACEHOLDER_NAME} />`;
 
 function findElementById(ast: t.File, id: string): t.JSXElement | null {
@@ -110,6 +142,97 @@ function findElementById(ast: t.File, id: string): t.JSXElement | null {
     }
   });
   return hit;
+}
+
+/** Replace the single placeholder in `output` with text built for the placeholder's line indent. */
+function spliceAtPlaceholder(op: string, target: string, output: string, text: (indent: string) => string): string {
+  const at = output.indexOf(PLACEHOLDER_TEXT);
+  if (at < 0 || output.indexOf(PLACEHOLDER_TEXT, at + 1) >= 0) {
+    throw new EditOpError(op, target, "placeholder not found exactly once in output");
+  }
+  const prefix = output.slice(output.lastIndexOf("\n", at) + 1, at);
+  const indent = /^[ \t]*/.exec(prefix)?.[0] ?? "";
+  return output.slice(0, at) + text(indent) + output.slice(at + PLACEHOLDER_TEXT.length);
+}
+
+/** Parse `(<jsx/>)` keeping positions; returns the JSX element node. */
+function parseStandaloneJsx(wrapped: string): t.JSXElement {
+  const file = babelParse(wrapped, { sourceType: "module", plugins: ["typescript", "jsx"] });
+  const stmt = file.program.body[0];
+  if (!stmt || !t.isExpressionStatement(stmt) || !t.isJSXElement(stmt.expression)) {
+    throw new Error("parseStandaloneJsx: expected a JSX element");
+  }
+  return stmt.expression;
+}
+
+/** The specs not already imported. Throws if a name is imported from a different module. */
+function importsToAdd(op: string, target: string, ast: t.File, specs: ImportSpec[]): ImportSpec[] {
+  const out: ImportSpec[] = [];
+  for (const spec of specs) {
+    let bound = false;
+    for (const stmt of ast.program.body) {
+      if (!t.isImportDeclaration(stmt)) continue;
+      for (const sp of stmt.specifiers) {
+        if (sp.local.name !== spec.name) continue;
+        if (stmt.source.value !== spec.from) {
+          throw new EditOpError(op, target, `${spec.name} is already imported from "${stmt.source.value}", not "${spec.from}"`);
+        }
+        bound = true;
+      }
+    }
+    if (!bound && !out.some((o) => o.name === spec.name)) out.push(spec);
+  }
+  return out;
+}
+
+/**
+ * Add named imports as text: appended inside an existing `import { … } from "<from>"`
+ * (single- or multi-line), or as a new line right after the last import.
+ */
+function addImportsText(source: string, specs: ImportSpec[]): string {
+  let out = source;
+  for (const { name, from } of specs) {
+    const body = babelParse(out, { sourceType: "module", plugins: ["typescript", "jsx"] }).program.body;
+    const imports = body.filter((stmt): stmt is t.ImportDeclaration => t.isImportDeclaration(stmt));
+    const existing = imports.find(
+      (d) => d.source.value === from && d.importKind !== "type" && d.specifiers.some((sp) => t.isImportSpecifier(sp)),
+    );
+    if (existing) {
+      const named = existing.specifiers.filter((sp) => t.isImportSpecifier(sp));
+      const last = named[named.length - 1] as t.ImportSpecifier;
+      const lastEnd = last.end ?? 0;
+      if (existing.loc?.start.line === existing.loc?.end.line) {
+        out = out.slice(0, lastEnd) + `, ${name}` + out.slice(lastEnd);
+      } else {
+        const lineStart = out.lastIndexOf("\n", last.start ?? 0) + 1;
+        const indent = /^[ \t]*/.exec(out.slice(lineStart))?.[0] ?? "  ";
+        const comma = /^\s*,/.exec(out.slice(lastEnd));
+        out = comma
+          ? out.slice(0, lastEnd + comma[0].length) + `\n${indent}${name},` + out.slice(lastEnd + comma[0].length)
+          : out.slice(0, lastEnd) + `,\n${indent}${name}` + out.slice(lastEnd);
+      }
+      continue;
+    }
+    const lastImport = imports[imports.length - 1];
+    const quote = lastImport?.source.extra?.raw?.toString().startsWith("'") ? "'" : '"';
+    const line = `import { ${name} } from ${quote}${from}${quote};`;
+    out = lastImport ? out.slice(0, lastImport.end ?? 0) + "\n" + line + out.slice(lastImport.end ?? 0) : `${line}\n` + out;
+  }
+  return out;
+}
+
+/** Names bound at the top level of the module (imports and declarations). */
+function topLevelBindings(ast: t.File): Set<string> {
+  const names = new Set<string>();
+  for (const stmt of ast.program.body) {
+    const decl = t.isExportNamedDeclaration(stmt) || t.isExportDefaultDeclaration(stmt) ? stmt.declaration : stmt;
+    if (t.isImportDeclaration(decl)) for (const spec of decl.specifiers) names.add(spec.local.name);
+    else if ((t.isFunctionDeclaration(decl) || t.isClassDeclaration(decl)) && decl.id) names.add(decl.id.name);
+    else if (t.isVariableDeclaration(decl)) {
+      for (const d of decl.declarations) if (t.isIdentifier(d.id)) names.add(d.id.name);
+    }
+  }
+  return names;
 }
 
 function placeholderElement(): t.JSXElement {
@@ -136,6 +259,7 @@ function reindent(source: string, node: t.Node, oldIndent: string, newIndent: st
   for (const [i, line] of text.split("\n").entries()) {
     const insideTemplate = templates.some(([a, b]) => offset > a && offset < b);
     if (i === 0) out += line;
+    else if (!insideTemplate && line.trim() === "") out += "\n";
     else if (!insideTemplate && line.startsWith(oldIndent)) out += "\n" + newIndent + line.slice(oldIndent.length);
     else out += "\n" + line;
     offset += line.length + 1;
@@ -211,9 +335,20 @@ export function setClass(source: string, id: string, add: string[], removeClasse
       }
       current = existing.value.value.split(/\s+/).filter(Boolean);
     }
+    // Added classes take the place of the first removed one, so a swap
+    // (gap-4 → gap-6) stays where it was; otherwise they go at the end.
     const drop = new Set(removeClasses);
-    const next = current.filter((c) => !drop.has(c));
-    for (const cls of add) if (!next.includes(cls)) next.push(cls);
+    const adding = add.filter((cls, i) => add.indexOf(cls) === i && (drop.has(cls) || !current.includes(cls)));
+    const next: string[] = [];
+    let placed = false;
+    for (const cls of current) {
+      if (!drop.has(cls)) next.push(cls);
+      else if (!placed) {
+        next.push(...adding.filter((a) => !next.includes(a)));
+        placed = true;
+      }
+    }
+    for (const cls of adding) if (!next.includes(cls)) next.push(cls);
     const unchanged = next.length === current.length && next.every((c, i) => c === current[i]);
     return {
       removedIds: [],

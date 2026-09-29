@@ -151,7 +151,7 @@ describe("setClass", () => {
   it("adds and removes classes on one line", () => {
     const r = setClass(home, "ui_h0m3p", ["gap-8"], ["gap-6"]);
     assertSurgical(home, r, [linesOf(home, 'data-ui-id="ui_h0m3p"')]);
-    expect(r.source).toContain(`className="p-8 gap-8"`);
+    expect(r.source).toContain(`className="gap-8 p-8"`);
   });
 
   it("creates and deletes className", () => {
@@ -239,5 +239,103 @@ describe("move: pathological (spike-log S2)", () => {
         `        </Stack>`,
       ].join("\n"),
     );
+  });
+});
+
+describe("setClass ordering (spike-log S3)", () => {
+  it("replaces a swapped class in place", () => {
+    const r = setClass(agent, "ui_bar01", ["gap-4"], ["gap-2"]);
+    expect(r.source).toContain(`<Stack data-ui-id="ui_bar01" direction="horizontal" className="gap-4">`);
+    const two = setClass(home, "ui_t1tle", ["text-3xl"], ["text-2xl"]);
+    expect(two.source).toContain(`className="text-3xl font-semibold"`);
+  });
+
+  it("appends pure additions and ignores duplicates", () => {
+    const r = setClass(home, "ui_h0m3p", ["p-8", "w-full", "w-full"], []);
+    expect(r.source).toContain(`className="gap-6 p-8 w-full"`);
+  });
+});
+
+describe("insert: imports (spike-log S5)", () => {
+  const pass4 = readFixture("pathological/post-agent-pass4.tsx");
+
+  it("refuses a template whose component isn't imported, naming it", () => {
+    expect(() => insert(pass4, "ui_crdh1", 1, `<Input data-ui-id="ui_inp01" />`)).toThrow(
+      /template uses Input but the file doesn't import or declare it/,
+    );
+  });
+
+  it("adds a new import after the last import", () => {
+    const r = insert(pass4, "ui_crdh1", 1, `<Input data-ui-id="ui_inp01" placeholder="Search" />`, {
+      imports: [{ name: "Input", from: "@/components/ui/input" }],
+    });
+    const lastImport = linesOf(pass4, `import { formatStatus, statusBadgeVariant } from "@/lib/status";`);
+    assertSurgical(pass4, r, [lastImport, linesOf(pass4, 'data-ui-id="ui_crdh1"', "</CardHeader>")]);
+    expect(r.source).toContain(`import { formatStatus, statusBadgeVariant } from "@/lib/status";\nimport { Input } from "@/components/ui/input";\n`);
+    expect(r.diff.linesAdded).toBe(2);
+    expect(r.diff.linesRemoved).toBe(0);
+  });
+
+  it("merges into an existing import from the same module", () => {
+    const r = insert(home, "ui_crd01", 2, `<CardFooter data-ui-id="ui_ftr01">Footer</CardFooter>`, {
+      imports: [{ name: "CardFooter", from: "@/components/ui/card" }],
+    });
+    expect(r.source).toContain(`import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";`);
+    assertSurgical(home, r, [linesOf(home, `from "@/components/ui/card"`), linesOf(home, 'data-ui-id="ui_crd01"', "</Card>")]);
+  });
+
+  it("skips imports that already exist and refuses conflicting ones", () => {
+    const r = insert(home, "ui_act10", 0, `<Button data-ui-id="ui_bt999">A</Button>`, {
+      imports: [{ name: "Button", from: "@/components/ui/button" }],
+    });
+    expect(r.diff.linesAdded).toBe(1);
+    expect(() =>
+      insert(home, "ui_act10", 0, `<Button data-ui-id="ui_bt999">A</Button>`, { imports: [{ name: "Button", from: "other" }] }),
+    ).toThrow(/already imported from "@\/components\/ui\/button"/);
+  });
+});
+
+describe("insert: template text is written verbatim (spike-log S1, S4)", () => {
+  it("re-indents a formatted multi-line template exactly", () => {
+    const template = [
+      `<Stack data-ui-id="ui_ml001" direction="horizontal" className="gap-2">`,
+      `  <Button data-ui-id="ui_ml002" variant="outline">`,
+      `    Filter`,
+      `  </Button>`,
+      ``,
+      `  <Button data-ui-id="ui_ml003">Sort</Button>`,
+      `</Stack>`,
+    ].join("\n");
+    const r = insert(home, "ui_crdc1", 0, template);
+    expect(r.source).toContain(
+      [
+        `        <CardContent data-ui-id="ui_crdc1">`,
+        `          <Stack data-ui-id="ui_ml001" direction="horizontal" className="gap-2">`,
+        `            <Button data-ui-id="ui_ml002" variant="outline">`,
+        `              Filter`,
+        `            </Button>`,
+        ``,
+        `            <Button data-ui-id="ui_ml003">Sort</Button>`,
+        `          </Stack>`,
+        `          <Table data-ui-id="ui_tbl01">`,
+      ].join("\n"),
+    );
+  });
+
+  it("keeps the template's own attribute layout", () => {
+    const template = `<Stack\n  data-ui-id="ui_ml004"\n  direction="horizontal"\n  className="items-center justify-between pt-4"\n/>`;
+    const r = insert(home, "ui_h0m3p", 1, template);
+    expect(r.source).toContain(`      <Stack\n        data-ui-id="ui_ml004"\n        direction="horizontal"\n        className="items-center justify-between pt-4"\n      />\n`);
+  });
+});
+
+describe("insert: import text placement", () => {
+  it("appends to a multi-line import, keeping its layout", () => {
+    const r = insert(home, "ui_tbl01", 2, `<TableFooter data-ui-id="ui_tf001" />`, {
+      imports: [{ name: "TableFooter", from: "@/components/ui/table" }],
+    });
+    expect(r.source).toContain(`  TableRow,\n  TableFooter,\n} from "@/components/ui/table";`);
+    expect(r.diff.linesAdded).toBe(2);
+    expect(r.diff.linesRemoved).toBe(0);
   });
 });

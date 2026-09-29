@@ -34,6 +34,8 @@ export {
   setProp,
   setClass,
   type EditResult,
+  type ImportSpec,
+  type InsertOptions,
   type NodeRef,
   type OpOptions,
   type PropValue,

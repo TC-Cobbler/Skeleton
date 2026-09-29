@@ -29,6 +29,9 @@ importers:
       '@skeleton/core':
         specifier: workspace:*
         version: link:../core
+      prettier:
+        specifier: ^3.9.9
+        version: 3.9.9
 
   packages/core:
     dependencies:

@@ -1,6 +1,7 @@
 import * as t from "@babel/types";
-import { print } from "recast";
-import { parseJsxExpression, parseModule } from "./parse.js";
+import { parse as babelParse } from "@babel/parser";
+import { ParseError } from "./errors.js";
+import { parseModule } from "./parse.js";
 
 export const UI_ID_ATTR = "data-ui-id";
 export const UI_ID_PATTERN = /^ui_[a-z0-9]{5}$/;
@@ -87,15 +88,29 @@ function nameOf(name: t.JSXOpeningElement["name"]): string {
 }
 
 /**
- * Give every element in a JSX template that lacks a `data-ui-id` a freshly minted one
- * (first attribute). Used for palette templates before `insert`.
+ * Give every element in a JSX template that lacks a `data-ui-id` a freshly minted one,
+ * inserted as text right after the element name so the template's formatting is kept.
  */
 export function fillMissingIds(jsx: string, taken: Set<string>, random: Random = Math.random): string {
-  const el = parseJsxExpression(jsx);
-  t.traverseFast(el, (n) => {
-    if (!t.isJSXElement(n)) return;
-    const has = n.openingElement.attributes.some((a) => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name, { name: UI_ID_ATTR }));
-    if (!has) n.openingElement.attributes.unshift(t.jsxAttribute(t.jsxIdentifier(UI_ID_ATTR), t.stringLiteral(mintId(taken, random))));
+  const wrapped = `(${jsx})`;
+  let file: t.File;
+  try {
+    file = babelParse(wrapped, { sourceType: "module", plugins: ["typescript", "jsx"] });
+  } catch (cause) {
+    throw new ParseError(`failed to parse JSX: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+  const insertions: number[] = [];
+  t.traverseFast(file, (n) => {
+    if (!t.isJSXOpeningElement(n)) return;
+    const has = n.attributes.some((a) => t.isJSXAttribute(a) && t.isJSXIdentifier(a.name, { name: UI_ID_ATTR }));
+    if (!has && n.name.end != null) insertions.push(n.name.end);
   });
-  return print(el).code;
+  let out = wrapped;
+  // Mint in document order, splice from the end so earlier offsets stay valid.
+  const ids = insertions.sort((a, b) => a - b).map(() => mintId(taken, random));
+  for (let i = insertions.length - 1; i >= 0; i--) {
+    const at = insertions[i] as number;
+    out = out.slice(0, at) + ` ${UI_ID_ATTR}="${ids[i] as string}"` + out.slice(at);
+  }
+  return out.slice(1, -1);
 }

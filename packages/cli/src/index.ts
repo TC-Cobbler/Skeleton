@@ -3,7 +3,8 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
+import { format } from "prettier";
 import {
   analyseTakeBack,
   buildIdIndex,
@@ -18,6 +19,7 @@ import {
   setProp,
   writeTokens,
   type EditResult,
+  type ImportSpec,
   type NodeRef,
   type PropValue,
   type Snapshot,
@@ -37,7 +39,8 @@ Inspect:
   tokens                                   Tokens in src/styles/globals.css
 
 Edit (writes the file, prints the diff):
-  insert <file> <parentId> <index> <jsx>   Missing data-ui-ids are minted
+  insert <file> <parentId> <index> <jsx>   Mints missing data-ui-ids, formats the template
+                                           with Prettier, adds palette/primitive imports
   move <file> <ref> <newParentId> <index>
   remove <file> <ref> [--allow-locked]
   set-prop <file> <id> <key> <value>       value: JSON literal or bare string; null removes
@@ -83,7 +86,7 @@ function parseArgs(argv: string[]): Args {
 
 const TOKEN_FILE = "src/styles/globals.css";
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   const [command, ...rest] = args.positional;
   const p = (path: string) => join(args.project, path);
@@ -138,8 +141,9 @@ function main(argv: string[]): number {
     case "insert": {
       const [file, parentId, index, jsx] = need(4) as [string, string, string, string];
       const taken = new Set(buildIdIndex(worktreeSnapshot(args.project, isTsx)).ids.keys());
-      const filled = fillMissingIds(jsx, taken);
-      edit(file, (src) => insert(src, parentId, toIndex(index), filled));
+      const template = await formatTemplate(fillMissingIds(jsx, taken));
+      const imports = paletteImports(args.project, template);
+      edit(file, (src) => insert(src, parentId, toIndex(index), template, { imports }));
       return 0;
     }
 
@@ -195,6 +199,45 @@ function main(argv: string[]): number {
 }
 
 // ---------------------------------------------------------------------------
+
+/** Prettier-format a JSX template on its own (only the new node is ever formatted). */
+async function formatTemplate(jsx: string): Promise<string> {
+  const formatted = await format(jsx, { parser: "typescript", filepath: "template.tsx" });
+  return formatted.trim().replace(/;$/, "");
+}
+
+/**
+ * Imports for the palette components and primitives a template uses, found by
+ * scanning the project's src/components/ui/*.tsx and src/components/layout exports.
+ */
+function paletteImports(root: string, template: string): ImportSpec[] {
+  const exportsOf = (path: string): string[] => {
+    const src = readFileSync(path, "utf8");
+    const names: string[] = [];
+    for (const m of src.matchAll(/export\s*\{([^}]*)\}/g)) {
+      for (const part of (m[1] ?? "").split(",")) {
+        const name = part.trim().split(/\s+as\s+/).pop()?.trim();
+        if (name && /^[A-Z]/.test(name)) names.push(name);
+      }
+    }
+    for (const m of src.matchAll(/export\s+(?:function|const)\s+([A-Z]\w*)/g)) if (m[1]) names.push(m[1]);
+    return names;
+  };
+  const available = new Map<string, string>();
+  const uiDir = join(root, "src/components/ui");
+  if (existsSync(uiDir)) {
+    for (const f of readdirSync(uiDir).filter((f) => f.endsWith(".tsx"))) {
+      for (const name of exportsOf(join(uiDir, f))) available.set(name, `@/components/ui/${basename(f, ".tsx")}`);
+    }
+  }
+  const layoutIndex = join(root, "src/components/layout/index.ts");
+  if (existsSync(layoutIndex)) for (const name of exportsOf(layoutIndex)) available.set(name, "@/components/layout");
+  const used = new Set([...template.matchAll(/<([A-Z]\w*)/g)].map((m) => m[1] as string));
+  return [...used].flatMap((name) => {
+    const from = available.get(name);
+    return from ? [{ name, from }] : [];
+  });
+}
 
 function output(args: Args, data: unknown, text: string): void {
   console.log(args.json ? JSON.stringify(data, null, 2) : text);
@@ -280,7 +323,7 @@ function gitSnapshot(root: string, ref: string): Snapshot {
 }
 
 try {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   if (error instanceof UsageError) {
     console.error(`${error.message}\n\n${USAGE}`);

@@ -46,7 +46,7 @@ Goal: prove the code can round-trip before building anything around it. This pha
   5. Apply more edits on top of the agent's code.
 
   Log every failure in `docs/spike-log.md`.
-- [ ] **T0.10** Fix or tighten based on the log. This may mean new contract rules, more conservative edit ops, or auto-repair (re-minting IDs).
+- [x] **T0.10** Fix or tighten based on the log. This may mean new contract rules, more conservative edit ops, or auto-repair (re-minting IDs).
 
 **Gate 0:** 5 consecutive loops on the fixture with:
 - zero agent-authored lines altered by edit ops
