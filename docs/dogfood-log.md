@@ -74,10 +74,37 @@ A loop is clean when all four checks pass and Skeleton needed no workaround outs
 | Build | passes |
 | Agent logic (Skeleton's loop 3 edits) | unchanged. The only agent-authored lines touched are the two I targeted in the UI: the empty-state Stack's opening tag (`py-8` → `py-12`; Prettier reflowed that tag only) and its title text. The conditional around it is byte-identical. |
 
+### Loop 3: Stats page, navigation, edits on agent code (clean)
+
+**Skeleton edits (UI):**
+- Home: `py-8` → `py-12` on the agent's empty-state Stack, and its title retitled "Nothing here yet". Both are inside the agent's conditional, edited in place.
+- Set the `--primary` dark token.
+- Added a Stats page (router and page file) with a 3-column Grid of three stat Cards, retitled.
+- The cards first nested into each other (F-4), so I deleted them and dropped them again into the grid's empty columns.
+
+**Notes:**
+- Build on the grid: compute the stats.
+- Build on the title: navigation between the two pages.
+
+**Agent pass:**
+- `useGameStats()` in the hook; the stats render as expressions.
+- A `SiteNav` component (new file, IDs on its Buttons) placed on both pages with new IDs.
+- Didn't touch the router or `globals.css`.
+
+**Take back:** 2 of 2 tasks done. Build passes. 0 breaches, 0 repairs. 4 elements added. New locked blocks: 2 `SiteNav` (custom component) and 3 expressions.
+
+| Check | Result |
+|---|---|
+| IDs | 48/48 survive, 0 duplicates, all well-formed (4 new) |
+| Tokens | 3/3 intact; the agent didn't touch `globals.css` |
+| Build | passes |
+| Agent logic (Skeleton's loop 4 edits) | unchanged. The agent-controlled Select (`value`/`onValueChange`) was moved before the search box: re-indented only. The Stats grid's gap change touched only its opening tag. |
+
 ## Friction (for T6.4)
 
 - **F-1: A drop meant for "below the toolbar" went inside it.** Aiming at the bottom edge of a horizontal Stack still counts as inside it (the nearest container under the pointer). Dropping *after* a container that's the last child means finding its parent's padding. In loop 1 the Grid ended up in the toolbar, next to the search box, and had to be moved out in loop 2.
 - **F-2: Long pages make reordering hard.** With 8 cards in 2 columns, the title and the toolbar couldn't be seen together with the Grid's grip. A move near the frame's top edge autoscrolls (as designed), which shifted the drop to the wrong side of the title. Workaround: make the grid shorter first (4 columns).
 - **F-3: Dragging in Skeleton's chrome selects its UI text.** A drag that starts outside the canvas selects headings, buttons and the dev-server log.
 - **F-4: A Card dropped "next to" a Card goes inside it.** Card accepts children, so aiming at the right edge of card 1 put card 2 inside card 1 (between its header and content). Card 3 then went inside card 2. Placing sibling cards in a grid means aiming at the grid's empty columns or gaps. Recovery: delete the nested cards (immediate, since there's no agent code in them) and drop again. Same root cause as F-1: a drop always goes into the nearest container under the pointer. Near a container's edge there's no way to say "beside this".
+- **F-6: You can't compose inside a closed Dialog.** Its content isn't rendered on the canvas while it's closed, and in select mode clicking the trigger selects it instead of opening it. So there's nowhere to drop a Form into it. The text of its title and description can still be edited from the Layers tree. In loop 4 the form went to the agent as a Build note instead.
 - **F-5 (minor): Stat cards come with template text.** Every Card arrives with "Card title / Card description / Card content", which then needs three text edits per card.

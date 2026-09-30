@@ -352,6 +352,42 @@ const steps: Record<string, () => Promise<void>> = {
   async takeback3() {
     await takeBack();
   },
+
+  async loop4() {
+    await shot("start");
+    // Edits on elements that now carry agent logic: move the Select (controlled by the
+    // agent) before the search box; widen the Stats grid (holds the agent's values).
+    await moveByGrip("ui_aar14", at("ui_wd9tf"), { fx: 0.05, fy: 0.5 });
+    await goToPage(/Stats/, "src/pages/StatsPage.tsx");
+    await setProp("ui_7sj6n", "Gap", "gap-6");
+    await goToPage(/Home/, "src/pages/HomePage.tsx");
+
+    // The Add game dialog, in the toolbar after the placeholder button, which then goes.
+    const dialog = await place("dialog", at("ui_27ttm"), { fx: 0.95, fy: 0.5 });
+    const trigger = await find((n) => n.name === "DialogTrigger", dialog);
+    const button = await find((n) => n.name === "Button", trigger.id as string);
+    await setText(button.id as string, "Add game");
+    await setProp(button.id as string, "variant", "default");
+    await setText((await find((n) => n.name === "DialogTitle", dialog)).id as string, "Add a game");
+    await setText((await find((n) => n.name === "DialogDescription", dialog)).id as string, "It goes straight into your library.");
+    // Confirm: the footer's own Button (Cancel sits inside DialogClose).
+    const footer = await find((n) => n.name === "DialogFooter", dialog);
+    const confirm = footer.children.find((c) => c.name === "Button");
+    if (!confirm?.id) throw new Error("no Confirm button in the dialog footer");
+    await select("ui_27ttm");
+    await edit("delete the placeholder Add game button", () => page.getByTestId("selection").getByRole("button", { name: "Delete" }).click());
+    await token("--radius", "0.5rem");
+    await shot("composed");
+
+    await note(dialog, "build", "Add-game form in this dialog: title (required), platform (select), status (select, default Backlog), hours played (number). Confirm adds the game, Cancel closes");
+    await note(confirm.id as string, "behaviour", "Confirm is disabled until the title is filled in; after adding, close the dialog and clear the form");
+    await note("ui_am9jy", "behaviour", "Keep added games across reloads (localStorage); newest first");
+    await handOff();
+  },
+
+  async takeback4() {
+    await takeBack();
+  },
 };
 
 it.skipIf(!STEP)(`dogfood step ${STEP}`, async () => {
