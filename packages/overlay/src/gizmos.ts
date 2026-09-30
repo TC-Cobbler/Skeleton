@@ -107,9 +107,10 @@ export function handlesFor(m: Measured): Handle[] {
     out.push({ kind: "type", part: null, rect: { x: x - 14, y: y + h - m.fontSize * 0.2 - 2, width: 12, height: 4 } });
   }
   if (m.borderWidth > 0) out.push({ kind: "border", part: null, rect: { x: x + w - 2, y: y + h / 2 - 12, width: 4, height: 24 } });
-  // Radius: a dot inside the top-left corner, as far in as the radius (at least 8px).
-  const inset = Math.min(Math.max(m.radius, 8), w / 2, h / 2);
-  out.push({ kind: "radius", part: null, rect: square(x + inset * 0.7, y + inset * 0.7) });
+  // Radius: a dot just inside the top-left corner. A fixed inset, so it stays under
+  // the pointer while the radius changes (live, and again when the write lands).
+  const inset = Math.min(10, w / 4, h / 4);
+  out.push({ kind: "radius", part: null, rect: square(x + inset, y + inset) });
   return out;
 }
 

@@ -125,6 +125,9 @@ export async function moveOnCanvas(page: Page, source: Locator, target: Locator,
  * Drags a gizmo handle (T4.3) by (dx, dy) window pixels with the real mouse, holding
  * `modifier` (Shift or Alt) for the whole drag. `during` runs before the release, for
  * checking the live preview.
+ *
+ * A drag that never started because Chromium lost the press (KI-1: input to a scaled
+ * cross-origin frame) shows no live preview; it wrote nothing, so it's retried.
  */
 export async function dragGizmo(
   page: Page,
@@ -133,20 +136,29 @@ export async function dragGizmo(
   dy: number,
   options: { modifier?: "Shift" | "Alt"; during?: () => Promise<void>; frameTestId?: string } = {},
 ): Promise<void> {
-  // A previous gizmo's preview stays until the page updates, and handles move with it.
-  const frame = page.frameLocator(`[data-testid="${options.frameTestId ?? "canvas-frame"}"]`);
-  await frame.locator("style[data-skeleton-live]").waitFor({ state: "detached", timeout: 10_000 });
-  await handle.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-  const from = await canvasPoint(page, options.frameTestId ?? "canvas-frame", handle);
-  await page.mouse.move(from.x, from.y);
-  if (options.modifier) await page.keyboard.down(options.modifier);
-  try {
-    await page.mouse.down();
-    await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
-    await page.waitForTimeout(50);
-    await options.during?.();
-  } finally {
-    await page.mouse.up();
-    if (options.modifier) await page.keyboard.up(options.modifier);
+  const frameTestId = options.frameTestId ?? "canvas-frame";
+  const live = page.frameLocator(`[data-testid="${frameTestId}"]`).locator("style[data-skeleton-live]");
+  for (let attempt = 1; ; attempt++) {
+    // A previous gizmo's preview stays until the page updates; wait for it to go.
+    await live.waitFor({ state: "detached", timeout: 10_000 });
+    await handle.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const from = await canvasPoint(page, frameTestId, handle);
+    await page.mouse.move(from.x, from.y);
+    if (options.modifier) await page.keyboard.down(options.modifier);
+    let started = false;
+    try {
+      await page.mouse.down();
+      await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
+      await page.waitForTimeout(50);
+      started = (await live.count()) > 0;
+      if (started) await options.during?.();
+    } finally {
+      await page.mouse.up();
+      if (options.modifier) await page.keyboard.up(options.modifier);
+    }
+    if (started) return;
+    if (attempt === 3) throw new Error("the gizmo drag didn't start in 3 tries (KI-1?)");
+    console.warn(`gizmo drag didn't start (lost press, KI-1); retrying`);
+    await page.waitForTimeout(300);
   }
 }

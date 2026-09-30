@@ -36,12 +36,25 @@ export class TokenMatcher {
         }
       }),
     }));
+    this.withSelectors = this.compiled.filter((c) => c.selectors.length > 0);
   }
+
+  /** Tokens by class attribute: most elements share a handful of class lists. */
+  private readonly byClasses = new Map<string, string[]>();
+  /** Tokens that also style base-layer selectors (checked per element, not per class list). */
+  private readonly withSelectors: Compiled[];
 
   /** Tokens the element is styled with, by its own classes (variants included) or a base selector. */
   tokensOf(el: Element): string[] {
-    const utilities = baseUtilities(el);
-    return this.compiled.filter((c) => affects(c, el, utilities)).map((c) => c.name);
+    const attr = el.getAttribute("class") ?? "";
+    let byClass = this.byClasses.get(attr);
+    if (!byClass) {
+      const utilities = baseUtilities(el);
+      byClass = this.compiled.filter((c) => c.classes.some((re) => utilities.some((u) => re.test(u)))).map((c) => c.name);
+      this.byClasses.set(attr, byClass);
+    }
+    const bySelector = this.withSelectors.filter((c) => !byClass.includes(c.name) && c.selectors.some((s) => el.matches(s)));
+    return bySelector.length === 0 ? byClass : [...byClass, ...bySelector.map((c) => c.name)];
   }
 
   /** How many elements under `root` (itself included) each token affects. */
@@ -60,16 +73,12 @@ export class TokenMatcher {
     if (!c) return [];
     const out: Element[] = [];
     for (const el of elementsUnder(root, skip)) {
-      if (!affects(c, el, baseUtilities(el))) continue;
+      if (!this.tokensOf(el).includes(name)) continue;
       out.push(el);
       if (out.length >= limit) break;
     }
     return out;
   }
-}
-
-function affects(c: Compiled, el: Element, utilities: string[]): boolean {
-  return c.classes.some((re) => utilities.some((u) => re.test(u))) || c.selectors.some((s) => el.matches(s));
 }
 
 function* elementsUnder(root: Element, skip: Element | null): Generator<Element> {

@@ -160,6 +160,21 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 **Gate 4:** PRD flow F3 passes in all three scopes, in both light and dark mode.
 
+**Gate 4: passed** (2026-09-30) on a newly created project, with the real mouse, in light and then dark mode (`packages/app-main/e2e/gate4.test.ts`; 6 of 6 consecutive runs). The page has three Buttons, one of them inside a Card. Each drag is on the first Button's radius handle:
+
+| Scope | Live, during the drag | Written on release |
+|---|---|---|
+| Plain drag | All three Buttons follow (the label says "3 elements"); `globals.css` untouched | One line: `--radius-button: calc(var(--radius) * k)`, still derived from `--radius` |
+| Shift | Derived radii follow, the Card's included | One line: `--radius` in `:root`. Buttons and Card come to base × their factor |
+| Alt | Only that Button | `rounded-[Npx]` on that Button, one hunk around its element; `globals.css` untouched; the Violations tab shows 1 |
+
+- **Both modes:** the canvas is checked to be in dark mode (`.dark` on the app's `<html>`) for the second pass. The Alt edit is undone between passes, so each starts from the same page.
+- **What the gate found (fixed; see ADR 010's amendment):**
+  - An Alt radius on a shadcn component lost to its own `rounded-button` once written. The scaffold's `cn` now tells tailwind-merge that named radii are radii.
+  - Synthetic pointer moves cancelled gizmo drags.
+  - The radius dot moved as the radius changed.
+- **Caveat, KI-1 (`docs/known-issues.md`):** a gizmo press lost by Chromium starts no drag and writes nothing. The test retries it (1 retry in 6 runs). The page is written directly rather than built from the palette (Gate 3 covers that): palette drops are flaky in the test harness too (KI-1, and an uninvestigated wrong-entry drop, both in `docs/known-issues.md`).
+
 ---
 
 ## Phase 5 — Handoff loop

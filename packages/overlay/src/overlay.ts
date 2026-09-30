@@ -137,8 +137,25 @@ export class Overlay {
       { capture: true, signal },
     );
     // A drag that lost its release (pointer let go outside, focus lost) is cancelled.
-    win.addEventListener("pointercancel", () => this.cancelMove(), { capture: true, signal });
-    win.addEventListener("blur", () => this.cancelMove(), { signal });
+    win.addEventListener(
+      "pointercancel",
+      () => {
+        this.cancelMove();
+        this.cancelGizmo();
+      },
+      { capture: true, signal },
+    );
+    win.addEventListener(
+      "blur",
+      () => {
+        this.cancelMove();
+        this.cancelGizmo();
+      },
+      { signal },
+    );
+    // A gizmo drag captures the pointer (see startGizmo): losing the capture is its
+    // release, even when the button came up outside the frame.
+    this.doc.documentElement.addEventListener("lostpointercapture", () => this.gizmo && this.releaseGizmo(), { signal });
     this.doc.addEventListener("mouseleave", () => this.setHover(null), { signal });
     this.observer = new MutationObserver(() => {
       this.index?.invalidate();
@@ -298,11 +315,9 @@ export class Overlay {
   private onMove(event: MouseEvent): void {
     if (this.mode !== "select") return;
     if (this.gizmo) {
-      if ((event.buttons & 1) === 0) {
-        this.cancelGizmo();
-        return;
-      }
-      this.gizmoTo(event.clientX - this.gizmo.x, event.clientY - this.gizmo.y);
+      // Chromium sends synthetic moves after layout changes (the live preview makes
+      // them), without the pressed button. The drag ends on release or lost capture.
+      if ((event.buttons & 1) !== 0) this.gizmoTo(event.clientX - this.gizmo.x, event.clientY - this.gizmo.y);
       return;
     }
     const handle = this.handleAt(event);

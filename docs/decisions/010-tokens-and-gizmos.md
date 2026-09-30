@@ -68,4 +68,11 @@ Phase 4 edits the design system from the canvas: a token panel, a map of what ea
 
 - Handles live in the overlay's shadow root with `pointer-events: auto`. The drag captures the pointer on the document element, because handles are redrawn every frame.
 - The picker's hex is written as oklch (`hexToOklch`), keeping the token's alpha, so `globals.css` stays in one colour space.
-- e2e: `e2e/tokens.test.ts`. Gizmo drags wait for any previous preview to clear first: handles move as a written value lands.
+- e2e: `e2e/tokens.test.ts` and `e2e/gate4.test.ts`. Gizmo drags wait for any previous preview to clear first: handles move as a written value lands.
+
+## Amendment: what Gate 4 turned up
+
+- **An instance radius has to win over the component's own.** shadcn components merge `className` with `cn()` (tailwind-merge), which only knows t-shirt-size radius names. So `rounded-button rounded-[14px]` kept both classes, and Tailwind's CSS order let `rounded-button` win: the Alt-drag preview showed the change, then it reverted once written. The scaffold's `cn` now extends tailwind-merge to treat any named radius (`button`, `card`, and promoted ones like `hero`) as a radius, so a later override replaces it.
+  - Projects scaffolded before this keep the old `cn`, and there an instance radius can lose to the component token.
+  - Promoted `--text-*` names are still unknown to tailwind-merge (it reads `text-lead` as a colour). They're applied as classes, so a promoted size only conflicts with an explicit `text-sm` on the same element.
+- **A gizmo drag ends on release, not on a move without buttons.** Chromium sends synthetic `pointermove`s after layout changes (which the live preview causes), sometimes without the pressed button or the modifiers. Cancelling on those dropped drags mid-way. The drag now ignores them, and ends on `pointerup`, on losing pointer capture (released outside the frame), on `pointercancel`, on blur, or on Escape.
