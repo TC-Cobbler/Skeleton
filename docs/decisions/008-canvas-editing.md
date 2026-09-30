@@ -1,0 +1,97 @@
+# 008: Editing from the canvas
+
+**Status:** accepted · 2026-09-30 · T3.2–T3.8 (applies to all of Phase 3)
+
+## Context
+
+From Phase 3 the canvas edits code. Every edit must still be one core edit op in main (ADR 003: the renderer never touches files), producing a minimal diff. The canvas is a zoomed, cross-origin iframe (ADR 006). Chromium sometimes drops input to it (KI-1), and the renderer can't see into it.
+
+## Decisions
+
+**One IPC channel for edits: `page:edit`.** Its request is `{ projectRoot, file, edit }`, where `edit` is an intent (`{ op: "insert", parentId, index, paletteId }`, with more ops to come in T3.3 onwards). Main validates the intent's shape and hands it to `Editor` (`app-main/src/project/editor.ts`), which:
+
+- runs edits one at a time per project, each on the file as the previous one left it
+- mints IDs against every `data-ui-id` in the project's `src/`, then Prettier-formats the template on its own (with the project's Prettier config, if any)
+- runs the core op, and writes the result atomically
+- returns the diff and the ID to select
+
+A refused op (locked target, bad index) comes back as `edit-refused` with the op's message, and nothing is written.
+
+**Drags are pointer-driven, in the renderer, not HTML5 drag and drop.**
+
+- A press on a palette entry becomes a drag after 4 px.
+- While dragging, the canvas iframes get `pointer-events: none`, so the renderer keeps receiving pointer events. The canvas acts as a shield.
+- Each frame converts the pointer to its own unscaled coordinates and posts `drag` to its overlay. The overlay answers `drop-target`.
+- On release over a target, the renderer sends `page:edit`. Escape, releasing elsewhere, or the window losing focus cancels the drag.
+
+**The overlay decides where a drop lands**, because only it can see the rendered layout:
+
+- It hit-tests the point and walks up to the nearest node the host marked `drop`: an editable, text-free container with an ID. That means a palette part or primitive whose schema takes `nodes`, or a plain layout element (`div`, `section`, `form`, …).
+- The container's flow comes from its computed style: flex direction, a grid with more than one column, or otherwise vertical.
+- The index is where the point falls among the children's rendered rects. Indexes count children as `insert` does, and exclude the node being moved (T3.3).
+- The overlay draws the container and an insertion line, or fills an empty container.
+
+**Moves are dragged inside the frame, and the overlay runs them (T3.3).** A press in select mode, plus 4 px of travel, starts a move of the nearest *movable* node under the pointer. The host marks a node movable when:
+
+- its parent is an editable element: children of a locked block are edited in place only (ADR 002)
+- `move` can address it, by its own ID or by position under its parent's ID
+
+A drag on a `.map` row therefore moves the whole block, verbatim.
+
+- **Pointer handling:** the press cancels `pointerdown`, which suppresses mouse events until release, so the overlay tracks `pointermove`. It captures the pointer so it still sees the release outside the frame.
+- **Cancelling:** a move with no buttons down, `pointercancel` or blur cancels the drag. So does Escape, which lands in Skeleton's window and is forwarded to the frames as `drag-end`.
+- **Autoscroll:** near the frame's top or bottom edge, a drag (palette or move) scrolls the page.
+- **On release:** the overlay posts `move {key, target}`. The renderer turns it into `{ op: "move", ref, newParentId, index }`, and skips a drop back where the node was.
+
+**Delete asks only when agent code goes with it (T3.4).**
+
+- **Triggers:** the Delete button in the Selection panel, or Delete/Backspace. In select mode the overlay forwards Skeleton's shortcuts from the frame as `key` messages (focus can be in the frame after a click), so the app never sees them.
+- **What can be deleted:** the same nodes a move can address, per `refFor`: never a root, never an element a locked block wraps.
+- **Confirmation:** if the subtree holds locked blocks or protected props, an inline confirmation lists exactly that code (`agentLogicIn`), and confirming sends `allowLocked: true`. Layout Skeleton placed goes straight away.
+- **After deleting:** the parent is selected.
+
+**Properties are one op per change (T3.5).** The inspector column shows the selected element's properties.
+
+- **Schema props** use `setProp` with a typed control: a select for enums, a checkbox for booleans, and inputs for strings and numbers that commit on blur or Enter. For enums, booleans and numbers, choosing the component's default removes the attribute. A required string prop is never removed. Protected props are shown read-only.
+- **Text content** uses a new core op, `setText`. It replaces only the text between the tags, keeping it inline or on its own line, and writes text JSX would alter (`{ } < > &`, edge whitespace, newlines) as a string expression. It refuses child elements, dynamic text and comments.
+- **Stack and Grid properties** are Tailwind class groups (`STACK_CLASSES`, `GRID_CLASSES` in `palette.ts`), changed with `setClass`, which swaps the group's base class for another. An unlisted or arbitrary current value is shown as "(custom)". Responsive variants never match a group, so they're kept as they are.
+- **Current values** come from core's tree, which now lists each element's literal props (`UiNode.props`).
+
+**Page ops touch the router and a page file together (T3.6).** A second channel, `project:page` (`addPage`, `renamePage`, `deletePage`), runs in the same per-project queue as page edits.
+
+- **Router edits** are new core ops in `routes.ts`, text splices that keep the rest of the router byte-identical:
+  - `addRoute`: next to the home page's route, inside its layout route if it has one, with the router's own import style and quotes
+  - `removeRoute`: also removes the import once nothing uses it
+  - `setRoutePath`
+  - `renameRouteComponent`
+- **New pages** come from `renderPage` in the templates package, the same shape as the scaffolded home page. IDs are minted against the project's.
+- **Renaming a page's name** renames its component (`renameDefaultComponent`) and its file, and updates the router's import. It refuses if the page's code uses its own name.
+- **Refusals:** renaming or deleting a page that other files import, and deleting the last page.
+- **Applying changes:** every op is a list of file changes (create, update or delete), applied in order and rolled back if one fails. Deleting always asks first.
+
+**Navigating after a page op needs a grace period.** Changing the router makes Vite fully reload the *old* document. That reload can cancel Skeleton's navigation, or land after it and take the canvas back to the old path, often a 404 by then.
+
+- After Skeleton navigates the canvas, for 3 s any document that loads at a different path is sent on by the overlay (`navigate`, `location.replace`). Re-setting the iframe's `src` to the value it already has doesn't navigate.
+- In-app navigation uses pushState and loads no document, so it's never overridden.
+
+**A drop commits where it was released (T3.7).** The overlay's answers lag the pointer by one round-trip, and more so while the typecheck worker is busy. Committing the latest answer on release once dropped a Button beside the Card it was aimed into.
+
+- Each drag position carries a `seq`, which the overlay echoes. A frame the pointer isn't over answers `null` for that `seq` at once.
+- On release the renderer sends the release position, and drops only on answers for it. If none arrive within 500 ms, nothing is dropped.
+- Move drags recompute the target at the `pointerup` position.
+
+**Undo and redo are the editor's own stack, not git (T3.8).**
+
+- **What's recorded:** every committed edit or page op, per project, as a labelled list of file changes ("Insert Card", "Add page /orders"). Up to 100 are kept for the session. Refused and rolled-back edits aren't recorded, and a new edit clears the redo stack.
+- **How it runs:** undo applies the changes in reverse, and redo replays them, both through the checked pipeline (ADR 009), so they can be rolled back too.
+- **Never over outside changes:** undo or redo refuses, keeping the step, if any file isn't exactly as the step left it (the agent or an editor changed it).
+- **UI:** Undo and Redo buttons, titled with the step. The shortcuts are Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y, from Skeleton's window or forwarded by the overlay. Text fields keep their own undo.
+- **Pages:** after undoing a page op, the canvas moves to a page that still exists.
+
+**The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
+
+## Consequences
+
+- The drop geometry (`overlay/src/drop.ts`) is pure and unit-tested. The rest is covered by `e2e/compose.test.ts`, which drags with the real mouse.
+- Drop targets depend on the palette schemas reaching the renderer. Until `palette:list` answers, nothing is droppable.
+- e2e tests wait for a placed element to be selected and mapped on screen before the next step (`placeFromPalette`). That's the signal that the DOM and the tree are the same version.

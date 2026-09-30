@@ -2,12 +2,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import { sourceVersion } from "@skeleton/core";
 import type { IpcError } from "../src/ipc/contract.js";
 import {
   createDispatch,
   resolveInside,
   type HandlerDeps,
 } from "../src/ipc/handlers.js";
+import { EditRefused } from "../src/project/editor.js";
 
 const fixtureRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -64,6 +66,21 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         diff: async (_root, from, to) => ({ from, to, files: [] }),
         revert: async (_root, commit) => ({ hash: "abc", subject: `skeleton: revert to ${commit}`, time: 1 }),
       },
+      editor: {
+        apply: async (_root, file, edit) => {
+          if (edit.op === "insert" && edit.parentId === "ui_lockd") throw new EditRefused("insert(ui_lockd): ui_lockd is a locked block");
+          return { file, select: "ui_new01", patch: "", linesAdded: 1, linesRemoved: 0, unchecked: null };
+        },
+        page: async (_root, page) => {
+          if (page.op === "deletePage" && page.path === "/") throw new EditRefused("it's the only page; add another one first");
+          return { path: page.op === "deletePage" ? "/" : page.path, files: [], unchecked: null };
+        },
+        undo: async () => {
+          throw new EditRefused("nothing to undo");
+        },
+        redo: async () => ({ label: "Insert Card", files: ["src/pages/HomePage.tsx"], unchecked: null, history: { undo: "Insert Card", redo: null } }),
+        history: async () => ({ undo: null, redo: "Insert Card" }),
+      },
       ...overrides,
     },
     (error) => errors.push(error),
@@ -88,6 +105,8 @@ describe("dispatch", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    const source = await readFile(path.join(fixtureRoot, "src/pages/HomePage.tsx"), "utf8");
+    expect((result.value as { version: string }).version).toBe(sourceVersion(source));
     const tree = result.value as {
       roots: { id: string | null }[];
       rootError: string | null;
@@ -358,5 +377,178 @@ describe("project:pages", () => {
     const { dispatch } = setup();
     const result = await dispatch("project:pages", { projectRoot: path.join(fixtureRoot, "src") });
     expect(result).toMatchObject({ ok: true, value: { pages: [], error: "src/router.tsx not found" } });
+  });
+});
+
+describe("palette:list", () => {
+  it("marks entries the project can't place, naming what's missing", async () => {
+    const { dispatch } = setup();
+    const result = await dispatch("palette:list", { projectRoot: fixtureRoot });
+    if (!result.ok) throw new Error(result.error.message);
+    const palette = result.value as import("../src/ipc/contract.js").Palette;
+    const byId = new Map(palette.items.map((i) => [i.id, i]));
+    expect(byId.get("button")).toMatchObject({ available: true, missing: [] });
+    expect(byId.get("stack-vertical")).toMatchObject({ available: true, missing: [] });
+    expect(byId.get("card")).toMatchObject({ available: true, missing: [] });
+    // The base fixture's layout index exports only Stack, and it has no Select.
+    expect(byId.get("grid")).toMatchObject({ available: false, missing: ["Grid (src/components/layout/index.ts)"] });
+    expect(byId.get("select")?.available).toBe(false);
+    expect(byId.get("select")?.missing).toContain("Select (src/components/ui/select.tsx)");
+    expect(byId.get("toast")).toMatchObject({ available: false, template: null, missing: [] });
+    expect(palette.groups.map((g) => g.id)).toEqual(["layout", "inputs", "display", "overlay", "navigation"]);
+    expect(palette.elements["Button"]?.props.map((p) => p.name)).toEqual(["variant", "size", "type", "disabled"]);
+  });
+
+  it("rejects a relative project root", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("palette:list", { projectRoot: "fixtures/base" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+  });
+});
+
+describe("page:edit", () => {
+  const request = (edit: unknown, file = "src/pages/HomePage.tsx") => ({ projectRoot: fixtureRoot, file, edit });
+
+  it("passes a valid insert to the editor", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_abcde", index: 0, paletteId: "button" }))).resolves.toMatchObject({
+      ok: true,
+      value: { file: "src/pages/HomePage.tsx", select: "ui_new01" },
+    });
+  });
+
+  it("passes a valid move, by ID or by position, to the editor", async () => {
+    const edits: unknown[] = [];
+    const { dispatch } = setup({
+      editor: {
+        apply: async (_root, file, edit) => {
+          edits.push(edit);
+          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0, unchecked: null };
+        },
+        page: async () => ({ path: null, files: [], unchecked: null }),
+        undo: async () => Promise.reject(new Error("unused")),
+        redo: async () => Promise.reject(new Error("unused")),
+        history: async () => ({ undo: null, redo: null }),
+      },
+    });
+    for (const ref of [{ id: "ui_abcde" }, { parentId: "ui_fghij", index: 2 }]) {
+      await expect(dispatch("page:edit", request({ op: "move", ref, newParentId: "ui_klmno", index: 1 }))).resolves.toMatchObject({ ok: true });
+    }
+    expect(edits).toEqual([
+      { op: "move", ref: { id: "ui_abcde" }, newParentId: "ui_klmno", index: 1 },
+      { op: "move", ref: { parentId: "ui_fghij", index: 2 }, newParentId: "ui_klmno", index: 1 },
+    ]);
+  });
+
+  it("passes valid property edits to the editor", async () => {
+    const edits: unknown[] = [];
+    const { dispatch } = setup({
+      editor: {
+        apply: async (_root, file, edit) => {
+          edits.push(edit);
+          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0, unchecked: null };
+        },
+        page: async () => ({ path: null, files: [], unchecked: null }),
+        undo: async () => Promise.reject(new Error("unused")),
+        redo: async () => Promise.reject(new Error("unused")),
+        history: async () => ({ undo: null, redo: null }),
+      },
+    });
+    const valid = [
+      { op: "setProp", id: "ui_abcde", key: "variant", value: "outline" },
+      { op: "setProp", id: "ui_abcde", key: "disabled", value: true },
+      { op: "setProp", id: "ui_abcde", key: "rows", value: 3 },
+      { op: "setProp", id: "ui_abcde", key: "variant", value: null },
+      { op: "setText", id: "ui_abcde", text: "Hello {world}" },
+      { op: "setClass", id: "ui_abcde", add: ["gap-6"], remove: ["gap-4"] },
+    ];
+    for (const edit of valid) await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: true });
+    expect(edits).toEqual(valid);
+  });
+
+  it("rejects malformed intents before any edit", async () => {
+    const { dispatch } = setup();
+    for (const edit of [
+      null,
+      { op: "reformat" },
+      { op: "insert", parentId: "abc", index: 0, paletteId: "button" },
+      { op: "insert", parentId: "ui_abcde", index: -1, paletteId: "button" },
+      { op: "insert", parentId: "ui_abcde", index: 1.5, paletteId: "button" },
+      { op: "insert", parentId: "ui_abcde", index: 0, paletteId: "toast" },
+      { op: "insert", parentId: "ui_abcde", index: 0, paletteId: "<script>" },
+      { op: "move", ref: null, newParentId: "ui_abcde", index: 0 },
+      { op: "move", ref: { id: "nope" }, newParentId: "ui_abcde", index: 0 },
+      { op: "move", ref: { parentId: "ui_abcde" }, newParentId: "ui_abcde", index: 0 },
+      { op: "move", ref: { id: "ui_abcde" }, newParentId: "ui_abcde", index: "1" },
+      { op: "remove", ref: { id: "ui_abcde" } },
+      { op: "remove", ref: { id: "ui_abcde" }, allowLocked: "yes" },
+      { op: "remove", ref: "ui_abcde", allowLocked: false },
+      { op: "setProp", id: "ui_abcde", key: "on click", value: "x" },
+      { op: "setProp", id: "ui_abcde", key: "variant", value: { x: 1 } },
+      { op: "setProp", id: "ui_abcde", key: "rows", value: Number.NaN },
+      { op: "setText", id: "ui_abcde", text: 5 },
+      { op: "setText", id: "ui_abcde", text: "x".repeat(10_001) },
+      { op: "setClass", id: "ui_abcde", add: ["gap-4 p-2"], remove: [] },
+      { op: "setClass", id: "ui_abcde", add: "gap-4", remove: [] },
+      { op: "setClass", id: "ui_abcde", add: [], remove: [1] },
+    ]) {
+      await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_abcde", index: 0, paletteId: "button" }, "../x.tsx"))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "bad-request" },
+    });
+  });
+
+  it("reports a missing page as not-found and a refused op as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_abcde", index: 0, paletteId: "button" }, "src/pages/Nope.tsx"))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "not-found" },
+    });
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_lockd", index: 0, paletteId: "button" }))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "edit-refused", message: "insert(ui_lockd): ui_lockd is a locked block" },
+    });
+  });
+});
+
+describe("project:page", () => {
+  const request = (page: unknown) => ({ projectRoot: fixtureRoot, page });
+
+  it("passes valid page ops to the editor, and refusals back as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("project:page", request({ op: "addPage", name: "Orders", path: "/orders" }))).resolves.toMatchObject({ ok: true, value: { path: "/orders" } });
+    await expect(dispatch("project:page", request({ op: "renamePage", path: "/orders", name: null, newPath: "/sales" }))).resolves.toMatchObject({ ok: true });
+    await expect(dispatch("project:page", request({ op: "deletePage", path: "/" }))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "edit-refused", message: "it's the only page; add another one first" },
+    });
+  });
+
+  it("rejects malformed page ops", async () => {
+    const { dispatch } = setup();
+    for (const page of [null, { op: "wipe" }, { op: "addPage", name: "", path: "/x" }, { op: "renamePage", path: "/x", name: null, newPath: null }, { op: "deletePage" }]) {
+      await expect(dispatch("project:page", request(page)), JSON.stringify(page)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
+  });
+});
+
+describe("edit history (T3.8)", () => {
+  it("answers history, undo and redo, with refusals as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("edit:history", { projectRoot: fixtureRoot })).resolves.toEqual({ ok: true, value: { undo: null, redo: "Insert Card" } });
+    await expect(dispatch("edit:undo", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: false, error: { code: "edit-refused", message: "nothing to undo" } });
+    await expect(dispatch("edit:redo", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: true, value: { label: "Insert Card" } });
+    await expect(dispatch("edit:undo", { projectRoot: "relative" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+  });
+});
+
+describe("opening a project", () => {
+  it("tells main to get ready to edit it", async () => {
+    const opened: string[] = [];
+    const { dispatch } = setup({ opened: (root) => opened.push(root) });
+    await dispatch("project:open", { projectRoot: fixtureRoot });
+    await dispatch("project:create", { parentDir: "/tmp", name: "Fresh" });
+    expect(opened).toEqual([fixtureRoot, "/tmp/stub"]);
   });
 });

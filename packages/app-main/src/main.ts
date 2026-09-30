@@ -1,7 +1,7 @@
 // Electron main process. Owns the filesystem, git, child processes and all AST work
 // (through @skeleton/core). The renderer reaches it only through ipc/contract.ts.
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, shell } from "electron";
@@ -11,6 +11,9 @@ import { DevServerManager } from "./devserver/manager.js";
 import { GitService } from "./git/service.js";
 import { readProjectInfo, RecentProjects } from "./project/recent.js";
 import { ProjectWatcher } from "./project/watcher.js";
+import { Editor, listSources } from "./project/editor.js";
+import { writeFileAtomic } from "./project/atomic.js";
+import { WorkerChecker } from "./project/checker.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
@@ -58,6 +61,27 @@ if (userDataOverride) app.setPath("userData", userDataOverride);
 const renderer = rendererLocation();
 const devServers = new DevServerManager();
 const watcher = new ProjectWatcher();
+const checkers = new Map<string, WorkerChecker>();
+/** One typecheck worker per project; it warms up as soon as it's created (T3.7). */
+const checkerFor = (root: string): WorkerChecker => {
+  let checker = checkers.get(root);
+  if (!checker) {
+    checker = new WorkerChecker(root);
+    checkers.set(root, checker);
+  }
+  return checker;
+};
+const editor = new Editor(
+  {
+    readFile: (p) => readFile(p, "utf8"),
+    writeFile: writeFileAtomic,
+    deleteFile: (p) => unlink(p),
+    listSources: (root) => listSources(root, readdir),
+  },
+  {
+    checker: checkerFor,
+  },
+);
 // Lazily: app paths are only valid once Electron has initialised.
 let recentStore: RecentProjects | null = null;
 const recent = () => (recentStore ??= new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json")));
@@ -112,6 +136,9 @@ const dispatch = createDispatch(
     },
     git: new GitService(),
     changes: (root) => watcher.changes(root),
+    editor,
+    // Warm the typechecker up while the dev server starts, so the first edit doesn't wait for it.
+    opened: (root) => void checkerFor(root),
   },
   log,
 );
@@ -131,6 +158,7 @@ app.on("before-quit", (event) => {
   quitting = true;
   event.preventDefault();
   watcher.stopAll();
+  for (const checker of checkers.values()) checker.dispose();
   devServers.stopAll().then(
     () => app.quit(),
     (cause: unknown) => {

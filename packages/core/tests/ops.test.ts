@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EditOpError, insert, move, remove, setClass, setProp } from "../src/index.js";
+import { buildTree, EditOpError, findNodeById, insert, move, remove, setClass, setProp, setText } from "../src/index.js";
 import { assertSurgical, linesOf, readFixture } from "./helpers.js";
 
 const home = readFixture("base/src/pages/HomePage.tsx");
@@ -193,6 +193,61 @@ describe("setClass", () => {
     assertSurgical(agent, branch, [linesOf(agent, 'data-ui-id="ui_load1"')]);
     const wrapped = setProp(readFixture("pathological/post-agent-pass1.tsx"), "ui_new0r", "size", "sm");
     expect(wrapped.source).toContain(`<Button data-ui-id="ui_new0r" size="sm">New order</Button>`);
+  });
+});
+
+describe("setText (T3.5)", () => {
+  it("replaces inline text on one line", () => {
+    const r = setText(home, "ui_new0r", "Create order");
+    assertSurgical(home, r, [linesOf(home, 'data-ui-id="ui_new0r"')]);
+    expect(r.diff.linesAdded).toBe(1);
+    expect(r.source).toContain(`<Button data-ui-id="ui_new0r">Create order</Button>`);
+  });
+
+  it("keeps text on its own line when it was", () => {
+    const r = setText(home, "ui_exp0r", "Download");
+    assertSurgical(home, r, [linesOf(home, "Export")]);
+    expect(r.source).toContain(`<Button data-ui-id="ui_exp0r" variant="outline">\n          Download\n        </Button>`);
+    const h1 = setText(home, "ui_t1tle", "Your orders");
+    assertSurgical(home, h1, [linesOf(home, "        Orders")]);
+  });
+
+  it("writes JSX-significant text as a string expression, and round-trips it", () => {
+    for (const text of ["a {b} <c>", "Tom & Jerry", " padded ", "two\nlines", 'say "hi"', "it's > 3"]) {
+      const r = setText(home, "ui_new0r", text);
+      assertSurgical(home, r, [linesOf(home, 'data-ui-id="ui_new0r"')]);
+      const node = findNodeById(buildTree(r.source).roots, "ui_new0r");
+      // The tree collapses whitespace for display; the literal is exact.
+      expect(node?.text, text).toBe(text.replace(/\s+/g, " ").trim());
+      if (/[{}<>&\n]|^\s|\s$/.test(text)) expect(r.source).toContain(`>{${JSON.stringify(text)}}</Button>`);
+    }
+    expect(setText(home, "ui_new0r", `say "hi"`).source).toContain(`>say "hi"</Button>`);
+  });
+
+  it("replaces a string-expression child, and empties text", () => {
+    const src = setText(home, "ui_new0r", "{x}").source;
+    const back = setText(src, "ui_new0r", "Plain");
+    expect(back.source).toContain(`<Button data-ui-id="ui_new0r">Plain</Button>`);
+    const empty = setText(home, "ui_new0r", "");
+    expect(empty.source).toContain(`<Button data-ui-id="ui_new0r"></Button>`);
+  });
+
+  it("edits text next to agent code without touching it", () => {
+    const r = setText(agent, "ui_btn01", "Add row");
+    assertSurgical(agent, r, [linesOf(agent, 'data-ui-id="ui_btn01"')]);
+    expect(r.source).toContain(`<Button data-ui-id="ui_btn01" onClick={() => addRow({ id: String(rows.length), label: "x" })}>Add row</Button>`);
+    const branch = setText(agent, "ui_load1", "Fetching…");
+    assertSurgical(agent, branch, [linesOf(agent, 'data-ui-id="ui_load1"')]);
+  });
+
+  it("refuses elements with child elements, dynamic text, comments, no children slot, or locks", () => {
+    expect(() => setText(home, "ui_act10", "x")).toThrow(/has child elements/);
+    const src = (inner: string) => `export default function P() {\n  return <p data-ui-id="ui_aaaaa">${inner}</p>;\n}\n`;
+    expect(() => setText(src("Hi {user.name}"), "ui_aaaaa", "x")).toThrow(/agent logic/);
+    expect(() => setText(src("Hi {/* note */}"), "ui_aaaaa", "x")).toThrow(/comment/);
+    expect(() => setText(agent, "ui_empty", "x")).toThrow(/self-closing/);
+    expect(() => setText(agent, "ui_ordt1", "x")).toThrow(/locked block/);
+    expect(() => setText(home, "ui_new0r", "x".repeat(10_001))).toThrow(/too long/);
   });
 });
 

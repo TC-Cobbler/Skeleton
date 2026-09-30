@@ -12,7 +12,7 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 2: canvas (read-only).** Gates 0 and 1 passed (see `docs/spike-log.md`, TASKS.md). Build the embedded preview, overlay, layers tree, locked-block rendering, page list, file watching, preview widths and light/dark toggle. Nothing on the canvas edits code yet: no drag and drop, properties panel or gizmos until Gate 2 passes (Phase 3+). If a task seems to need them, stop and ask.
+**Phase 3: composition: done.** Gates 0–3 passed (see `docs/spike-log.md`, TASKS.md). The canvas edits code through the palette, drag and drop (`insert`), moves (`move`), delete (`remove`), the properties panel (`setProp`, `setText`, `setClass`), page ops, the post-edit pipeline (Prettier on the node, typecheck, rollback) and undo/redo; see `docs/decisions/007`–`009`. Phase 4 (tokens + gizmos) is next: don't start it until asked. No handoff, notes or take-back until Phase 5.
 
 ---
 

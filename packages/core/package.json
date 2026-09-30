@@ -10,6 +10,11 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./version": {
+      "source": "./src/version.ts",
+      "types": "./dist/version.d.ts",
+      "default": "./dist/version.js"
     }
   },
   "scripts": {

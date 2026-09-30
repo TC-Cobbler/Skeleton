@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DevServerStatus } from "@skeleton/app-main/ipc";
 import {
   isOverlayMessage,
+  type DropTarget,
   type HostMessage,
   type NodeBox,
   type OverlayMessage,
@@ -13,19 +14,41 @@ export type PreviewLayout = PreviewWidth | "side-by-side";
 
 export const WIDTHS: Record<PreviewWidth, number> = { desktop: 1280, tablet: 768, mobile: 390 };
 
+/** How long after Skeleton navigates the canvas it corrects a stray document load (see "ready"). */
+const NAVIGATION_GRACE_MS = 3000;
+
 export interface CanvasEvents {
   onHover?: (key: string | null) => void;
   onSelect?: (key: string | null) => void;
   /** Vite applied an update: the page should be re-parsed. */
   onUpdated?: () => void;
   onLocation?: (pathname: string) => void;
-  onMapped?: (boxes: NodeBox[]) => void;
+  /** What's on screen, for the tree at `version` (see the overlay's `mapped` message). */
+  onMapped?: (boxes: NodeBox[], version: string) => void;
+  /** Where the current drag would land in a frame (null: nowhere in it). */
+  onDropTarget?: (frame: PreviewWidth, target: DropTarget | null, seq: number) => void;
+  /** A node was dragged to a new place on the canvas (T3.3). */
+  onMove?: (key: string, target: DropTarget) => void;
+  /** A Skeleton shortcut pressed while the canvas had focus. */
+  onKey?: (key: string, mod: boolean, shift: boolean) => void;
+}
+
+/** A drag in progress over the canvas, in window coordinates (T3.2). */
+export interface CanvasDrag {
+  clientX: number;
+  clientY: number;
+  /** The position's number, echoed in the frames' answers. */
+  seq: number;
+  /** Key of the node being moved, or null for a new element. */
+  moving: string | null;
 }
 
 export interface CanvasProps extends CanvasEvents {
   status: DevServerStatus | null;
   /** Page file the nodes belong to, project-relative. */
   file: string | null;
+  /** sourceVersion of the file text the nodes were parsed from. */
+  version: string | null;
   nodes: OverlayNode[];
   selected: string | null;
   highlighted: string | null;
@@ -35,6 +58,9 @@ export interface CanvasProps extends CanvasEvents {
   layout: PreviewLayout;
   /** Preview the app in dark mode (T2.8). */
   dark: boolean;
+  drag: CanvasDrag | null;
+  /** The app on screen is mapped to the tree at `version` (null while catching up with an edit). */
+  synced: boolean;
 }
 
 /**
@@ -65,7 +91,7 @@ export function Canvas(props: CanvasProps) {
   const widths: PreviewWidth[] = layout === "side-by-side" ? ["desktop", "tablet", "mobile"] : [layout];
   const primary = widths[0] as PreviewWidth;
   return (
-    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}`}>
+    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}${props.drag ? " is-dragging" : ""}`}>
       {widths.map((w) => (
         <CanvasFrame
           key={w}
@@ -136,8 +162,8 @@ function CanvasFrame(props: FrameProps) {
     if (win && ready.current) win.postMessage(message, origin);
   };
   const sendTree = () => {
-    const { file, nodes } = latest.current;
-    if (file) post({ source: "skeleton-host", type: "tree", file, nodes });
+    const { file, version, nodes } = latest.current;
+    if (file && version) post({ source: "skeleton-host", type: "tree", file, version, nodes });
   };
 
   useEffect(() => {
@@ -148,7 +174,20 @@ function CanvasFrame(props: FrameProps) {
       const msg: OverlayMessage = event.data;
       const p = latest.current;
       switch (msg.type) {
-        case "ready":
+        case "ready": {
+          // A page op changes the router, and Vite reloads the *old* document. That reload
+          // can cancel Skeleton's navigation, or land after it and take the frame back.
+          // So for a few seconds after a navigation, a document that loads somewhere else
+          // is sent where Skeleton wanted it. (In-app navigation doesn't load a document,
+          // so it's never overridden.) Re-setting `src` to its current value wouldn't
+          // navigate, so the app is asked.
+          const want = pending.current;
+          if (want && Date.now() > want.until) pending.current = null;
+          else if (want && msg.pathname !== want.path && want.tries < 5) {
+            want.tries++;
+            frame.current?.contentWindow?.postMessage({ source: "skeleton-host", type: "navigate", path: want.path } satisfies HostMessage, origin);
+            break;
+          }
           ready.current = true;
           sendTree();
           post({ source: "skeleton-host", type: "mode", mode: p.mode });
@@ -156,6 +195,7 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "select", key: p.selected });
           p.onLocation?.(msg.pathname);
           break;
+        }
         case "hover":
           p.onHover?.(msg.key);
           break;
@@ -169,7 +209,16 @@ function CanvasFrame(props: FrameProps) {
           p.onLocation?.(msg.pathname);
           break;
         case "mapped":
-          if (p.primary) p.onMapped?.(msg.boxes);
+          if (p.primary) p.onMapped?.(msg.boxes, msg.version);
+          break;
+        case "drop-target":
+          p.onDropTarget?.(p.width, msg.target, msg.seq);
+          break;
+        case "move":
+          p.onMove?.(msg.key, msg.target);
+          break;
+        case "key":
+          p.onKey?.(msg.key, msg.mod, msg.shift);
           break;
       }
     };
@@ -177,14 +226,49 @@ function CanvasFrame(props: FrameProps) {
     return () => window.removeEventListener("message", onMessage);
   }, [origin]);
 
-  useEffect(sendTree, [props.file, props.nodes]);
+  useEffect(sendTree, [props.file, props.version, props.nodes]);
   useEffect(() => post({ source: "skeleton-host", type: "select", key: props.selected }), [props.selected]);
   useEffect(() => post({ source: "skeleton-host", type: "highlight", key: props.highlighted }), [props.highlighted]);
   useEffect(() => post({ source: "skeleton-host", type: "mode", mode: props.mode }), [props.mode]);
   useEffect(() => post({ source: "skeleton-host", type: "theme", dark: props.dark }), [props.dark]);
+  // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
+  // Skeleton's window, so the overlay doesn't see the key itself.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") post({ source: "skeleton-host", type: "drag-end" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [origin]);
+
+  // Forward a drag over this frame to its overlay, in the frame's own (unscaled)
+  // coordinates. The iframe ignores the pointer during a drag (see .is-dragging).
+  const dragInside = useRef(false);
+  useEffect(() => {
+    const drag = props.drag;
+    const iframe = frame.current;
+    const r = iframe?.getBoundingClientRect();
+    const inside = !!drag && !!r && drag.clientX >= r.left && drag.clientX < r.right && drag.clientY >= r.top && drag.clientY < r.bottom;
+    if (!inside || !drag || !iframe || !r) {
+      if (dragInside.current) post({ source: "skeleton-host", type: "drag-end" });
+      dragInside.current = false;
+      // Not over this frame: answer for it straight away.
+      if (drag) latest.current.onDropTarget?.(width, null, drag.seq);
+      return;
+    }
+    dragInside.current = true;
+    const cs = getComputedStyle(iframe);
+    const x = (drag.clientX - r.left) / scale - parseFloat(cs.borderLeftWidth);
+    const y = (drag.clientY - r.top) / scale - parseFloat(cs.borderTopWidth);
+    post({ source: "skeleton-host", type: "drag", x, y, moving: drag.moving, seq: drag.seq });
+  }, [props.drag]);
+
+  const pending = useRef<{ path: string; tries: number; until: number } | null>(null);
   useEffect(() => {
     const target = props.navigate ? new URL(props.navigate.path, origin).href : null;
-    if (!target || !frame.current || frame.current.src === target) return;
+    if (!target || !props.navigate || !frame.current) return;
+    pending.current = { path: props.navigate.path, tries: 0, until: Date.now() + NAVIGATION_GRACE_MS };
+    if (frame.current.src === target) return;
     ready.current = false;
     frame.current.src = target;
   }, [props.navigate]);
@@ -194,10 +278,12 @@ function CanvasFrame(props: FrameProps) {
       ref={box}
       className="frame"
       data-testid={`canvas-${width}`}
+      data-version={props.synced && props.version ? props.version : undefined}
       style={{ width: pixels * scale }}
     >
       <div className="frame-label muted">
         {width} · {pixels}px{scale < 1 ? ` · ${Math.round(scale * 100)}%` : ""}
+        {!props.synced && " · updating…"}
       </div>
       <iframe
         ref={frame}

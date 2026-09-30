@@ -121,6 +121,17 @@ describe("buildTree conservatism", () => {
     ]);
   });
 
+  it("reports literal prop values, leaving out the ID and protected props", () => {
+    const src = `import { Button } from "@/components/ui/button";
+export default function P() {
+  return <Button data-ui-id="ui_aaaaa" variant="outline" disabled tabIndex={-1} size={"sm"} rows={3} title={\`t\`} open={false} x={null} onClick={go} key="k" />;
+}
+`;
+    const node = buildTree(src).roots[0];
+    expect(node?.props).toEqual({ variant: "outline", disabled: true, tabIndex: -1, size: "sm", rows: 3, title: "t", open: false, x: null });
+    expect(node?.protectedProps).toEqual(["onClick", "key"]);
+  });
+
   it("keeps literal expression props editable", () => {
     const tree = buildTree(page(`<Stack gap={4} wrap={true} label={"x"} />`, `import { Stack } from "@/components/layout";`));
     expect(tree.roots[0]?.kind).toBe("primitive");

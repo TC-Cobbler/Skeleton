@@ -89,3 +89,22 @@ export function renderProject(template: ProjectFiles, vars: ProjectVars): Projec
   }
   return out;
 }
+
+export {
+  ELEMENTS,
+  GRID_CLASSES,
+  STACK_CLASSES,
+  PALETTE,
+  PALETTE_GROUPS,
+  PLAIN_ELEMENTS,
+  moduleFile,
+  templateComponents,
+  templateFiles,
+  templateImports,
+  type ClassGroup,
+  type ElementSchema,
+  type PaletteGroup,
+  type PaletteItem,
+  type PropSchema,
+} from "./palette.js";
+export { componentFor, pageNameError, pathFor, renderPage } from "./page.js";

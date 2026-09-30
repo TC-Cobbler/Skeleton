@@ -106,20 +106,32 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 3 — Composition
 
-- [ ] **T3.1** Palette panel listing the curated components and primitives, each with a typed prop schema and default JSX template.
-- [ ] **T3.2** Drag from palette onto a stack. The drop indicator is computed from the stack direction and child rects, and the drop calls `insert`.
-- [ ] **T3.3** Reorder and move within and across stacks (`move`), locked blocks included.
-- [ ] **T3.4** Delete (`remove`) with confirmation if the node contains locked blocks.
-- [ ] **T3.5** Properties panel:
+- [x] **T3.1** Palette panel listing the curated components and primitives, each with a typed prop schema and default JSX template.
+- [x] **T3.2** Drag from palette onto a stack. The drop indicator is computed from the stack direction and child rects, and the drop calls `insert`.
+- [x] **T3.3** Reorder and move within and across stacks (`move`), locked blocks included.
+- [x] **T3.4** Delete (`remove`) with confirmation if the node contains locked blocks.
+- [x] **T3.5** Properties panel:
   - props from the schema
   - text content
   - Stack properties (direction, gap, padding, align, justify, wrap)
   - Grid properties (columns, gap)
-- [ ] **T3.6** Page ops: add / rename / delete (writes the route and page file).
-- [ ] **T3.7** Post-edit pipeline, run on every edit: Prettier → typecheck/build check → auto-rollback plus a toast on failure.
-- [ ] **T3.8** Undo/redo within a session (an edit-op stack, independent of git).
+- [x] **T3.6** Page ops: add / rename / delete (writes the route and page file).
+- [x] **T3.7** Post-edit pipeline, run on every edit: Prettier → typecheck/build check → auto-rollback plus a toast on failure.
+- [x] **T3.8** Undo/redo within a session (an edit-op stack, independent of git).
 
 **Gate 3:** PRD flow F2 passes, with each drop producing one minimal diff and the code valid.
+
+**Gate 3: passed** (2026-09-30) on a newly created project, with the real mouse (`packages/app-main/e2e/gate3.test.ts`). Each drop is one `insert`, checked on its own:
+
+| Drop | Diff | New IDs | Drag to placed, checked and mapped |
+|---|---|---|---|
+| Stack onto the page | +1 −0, 1 hunk | 1 | ~1.5–2 s (the first edit) |
+| Card into the Stack | +12 −1, 2 hunks: the Card, its import, and the empty Stack's tag opened (`/>` → `>`) | 6 | ~1 s |
+| Button inside the Card | +2 −0, 2 hunks: the Button and its import | 1 | ~1 s |
+
+- **Minimal:** the only existing line a drop may change is the parent's own tag, and only by opening it. Every other line survives in order.
+- **IDs:** every new element has a well-formed `data-ui-id`, unique project-wide, and every existing ID survives.
+- **Valid code:** the page parses, and the project's own `tsc -b` passes after every drop. At the end, `pnpm build` (`tsc -b && vite build`) passes.
 
 ---
 

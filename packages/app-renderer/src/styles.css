@@ -159,9 +159,9 @@ button.quiet {
 }
 .project {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 260px 1fr 260px;
   grid-template-rows: 1fr auto;
-  grid-template-areas: "sidebar canvas" "bottom bottom";
+  grid-template-areas: "sidebar canvas inspector" "bottom bottom bottom";
   gap: 12px;
   flex: 1;
   min-height: 0;
@@ -342,4 +342,194 @@ button.quiet {
   background: #2563eb;
   border-color: #2563eb;
   color: #fff;
+}
+.palette h3 {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.palette ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.palette-item {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+.palette-item:hover {
+  background: color-mix(in srgb, #3b82f6 12%, transparent);
+}
+.palette-item.is-disabled {
+  opacity: 0.5;
+  cursor: help;
+}
+.palette-item.is-disabled:hover {
+  background: none;
+}
+.palette + .layers {
+  margin-top: 16px;
+}
+/* During a drag the frames ignore the pointer, so the renderer keeps getting its events. */
+.canvas.is-dragging iframe {
+  pointer-events: none;
+}
+.canvas.is-dragging {
+  cursor: copy;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 10;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.actions {
+  margin-top: 8px;
+}
+.confirm {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.confirm p {
+  margin: 0;
+}
+.confirm ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+}
+button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+.inspector-panel {
+  grid-area: inspector;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+.inspector-panel section {
+  margin-top: 0;
+}
+.inspector-panel section + section {
+  margin-top: 20px;
+}
+.properties h3 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.prop-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.prop-label {
+  color: var(--muted);
+}
+.prop-value select,
+.prop-value input:not([type="checkbox"]) {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.page-actions {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.page-actions button,
+.page-form button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.page-form {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  font-size: 13px;
+}
+.page-form label {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.page-form input {
+  padding: 3px 6px;
+  color: var(--fg);
+}
+.toasts {
+  pointer-events: none;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(480px, 60vw);
+}
+/* Toasts never block what's under them (the inspector); only × takes clicks. */
+.toast {
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-size: 13px;
+}
+.toast-error {
+  border-left-color: var(--error);
+}
+.toast-warning {
+  border-left-color: #d97706;
+}
+.toast button {
+  pointer-events: auto;
+}
+.toast-text {
+  flex: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.history {
+  margin-top: 8px;
+}
+.history button {
+  padding: 3px 10px;
+  font-size: 12px;
 }

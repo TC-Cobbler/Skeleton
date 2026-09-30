@@ -29,6 +29,9 @@ importers:
       '@babel/parser':
         specifier: ^7.29.9
         version: 7.29.9
+      '@babel/types':
+        specifier: ^7.29.8
+        version: 7.29.8
       '@skeleton/core':
         specifier: workspace:*
         version: link:../core
@@ -41,6 +44,9 @@ importers:
       magic-string:
         specifier: ^0.30.21
         version: 0.30.21
+      prettier:
+        specifier: ^3.9.9
+        version: 3.9.9
     devDependencies:
       electron:
         specifier: ^44.5.0
