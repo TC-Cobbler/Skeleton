@@ -182,7 +182,11 @@ for (const fixture of ["loop-01", "loop-02"]) {
             // Chromium doesn't deliver a synthetic click to a scaled cross-origin
             // iframe at all (the overlay receives no event). The element must still be
             // selectable: select it from the tree, and count it.
-            const after = await frame().evaluate((t) => document.elementFromPoint(t.x, t.y)?.closest("[data-skeleton-loc]")?.getAttribute("data-ui-id"), target);
+            // Skeleton's own layer (the selection's grip label) is looked through, as the overlay does.
+            const after = await frame().evaluate(
+              (t) => document.elementsFromPoint(t.x, t.y).find((el) => el.tagName !== "SKELETON-OVERLAY")?.closest("[data-skeleton-loc]")?.getAttribute("data-ui-id"),
+              target,
+            );
             expect(after, `${n.id}: the point should still hit it`).toBe(n.id);
             lost.push(n.id as string);
             await row.click();

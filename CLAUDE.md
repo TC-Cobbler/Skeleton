@@ -12,15 +12,14 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 4: tokens + gizmos: done.** Gates 0–4 passed (see `docs/spike-log.md`, TASKS.md). On top of Phase 3's composition (`docs/decisions/007`–`009`), the canvas now tunes the design system:
+**Phase 5: handoff loop: done.** Gates 0–5 passed (see `docs/spike-log.md`, TASKS.md). On top of Phase 4's tokens and gizmos (`docs/decisions/010`), the loop now closes:
 
-- a token panel with light and dark values, formulas, and detach/attach
-- a live count of what each token affects
-- gizmo handles with live preview and three scopes (component token or scale step, Shift for the global token, Alt for this element only)
-- a colour picker that edits the mode on screen
-- a violations panel with snap, promote and keep
+- intent notes pinned to elements, shown as canvas pins, with filters and an orphan tray
+- Hand off: validate, write `HANDOFF.md`, commit, lock
+- Take back: commit the pass, read ticks and replies, analyse, auto-repair IDs
+- a pass summary with per-file diffs, and Revert pass
 
-See `docs/decisions/010`. Phase 5 (handoff loop) is next: don't start it until asked. No handoff, notes or take-back until Phase 5.
+The loop's state is read from git commit subjects, never stored. See `docs/decisions/011`. Phase 6 (dogfood) is next: don't start it until asked.
 
 ---
 

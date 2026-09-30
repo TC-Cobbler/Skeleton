@@ -18,6 +18,7 @@
 **Also seen in Phase 3 and 4 tests (same cause):**
 - **A palette drop can be lost.** The release reaches the frame as a click, which selects what's under it. `compose.test.ts` fails this way about one run in three, before Phase 4 as after.
 - **Separately, a different palette entry is occasionally placed** than the one aimed at (seen in Gate 4 setups). That press is in Skeleton's own window, not the frame, so KI-1 may not be the cause. Not yet investigated.
+- **Phase 5 re-measured the lost palette drop** (`compose.test.ts -t "drag from the palette"`): 2 of 6 runs failed on the commit before Phase 5, and 4 of 10 with it. It's the same failure: nothing is inserted and the release selects another element. A lost drop cascades into the compose tests after it. Gate 5 doesn't drop from the palette.
 - **A gizmo press can be lost.** The drag never starts and nothing is written. `dragGizmo` (e2e) retries it.
 - Gate 4 builds its page by writing the file instead of dropping from the palette.
 

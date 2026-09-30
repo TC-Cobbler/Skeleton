@@ -179,35 +179,49 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 5 — Handoff loop
 
-- [ ] **T5.1** Intent notes:
+- [x] **T5.1** Intent notes:
   - pin to element
   - types Build / Behaviour / Question
   - canvas pins
   - filter by type and status
   - stored in `/skeleton/notes.json`
-- [ ] **T5.2** **Hand off** button. It:
+- [x] **T5.2** **Hand off** button. It:
   1. validates (no duplicate IDs, build passes)
   2. auto-commits `skeleton: handoff #N`
   3. compiles `HANDOFF.md` (changes since last handoff, tasks, empty replies section)
   4. locks the canvas and shows the "With agent" state
-- [ ] **T5.3** **Take back** button. It:
+- [x] **T5.3** **Take back** button. It:
   1. auto-commits `agent: pass #N`
   2. re-parses and reloads
   3. parses `HANDOFF.md` ticks and replies back into `notes.json`
   4. runs the take-back analyser (T0.8)
-- [ ] **T5.4** Pass summary panel showing:
+- [x] **T5.4** Pass summary panel showing:
   - files changed
   - elements added / removed / orphaned
   - new violations
   - new locked blocks
   - contract breaches
   - build status
-- [ ] **T5.5** Orphan tray: re-attach a note to a new element, or discard it.
-- [ ] **T5.6** Auto-repair on take-back: re-mint duplicate IDs, and assign IDs to un-IDed editable nodes. Report both.
-- [ ] **T5.7** Per-file diff view (agent pass vs previous handoff).
-- [ ] **T5.8** **Revert pass**: reset to the previous handoff commit, with confirmation.
+- [x] **T5.5** Orphan tray: re-attach a note to a new element, or discard it.
+- [x] **T5.6** Auto-repair on take-back: re-mint duplicate IDs, and assign IDs to un-IDed editable nodes. Report both.
+- [x] **T5.7** Per-file diff view (agent pass vs previous handoff).
+- [x] **T5.8** **Revert pass**: reset to the previous handoff commit, with confirmation.
 
 **Gate 5:** PRD flows F4, F5 and F6 pass.
+
+**Gate 5: passed** (2026-09-30) on a newly created project, driven through the UI (`packages/app-main/e2e/gate5.test.ts`). The agent's pass is scripted: it writes a hook, an API stub and a `.map` over the data, ticks the task and replies, as Claude Code did in the Phase 0 loops. See ADR 011.
+
+| Flow | What's checked |
+|---|---|
+| F4 hand off | A Build note is pinned to the Table (from the Notes tab; its pin shows on the canvas). **Hand off** validates (IDs, `pnpm run build`) and commits `skeleton: handoff #1` with a clean tree. `HANDOFF.md` lists `- [ ] ui_tabl0 · Build · Load orders from /api/orders`. The canvas is veiled, Undo is off, and notes can't be added. |
+| F5 take back | **Take back** commits `agent: pass #1`. The pass summary says: 1 of 1 tasks done, build passes, 0 breaches, 0 repairs, and the new `.map` locked block. The per-file diff shows the agent's hook call. The canvas renders the fetched rows ("Grace Hopper"), and the `.map` is a 🔒 block in the TableBody. `ui_tabl0` is intact in the code and in the DOM. The note is resolved, and the agent's reply sits under it and on the Table's pin (`✓ ↩`). |
+| F6 adjust | `--radius-card` is set in the token panel: one line of `globals.css` changes. The Table is dragged into the other Stack by its selection label. The hook and API files are byte-identical. The page keeps the agent's import and hook call. Every line of the Table's JSX, agent rows included, is unchanged apart from indentation. Outside it, only the emptied `CardContent` changed: it now closes on one line. |
+
+- **Unit and integration coverage:** core `notes`, `handoff` and `repair` tests; `app-main/tests/loop.test.ts`, which runs the whole loop over a real git repo, including refusals, locking, auto-repair, the orphan tray, revert, and state that survives a restart.
+- **Full e2e suite:** 89 of 95 pass, Gates 1–5 included. The 6 failures are compose's lost palette drop (KI-1) cascading through the tests after it. That fails at the same rate on the commit before Phase 5 (see `docs/known-issues.md`).
+- **What the gate found (fixed; see ADR 011's amendment):**
+  - A Table can't be grabbed on the canvas, because its rows cover it. The selected element's label is now a grip for moving it, and the overlay's hit tests look through its own layer.
+  - A scripted pass that re-IDs rows is correctly reported as breaking rule 1.
 
 ---
 
