@@ -24,7 +24,9 @@ export type HostMessage =
   | { source: "skeleton-host"; type: "select"; key: string | null }
   | { source: "skeleton-host"; type: "highlight"; key: string | null }
   /** "select": clicks select elements. "interact": clicks go to the app. */
-  | { source: "skeleton-host"; type: "mode"; mode: "select" | "interact" };
+  | { source: "skeleton-host"; type: "mode"; mode: "select" | "interact" }
+  /** Preview light or dark mode by toggling `.dark` on <html> (PRD §10.5). */
+  | { source: "skeleton-host"; type: "theme"; dark: boolean };
 
 export interface NodeBox {
   key: string;
@@ -74,6 +76,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return v["key"] === null || typeof v["key"] === "string";
     case "mode":
       return v["mode"] === "select" || v["mode"] === "interact";
+    case "theme":
+      return typeof v["dark"] === "boolean";
     default:
       return false;
   }

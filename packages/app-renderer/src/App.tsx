@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AppInfo, ProjectInfo } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
-import { Canvas } from "./Canvas.js";
+import { Canvas, type PreviewLayout } from "./Canvas.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
@@ -116,6 +116,8 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [selected, setSelected] = useSelection(page.nodes);
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
+  const [layout, setLayout] = useState<PreviewLayout>("desktop");
+  const [dark, setDark] = useState(false);
   const [treeHover, setTreeHover] = useState<string | null>(null);
   const [onScreen, setOnScreen] = useState<Set<string> | null>(null);
   const selectedNode = page.nodes.find((n) => n.key === selected) ?? null;
@@ -131,6 +133,21 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
           >
             {mode === "select" ? "Select mode" : "Interact mode"}
+          </button>
+        </div>
+        <div className="segmented" role="group" aria-label="Preview width">
+          {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
+            <button key={l} type="button" aria-pressed={layout === l} onClick={() => setLayout(l)}>
+              {l === "side-by-side" ? "Side by side" : l[0]?.toUpperCase() + l.slice(1)}
+            </button>
+          ))}
+        </div>
+        <div className="segmented" role="group" aria-label="Colour mode">
+          <button type="button" aria-pressed={!dark} onClick={() => setDark(false)}>
+            Light
+          </button>
+          <button type="button" aria-pressed={dark} onClick={() => setDark(true)}>
+            Dark
           </button>
         </div>
         {page.error && <p className="error">{page.error}</p>}
@@ -200,6 +217,8 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         }}
         onLocation={setPathname}
         navigate={navigate}
+        layout={layout}
+        dark={dark}
         onMapped={(boxes) => setOnScreen(new Set(boxes.map((b) => b.key)))}
       />
       <footer className="bottom">

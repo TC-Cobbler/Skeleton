@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Frame, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { clickOnCanvas } from "./canvas-click.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const work = mkdtempSync(path.join(tmpdir(), "skeleton-canvas-"));
@@ -80,8 +81,63 @@ describe("locked blocks on the canvas (T2.4)", () => {
 
   it("selects agent-rendered elements through the locked .map (editable in place)", async () => {
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
-    await canvas.getByRole("cell").first().click();
+    await clickOnCanvas(page, "canvas-frame", canvas.getByRole("cell").first());
     await expect.poll(() => page.getByTestId("selection-name").textContent()).toMatch(/^Table(Cell|Row)$/);
     expect(await page.getByTestId("selection-kind").textContent()).toBe("palette");
+  });
+});
+
+describe("preview widths (T2.7)", () => {
+  const frameWidth = (id: string) => page.getByTestId(id).evaluate((el) => (el as HTMLIFrameElement).style.width);
+
+  it("switches between desktop, tablet and mobile", async () => {
+    expect(await frameWidth("canvas-frame")).toBe("1280px");
+    await page.getByRole("button", { name: "Tablet" }).click();
+    await expect.poll(() => frameWidth("canvas-frame")).toBe("768px");
+    await page.getByRole("button", { name: "Mobile" }).click();
+    await expect.poll(() => frameWidth("canvas-frame")).toBe("390px");
+    const inner = await page.frameLocator('[data-testid="canvas-frame"]').locator("body").evaluate(() => window.innerWidth);
+    expect(inner).toBe(390);
+  });
+
+  it("shows all three side by side at one scale, with selection shared", async () => {
+    await page.getByRole("button", { name: "Side by side" }).click();
+    await page.getByTestId("canvas-frame-mobile").waitFor();
+    await page.getByTestId("canvas-frame-tablet").waitFor();
+    const scales = await page
+      .locator(".frame iframe")
+      .evaluateAll((els) => els.map((el) => Number(/scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform)?.[1])));
+    expect(scales).toHaveLength(3);
+    for (const scale of scales) expect(scale).toBeCloseTo(scales[0] as number, 2);
+
+    const mobile = page.frameLocator('[data-testid="canvas-frame-mobile"]');
+    await mobile.getByRole("button", { name: "Export" }).waitFor({ timeout: 20_000 });
+    await clickOnCanvas(page, "canvas-frame-mobile", mobile.getByRole("button", { name: "Export" }));
+    await expect.poll(() => page.getByTestId("selection-id").textContent()).toBe("ui_exp0r");
+    for (const id of ["canvas-frame", "canvas-frame-tablet", "canvas-frame-mobile"]) {
+      const html = () =>
+        page.frameLocator(`[data-testid="${id}"]`).locator("skeleton-overlay").evaluate((el) => el.shadowRoot?.innerHTML ?? "");
+      await expect.poll(html).toContain("Button #ui_exp0r");
+    }
+    await page.getByRole("button", { name: "Desktop" }).click();
+    await expect.poll(() => page.locator(".frame iframe").count()).toBe(1);
+  }, 60_000);
+});
+
+describe("light/dark toggle (T2.8)", () => {
+  it("sets .dark on the previewed document and the app's dark tokens apply", async () => {
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    const html = canvas.locator("html");
+    const bg = () => canvas.locator("body").evaluate((b) => getComputedStyle(b).backgroundColor);
+    const light = await bg();
+    await page.getByRole("button", { name: "Dark" }).click();
+    await expect.poll(() => html.getAttribute("class")).toContain("dark");
+    await expect.poll(bg).not.toBe(light);
+    // Survives a reload of the app (sent again when the overlay reconnects).
+    await page.getByRole("listbox", { name: "Pages list" }).getByRole("option").first().click();
+    await expect.poll(() => html.getAttribute("class")).toContain("dark");
+    await page.getByRole("button", { name: "Light" }).click();
+    await expect.poll(() => html.getAttribute("class")).not.toContain("dark");
+    await expect.poll(bg).toBe(light);
   });
 });

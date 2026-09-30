@@ -142,6 +142,14 @@ describe("Overlay", () => {
     expect(sent.slice(before).some((m) => m.type === "select")).toBe(false);
   });
 
+  it("toggles .dark on the previewed document", () => {
+    const { send } = setup();
+    send({ source: "skeleton-host", type: "theme", dark: true });
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    send({ source: "skeleton-host", type: "theme", dark: false });
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
   it("ignores messages that don't come from the host", () => {
     const { sent, send } = setup();
     send({ source: "skeleton-host", type: "tree", file: F, nodes }, window);

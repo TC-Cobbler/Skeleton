@@ -166,16 +166,31 @@ button.quiet {
   grid-area: canvas;
   display: flex;
   justify-content: center;
+  gap: 16px;
+  padding: 8px;
   overflow: auto;
+  /* The scrollbar's space is always reserved, so frame scaling can't toggle it and oscillate. */
+  scrollbar-gutter: stable;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: repeating-conic-gradient(var(--border) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
 }
-.canvas iframe {
-  width: 100%;
+.frame {
+  position: relative;
+  flex: none;
   height: 100%;
-  border: none;
+}
+.frame-label {
+  height: 20px;
+  font-size: 11px;
+}
+.frame iframe {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  border: 1px solid var(--border);
   background: white;
+  transform-origin: top left;
 }
 .canvas-empty {
   align-items: center;
@@ -302,4 +317,15 @@ button.quiet {
 }
 .page.is-disabled {
   opacity: 0.5;
+}
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0 16px;
+}
+.segmented button[aria-pressed="true"] {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
 }

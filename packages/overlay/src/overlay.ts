@@ -100,6 +100,9 @@ export class Overlay {
         this.mode = msg.mode;
         if (msg.mode === "interact") this.setHover(null);
         break;
+      case "theme":
+        this.doc.documentElement.classList.toggle("dark", msg.dark);
+        break;
     }
     this.schedule();
   }

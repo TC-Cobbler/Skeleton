@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DevServerStatus } from "@skeleton/app-main/ipc";
 import {
   isOverlayMessage,
@@ -7,6 +7,11 @@ import {
   type OverlayMessage,
   type OverlayNode,
 } from "@skeleton/overlay/protocol";
+
+export type PreviewWidth = "desktop" | "tablet" | "mobile";
+export type PreviewLayout = PreviewWidth | "side-by-side";
+
+export const WIDTHS: Record<PreviewWidth, number> = { desktop: 1280, tablet: 768, mobile: 390 };
 
 export interface CanvasEvents {
   onHover?: (key: string | null) => void;
@@ -27,27 +32,108 @@ export interface CanvasProps extends CanvasEvents {
   mode: "select" | "interact";
   /** Point the app at this path; a new object navigates even to the same path. */
   navigate: { path: string } | null;
+  layout: PreviewLayout;
+  /** Preview the app in dark mode (T2.8). */
+  dark: boolean;
 }
 
 /**
- * The user's running app, embedded from its dev server (T2.1), with Skeleton's
- * overlay inside it (T2.2). A sandboxed iframe: it can't navigate Skeleton's window,
- * and the preload bridge only exists in the top frame, so the app has no way into
- * main. Messages are accepted only from this iframe and the dev server's origin
- * (ADR 006).
+ * The user's running app, embedded from its dev server (T2.1) at one or three
+ * preview widths (T2.7), each with Skeleton's overlay inside (T2.2).
  */
 export function Canvas(props: CanvasProps) {
-  const { status } = props;
+  const { status, layout } = props;
+  const url = status?.state === "running" ? status.url : null;
+  const [follow, setFollow] = useState<{ path: string; from: PreviewWidth } | null>(null);
+
+  if (!url) {
+    const state = status?.state ?? "stopped";
+    const message: Record<string, string> = {
+      starting: "Starting the dev server…",
+      installing: "Installing dependencies…",
+      stopped: "The dev server isn't running.",
+      crashed: "The dev server stopped unexpectedly. See the log below.",
+      failed: "The dev server couldn't start. See the log below.",
+    };
+    return (
+      <div className="canvas canvas-empty" data-testid="canvas-empty">
+        <p className={state === "crashed" || state === "failed" ? "error" : "muted"}>{message[state]}</p>
+      </div>
+    );
+  }
+
+  const widths: PreviewWidth[] = layout === "side-by-side" ? ["desktop", "tablet", "mobile"] : [layout];
+  const primary = widths[0] as PreviewWidth;
+  return (
+    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}`}>
+      {widths.map((w) => (
+        <CanvasFrame
+          key={w}
+          {...props}
+          url={url}
+          width={w}
+          // Shares proportional to width, so every frame renders at the same scale.
+          fit={WIDTHS[w] / widths.reduce((sum, x) => sum + WIDTHS[x], 0)}
+          gaps={widths.length}
+          primary={w === primary}
+          // In side-by-side, a navigation inside one frame is followed by the others.
+          navigate={follow && follow.from !== w ? follow : props.navigate}
+          onLocation={(pathname) => {
+            if (w === primary) props.onLocation?.(pathname);
+            if (widths.length > 1) setFollow({ path: pathname, from: w });
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface FrameProps extends Omit<CanvasProps, "status" | "layout"> {
+  url: string;
+  width: PreviewWidth;
+  /** Share of the canvas width this frame may use. */
+  fit: number;
+  /** Frames sharing the row (for gap allowance). */
+  gaps: number;
+  /** The frame whose updates, mapping and location drive the rest of the UI. */
+  primary: boolean;
+}
+
+/**
+ * One sandboxed iframe on the dev server (ADR 006): it can't navigate Skeleton's
+ * window and has no bridge into main. Messages are accepted only from this iframe
+ * and the dev server's origin.
+ */
+function CanvasFrame(props: FrameProps) {
+  const { url, width, fit, gaps } = props;
   const frame = useRef<HTMLIFrameElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const ready = useRef(false);
   const latest = useRef(props);
   latest.current = props;
-  const url = status?.state === "running" ? status.url : null;
-  const origin = url ? new URL(url).origin : null;
+  const origin = new URL(url).origin;
+  const [scale, setScale] = useState(1);
+  const pixels = WIDTHS[width];
+
+  // Scale the frame down (never up) to fit its share of the canvas.
+  useLayoutEffect(() => {
+    const parent = box.current?.parentElement;
+    if (!parent) return;
+    // 16px canvas padding plus 16px between frames, shared out like the width.
+    // Ignore sub-pixel changes so layout can't feed back into itself.
+    const measure = () => {
+      const next = Math.min(1, ((parent.clientWidth - 16 - 16 * (gaps - 1)) * fit - 2) / pixels);
+      setScale((prev) => (Math.abs(prev - next) * pixels < 1 ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, [fit, gaps, pixels]);
 
   const post = (message: HostMessage) => {
     const win = frame.current?.contentWindow;
-    if (win && origin && ready.current) win.postMessage(message, origin);
+    if (win && ready.current) win.postMessage(message, origin);
   };
   const sendTree = () => {
     const { file, nodes } = latest.current;
@@ -55,7 +141,6 @@ export function Canvas(props: CanvasProps) {
   };
 
   useEffect(() => {
-    if (!origin) return;
     ready.current = false;
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || event.origin !== origin) return;
@@ -67,6 +152,7 @@ export function Canvas(props: CanvasProps) {
           ready.current = true;
           sendTree();
           post({ source: "skeleton-host", type: "mode", mode: p.mode });
+          post({ source: "skeleton-host", type: "theme", dark: p.dark });
           post({ source: "skeleton-host", type: "select", key: p.selected });
           p.onLocation?.(msg.pathname);
           break;
@@ -77,13 +163,13 @@ export function Canvas(props: CanvasProps) {
           p.onSelect?.(msg.key);
           break;
         case "updated":
-          p.onUpdated?.();
+          if (p.primary) p.onUpdated?.();
           break;
         case "location":
           p.onLocation?.(msg.pathname);
           break;
         case "mapped":
-          p.onMapped?.(msg.boxes);
+          if (p.primary) p.onMapped?.(msg.boxes);
           break;
       }
     };
@@ -95,36 +181,32 @@ export function Canvas(props: CanvasProps) {
   useEffect(() => post({ source: "skeleton-host", type: "select", key: props.selected }), [props.selected]);
   useEffect(() => post({ source: "skeleton-host", type: "highlight", key: props.highlighted }), [props.highlighted]);
   useEffect(() => post({ source: "skeleton-host", type: "mode", mode: props.mode }), [props.mode]);
+  useEffect(() => post({ source: "skeleton-host", type: "theme", dark: props.dark }), [props.dark]);
   useEffect(() => {
-    if (!props.navigate || !origin || !frame.current) return;
+    const target = props.navigate ? new URL(props.navigate.path, origin).href : null;
+    if (!target || !frame.current || frame.current.src === target) return;
     ready.current = false;
-    frame.current.src = new URL(props.navigate.path, origin).href;
+    frame.current.src = target;
   }, [props.navigate]);
 
-  if (url) {
-    return (
-      <div className="canvas">
-        <iframe
-          ref={frame}
-          title="Preview"
-          data-testid="canvas-frame"
-          src={url}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
-        />
-      </div>
-    );
-  }
-  const state = status?.state ?? "stopped";
-  const message: Record<string, string> = {
-    starting: "Starting the dev server…",
-    installing: "Installing dependencies…",
-    stopped: "The dev server isn't running.",
-    crashed: "The dev server stopped unexpectedly. See the log below.",
-    failed: "The dev server couldn't start. See the log below.",
-  };
   return (
-    <div className="canvas canvas-empty" data-testid="canvas-empty">
-      <p className={state === "crashed" || state === "failed" ? "error" : "muted"}>{message[state]}</p>
+    <div
+      ref={box}
+      className="frame"
+      data-testid={`canvas-${width}`}
+      style={{ width: pixels * scale }}
+    >
+      <div className="frame-label muted">
+        {width} · {pixels}px{scale < 1 ? ` · ${Math.round(scale * 100)}%` : ""}
+      </div>
+      <iframe
+        ref={frame}
+        title={`Preview (${width})`}
+        data-testid={props.primary ? "canvas-frame" : `canvas-frame-${width}`}
+        src={url}
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+        style={{ width: pixels, height: `calc((100% - 20px) / ${scale})`, transform: `scale(${scale})` }}
+      />
     </div>
   );
 }

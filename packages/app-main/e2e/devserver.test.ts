@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { clickOnCanvas } from "./canvas-click.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const parentDir = mkdtempSync(path.join(tmpdir(), "skeleton-e2e-"));
@@ -72,7 +73,7 @@ describe("new project → running dev server (PRD F1)", () => {
   it("selects elements on the canvas through the overlay (T2.2)", async () => {
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
     const heading = canvas.getByRole("heading", { name: "E2E App" });
-    await heading.click();
+    await clickOnCanvas(page, "canvas-frame", heading);
     await page.getByTestId("selection-id").waitFor();
     expect(await page.getByTestId("selection-name").textContent()).toBe("h1");
     expect(await page.getByTestId("selection-id").textContent()).toMatch(/^ui_[a-z0-9]{5}$/);
@@ -84,7 +85,7 @@ describe("new project → running dev server (PRD F1)", () => {
     // Interact mode hands clicks back to the app: no selection change.
     await page.getByRole("button", { name: "Select mode" }).click();
     await page.getByRole("button", { name: "Interact mode" }).waitFor();
-    await canvas.locator("body").click({ position: { x: 5, y: 5 } });
+    await clickOnCanvas(page, "canvas-frame", heading);
     expect(await page.getByTestId("selection-id").textContent()).toBe(id);
     await page.getByRole("button", { name: "Interact mode" }).click();
   }, 60_000);
@@ -95,7 +96,7 @@ describe("new project → running dev server (PRD F1)", () => {
     writeFileSync(file, source.replace("E2E App", "E2E App, edited"));
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
     await canvas.getByRole("heading", { name: "E2E App, edited" }).waitFor({ timeout: 15_000 });
-    await canvas.getByRole("heading", { name: "E2E App, edited" }).click();
+    await clickOnCanvas(page, "canvas-frame", canvas.getByRole("heading", { name: "E2E App, edited" }));
     expect(await page.getByTestId("selection-name").textContent()).toBe("h1");
     writeFileSync(file, source);
     await canvas.getByRole("heading", { name: "E2E App", exact: true }).waitFor({ timeout: 15_000 });
@@ -114,7 +115,7 @@ describe("new project → running dev server (PRD F1)", () => {
     await expect.poll(shadow).toContain("Stack #ui_");
 
     // Canvas → tree: clicking the heading selects its row.
-    await canvas.getByRole("heading", { name: "E2E App" }).click();
+    await clickOnCanvas(page, "canvas-frame", canvas.getByRole("heading", { name: "E2E App" }));
     await expect.poll(() => rows.nth(2).getAttribute("aria-selected")).toBe("true");
     expect(await rows.nth(1).getAttribute("aria-selected")).toBe("false");
   }, 60_000);

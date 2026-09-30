@@ -90,8 +90,8 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 - [x] **T2.4** Locked-block rendering: label (component name or expression type), distinct outline, "view source" popover.
 - [x] **T2.5** Page list mirroring the router, including navigate-on-select.
 - [x] **T2.6** File watcher: re-parse and reload on external change (unlocked state only).
-- [ ] **T2.7** Preview widths: desktop / tablet / mobile toggle, plus a side-by-side mode.
-- [ ] **T2.8** Light/dark toggle, which sets `.dark` on the previewed document.
+- [x] **T2.7** Preview widths: desktop / tablet / mobile toggle, plus a side-by-side mode.
+- [x] **T2.8** Light/dark toggle, which sets `.dark` on the previewed document.
 
 **Gate 2:** Open the Phase 0 fixture (post-agent) and see every element selectable, locked blocks clearly marked, and the tree matching the canvas.
 
