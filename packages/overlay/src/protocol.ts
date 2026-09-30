@@ -71,7 +71,9 @@ export type OverlayMessage =
   /** Where the current drag would land, in answer to each drag message; null for nowhere. */
   | { source: "skeleton-overlay"; type: "drop-target"; target: DropTarget | null }
   /** The user dragged the node at `key` on the canvas and dropped it at `target` (T3.3). */
-  | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget };
+  | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget }
+  /** A Skeleton shortcut pressed while the frame has focus, in select mode (Delete, undo…). */
+  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean };
 
 export function isOverlayMessage(value: unknown): value is OverlayMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -92,6 +94,8 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
       return v["target"] === null || isDropTarget(v["target"]);
     case "move":
       return typeof v["key"] === "string" && isDropTarget(v["target"]);
+    case "key":
+      return typeof v["key"] === "string" && typeof v["mod"] === "boolean" && typeof v["shift"] === "boolean";
     default:
       return false;
   }
@@ -124,6 +128,11 @@ export function isHostMessage(value: unknown): value is HostMessage {
     default:
       return false;
   }
+}
+
+/** Keys the overlay forwards to the host in select mode (with Ctrl or Cmd for letters). */
+export function isShortcut(key: string, mod: boolean): boolean {
+  return key === "Delete" || key === "Backspace" || (mod && ["z", "Z", "y", "Y"].includes(key));
 }
 
 /**

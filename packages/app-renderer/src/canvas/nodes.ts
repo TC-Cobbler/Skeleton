@@ -64,3 +64,44 @@ export function toOverlayNodes(nodes: KeyedNode[], elements: Record<string, Elem
     move: canMove(node, byKey.get(parentKeyOf(key) ?? "") ?? null),
   }));
 }
+
+/**
+ * The agent code that deleting `node` would delete with it (T3.4): locked blocks and
+ * protected (logic-bearing) props in its subtree, as short descriptions. Empty means
+ * the subtree is Skeleton-placed layout only.
+ */
+export function agentLogicIn(node: UiNode): string[] {
+  const out: string[] = [];
+  const label = (n: UiNode) => `${n.name}${n.id ? ` #${n.id}` : ""}`;
+  const walk = (n: UiNode) => {
+    if (n.kind === "locked") {
+      out.push(`🔒 ${n.element ? label(n) : n.name} (${n.lockReason ?? "locked"})`);
+    } else if (n.protectedProps.length > 0) {
+      out.push(`${n.protectedProps.join(", ")} on ${label(n)}`);
+    }
+    n.children.forEach(walk);
+  };
+  walk(node);
+  return out;
+}
+
+export type NodeRef = { id: string } | { parentId: string; index: number };
+
+/**
+ * How `remove` (or `move`) addresses the node at `key`, or why it can't touch it:
+ * never a root, never an element wrapped by a locked block (ADR 002), and it needs
+ * an ID of its own or on its parent.
+ */
+export function refFor(nodes: KeyedNode[], key: string): { ref: NodeRef } | { reason: string } {
+  const node = nodes.find((n) => n.key === key)?.node;
+  const parentKey = parentKeyOf(key);
+  const parent = parentKey === null ? null : (nodes.find((n) => n.key === parentKey)?.node ?? null);
+  if (!node) return { reason: "It's no longer on the page." };
+  if (!parent) return { reason: "The page's root element can't be removed." };
+  if (parent.kind === "locked" || !parent.element) {
+    return { reason: `It's inside 🔒 ${parent.name}, agent code that uses it: edit it in place, or delete the whole block.` };
+  }
+  if (node.id) return { ref: { id: node.id } };
+  if (parent.id) return { ref: { parentId: parent.id, index: Number(key.slice(key.lastIndexOf(".") + 1)) } };
+  return { reason: "Neither it nor its parent has a data-ui-id." };
+}

@@ -235,3 +235,59 @@ describe("move and reorder on the canvas (T3.3)", () => {
     expect(await page.getByTestId("edit-error").count()).toBe(0);
   });
 });
+
+describe("delete (T3.4)", () => {
+  const layer = (id: string) => page.getByTestId(`layer-${id}`);
+  const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
+
+  it("deletes layout Skeleton placed straight away, and selects the parent", async () => {
+    expect(childNames(stackId())).toEqual(["map", "h1", "div", "Card", "Button", "Badge", "Stack"]);
+    const badge = idOf(stackId(), "Badge");
+    await layer(badge).click();
+    const before = homeFile();
+    await page.keyboard.press("Delete");
+    const after = await edited(before);
+    expect(childNames(stackId())).toEqual(["map", "h1", "div", "Card", "Button", "Stack"]);
+    // Only the badge's line went.
+    expect(before.split("\n").filter((l) => !after.split("\n").includes(l))).toEqual([expect.stringContaining(`data-ui-id="${badge}"`)]);
+    await expect.poll(() => page.getByTestId("selection-id").textContent()).toBe(stackId());
+  });
+
+  it("won't delete an element a locked block wraps, and says why", async () => {
+    await layer("ui_mapr1").click();
+    const button = page.getByTestId("selection").getByRole("button", { name: "Delete" });
+    expect(await button.isDisabled()).toBe(true);
+    expect(await button.getAttribute("title")).toMatch(/inside 🔒 map/);
+  });
+
+  it("asks before deleting agent code, and Cancel leaves it", async () => {
+    const mapRow = page.locator(".layer", { has: page.locator(".layer-name", { hasText: /^map$/ }) });
+    await mapRow.click();
+    const before = homeFile();
+    await page.keyboard.press("Delete");
+    const confirm = page.getByTestId("confirm-delete");
+    await confirm.waitFor();
+    expect(await confirm.textContent()).toContain("🔒 map (.map() loop)");
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await page.waitForTimeout(300);
+    expect(homeFile()).toBe(before);
+
+    await page.getByTestId("selection").getByRole("button", { name: "Delete" }).click();
+    await confirm.getByRole("button", { name: "Delete anyway" }).click();
+    const after = await edited(before);
+    expect(after).not.toContain(".map(");
+    expect(childNames(stackId())).toEqual(["h1", "div", "Card", "Button", "Stack"]);
+  });
+
+  it("takes Delete from the canvas too, when it has focus", async () => {
+    const tall = canvasFrame(page).locator('[data-ui-id="ui_tall1"]');
+    await tall.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    const at = await canvasPoint(page, "canvas-frame", tall);
+    await page.mouse.click(at.x, at.y);
+    await expect.poll(() => page.getByTestId("selection-id").textContent()).toBe("ui_tall1");
+    const before = homeFile();
+    await page.keyboard.press("Delete");
+    await edited(before);
+    expect(childNames(stackId())).toEqual(["h1", "Card", "Button", "Stack"]);
+  });
+});

@@ -4,7 +4,7 @@
 
 import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
 import { NodeIndex } from "./mapping.js";
-import { isHostMessage, type DropTarget, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
+import { isHostMessage, isShortcut, type DropTarget, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
 
 type Rect = NodeBox["rects"][number];
 
@@ -78,7 +78,7 @@ export class Overlay {
     // pointermove, not mousemove: the pointerdown is cancelled in select mode, and that
     // suppresses mouse events until release, so a move drag would see no mousemoves.
     win.addEventListener("pointermove", (e) => this.onMove(e), { capture: true, signal });
-    win.addEventListener("keydown", (e) => e.key === "Escape" && this.cancelMove(), { capture: true, signal });
+    win.addEventListener("keydown", (e) => this.onKey(e), { capture: true, signal });
     // A drag that lost its release (pointer let go outside, focus lost) is cancelled.
     win.addEventListener("pointercancel", () => this.cancelMove(), { capture: true, signal });
     win.addEventListener("blur", () => this.cancelMove(), { signal });
@@ -227,6 +227,20 @@ export class Overlay {
     }
     if (this.drop) return;
     this.setHover(this.target(event)?.key ?? null);
+  }
+
+  /**
+   * Keys in select mode: Escape cancels a move; Skeleton's shortcuts go to the host
+   * (focus can be in this frame after a click), and never to the app.
+   */
+  private onKey(event: KeyboardEvent): void {
+    if (event.key === "Escape") this.cancelMove();
+    if (this.mode !== "select") return;
+    const mod = event.ctrlKey || event.metaKey;
+    if (!isShortcut(event.key, mod)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.post({ source: "skeleton-overlay", type: "key", key: event.key, mod, shift: event.shiftKey });
   }
 
   /** The nearest node at or above `node` that can be moved (a drag on a wrapped element moves its block). */

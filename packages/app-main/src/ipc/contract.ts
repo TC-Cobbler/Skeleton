@@ -197,7 +197,12 @@ export type EditIntent =
   /** Place a palette entry in `parentId` at child `index` (T3.2). */
   | { op: "insert"; parentId: string; index: number; paletteId: string }
   /** Move a node (locked blocks included) to `newParentId` at `index`, counted with the node taken out (T3.3). */
-  | { op: "move"; ref: NodeRef; newParentId: string; index: number };
+  | { op: "move"; ref: NodeRef; newParentId: string; index: number }
+  /**
+   * Remove a node and everything under it (T3.4). `allowLocked` is the user's
+   * confirmation that agent logic inside it (locked blocks, protected props) goes too.
+   */
+  | { op: "remove"; ref: NodeRef; allowLocked: boolean };
 
 export interface PageEditRequest extends PageTreeRequest {
   edit: EditIntent;

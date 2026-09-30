@@ -4,7 +4,7 @@
 
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
-import { buildIdIndex, EditOpError, fillMissingIds, insert, move, type EditResult } from "@skeleton/core";
+import { buildIdIndex, EditOpError, fillMissingIds, insert, move, remove, type EditResult } from "@skeleton/core";
 import { PALETTE, templateImports } from "@skeleton/templates";
 import type { EditIntent, PageEditResult } from "../ipc/contract.js";
 
@@ -58,6 +58,9 @@ export class Editor {
         case "move":
           result = move(before, edit.ref, edit.newParentId, edit.index);
           select = "id" in edit.ref ? edit.ref.id : null;
+          break;
+        case "remove":
+          result = remove(before, edit.ref, { allowLocked: edit.allowLocked });
           break;
       }
     } catch (cause) {

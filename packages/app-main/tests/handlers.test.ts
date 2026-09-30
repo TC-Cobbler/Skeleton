@@ -440,6 +440,9 @@ describe("page:edit", () => {
       { op: "move", ref: { id: "nope" }, newParentId: "ui_abcde", index: 0 },
       { op: "move", ref: { parentId: "ui_abcde" }, newParentId: "ui_abcde", index: 0 },
       { op: "move", ref: { id: "ui_abcde" }, newParentId: "ui_abcde", index: "1" },
+      { op: "remove", ref: { id: "ui_abcde" } },
+      { op: "remove", ref: { id: "ui_abcde" }, allowLocked: "yes" },
+      { op: "remove", ref: "ui_abcde", allowLocked: false },
     ]) {
       await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
     }

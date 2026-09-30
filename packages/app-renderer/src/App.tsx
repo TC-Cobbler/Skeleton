@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppInfo, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
 import type { DropTarget } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas, type PreviewLayout } from "./Canvas.js";
 import { useCanvasDrag } from "./canvas/drag.js";
-import { parentKeyOf } from "./canvas/nodes.js";
+import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
+import { SelectionPanel } from "./SelectionPanel.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
 import { PagesPanel, usePages } from "./PagesPanel.js";
 import { PalettePanel, usePalette } from "./PalettePanel.js";
 import { useDevServer } from "./useDevServer.js";
-import { ViewSource } from "./ViewSource.js";
 import { usePageTree } from "./usePageTree.js";
 import { useProjectRevision } from "./useProjectRevision.js";
 import { ProjectPicker } from "./ProjectPicker.js";
@@ -130,7 +130,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [selected, setSelected, selectId] = useSelection(page.nodes);
   const [editError, setEditError] = useState<string | null>(null);
   const edit = useCallback(
-    (intent: EditIntent) => {
+    (intent: EditIntent, after?: () => void) => {
       if (!file) return;
       setEditError(null);
       call("page:edit", { projectRoot: project.projectRoot, file, edit: intent }).then(
@@ -138,6 +138,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           page.reload();
           setRevision((r) => r + 1);
           if (result.select) selectId(result.select);
+          after?.();
         },
         (err: unknown) => setEditError(err instanceof Error ? err.message : String(err)),
       );
@@ -155,13 +156,58 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       return;
     }
     if (parentKey === target.parentKey && from === target.index) return; // dropped where it was
-    const ref = moved.id ? { id: moved.id } : parent.id ? { parentId: parent.id, index: from } : null;
-    if (!ref) {
-      setEditError(`Can't move ${moved.name}: neither it nor its parent has a data-ui-id.`);
+    const r = refFor(page.nodes, key);
+    if ("reason" in r) {
+      setEditError(`Can't move ${moved.name}: ${r.reason}`);
       return;
     }
-    edit({ op: "move", ref, newParentId: dest.id, index: target.index });
+    edit({ op: "move", ref: r.ref, newParentId: dest.id, index: target.index });
   };
+  // Deleting (T3.4): straight away for layout Skeleton placed; agent code needs a confirm.
+  const [confirmDelete, setConfirmDelete] = useState<{ key: string; logic: string[] } | null>(null);
+  useEffect(() => setConfirmDelete(null), [selected]);
+  const deletion = (key: string): { ref: NodeRef | null; reason: string | null } => {
+    const r = refFor(page.nodes, key);
+    return "ref" in r ? { ref: r.ref, reason: null } : { ref: null, reason: r.reason };
+  };
+  const removeNode = (key: string, allowLocked: boolean) => {
+    const { ref, reason } = deletion(key);
+    setConfirmDelete(null);
+    if (!ref) {
+      setEditError(`Can't delete: ${reason}`);
+      return;
+    }
+    const parent = page.nodes.find((n) => n.key === parentKeyOf(key))?.node;
+    edit({ op: "remove", ref, allowLocked }, () => (parent?.id ? selectId(parent.id) : setSelected(null)));
+  };
+  const requestDelete = (key: string) => {
+    const node = page.nodes.find((n) => n.key === key)?.node;
+    const { reason } = deletion(key);
+    if (!node || reason) {
+      setEditError(`Can't delete: ${reason ?? "nothing selected"}`);
+      return;
+    }
+    const logic = agentLogicIn(node);
+    if (logic.length > 0) setConfirmDelete({ key, logic });
+    else removeNode(key, false);
+  };
+  const onShortcut = (key: string) => {
+    if ((key === "Delete" || key === "Backspace") && selected) requestDelete(selected);
+  };
+  const latestShortcut = useRef(onShortcut);
+  latestShortcut.current = onShortcut;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        latestShortcut.current(e.key);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const canvasDrag = useCanvasDrag((source, target) => {
     const parent = page.nodes.find((n) => n.key === target.parentKey)?.node;
     if (!parent?.id) {
@@ -217,36 +263,17 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         )}
         {fsRevision.error && <p className="error">{fsRevision.error}</p>}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
-        <section aria-label="Selection" data-testid="selection">
-          <h2>Selection</h2>
-          {selectedNode ? (
-            <dl className="inspector">
-              <dt>Element</dt>
-              <dd data-testid="selection-name">{selectedNode.node.name}</dd>
-              <dt>Kind</dt>
-              <dd data-testid="selection-kind">{selectedNode.node.kind}</dd>
-              <dt>ID</dt>
-              <dd data-testid="selection-id">{selectedNode.node.id ?? "none"}</dd>
-              {selectedNode.node.lockReason && (
-                <>
-                  <dt>Locked</dt>
-                  <dd data-testid="selection-lock">{selectedNode.node.lockReason}</dd>
-                </>
-              )}
-              {selectedNode.node.protectedProps.length > 0 && (
-                <>
-                  <dt>Agent logic</dt>
-                  <dd>{selectedNode.node.protectedProps.join(", ")}</dd>
-                </>
-              )}
-            </dl>
-          ) : (
-            <p className="muted">{hovered ? "Click to select." : "Nothing selected."}</p>
-          )}
-          {selectedNode?.node.kind === "locked" && (
-            file && <ViewSource projectRoot={project.projectRoot} file={file} node={selectedNode.node} />
-          )}
-        </section>
+        <SelectionPanel
+          projectRoot={project.projectRoot}
+          file={file}
+          node={selectedNode?.node ?? null}
+          hovered={hovered !== null}
+          cannotDelete={selected ? deletion(selected).reason : null}
+          confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
+          onDelete={() => selected && requestDelete(selected)}
+          onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
+          onCancel={() => setConfirmDelete(null)}
+        />
         <PagesPanel
           list={pages.list}
           error={pages.error}
@@ -294,6 +321,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, moving: null } : null}
         onDropTarget={canvasDrag.report}
         onMove={moveNode}
+        onKey={(key) => onShortcut(key)}
       />
       {canvasDrag.drag && (
         <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>

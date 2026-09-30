@@ -152,6 +152,48 @@ describe("Editor: move (T3.3)", () => {
   });
 });
 
+describe("Editor: remove (T3.4)", () => {
+  const withLogic = (home: string) =>
+    home.replace(
+      "      </Stack>",
+      `        <button data-ui-id="ui_btn01" onClick={() => alert("hi")}>\n          Hi\n        </button>\n        {["a"].map((x) => (\n          <p key={x} data-ui-id="ui_row01">\n            {x}\n          </p>\n        ))}\n      </Stack>`,
+    );
+
+  it("removes a node and only its lines", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const placed = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "card" });
+    const before = p.home();
+    const result = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "remove", ref: { id: placed.select as string }, allowLocked: false });
+    expect(result.linesAdded).toBe(0);
+    expect(findNodeById(buildTree(p.home()).roots, placed.select as string)).toBeNull();
+    const after = p.home().split("\n");
+    expect(before.split("\n").filter((l) => !after.includes(l)).every((l) => /Card|<p|<\/p>|content/.test(l))).toBe(true);
+  });
+
+  it("asks for confirmation before removing agent logic, then removes it", async () => {
+    const p = memoryProject();
+    p.files.set(path.join(ROOT, "src/pages/HomePage.tsx"), withLogic(p.home()));
+    const editor = new Editor(p.io);
+    await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "remove", ref: { id: "ui_btn01" }, allowLocked: false })).rejects.toThrow(/agent logic/);
+    await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "remove", ref: { parentId: p.stackId, index: 2 }, allowLocked: false })).rejects.toThrow(
+      EditRefused,
+    );
+    expect(p.writes).toEqual([]);
+    await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "remove", ref: { parentId: p.stackId, index: 2 }, allowLocked: true });
+    expect(p.home()).not.toContain(".map(");
+    expect(p.home()).toContain(`onClick={() => alert("hi")}`);
+  });
+
+  it("refuses to remove an element wrapped by a locked block", async () => {
+    const p = memoryProject();
+    p.files.set(path.join(ROOT, "src/pages/HomePage.tsx"), withLogic(p.home()));
+    await expect(new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "remove", ref: { id: "ui_row01" }, allowLocked: true })).rejects.toThrow(
+      /wrapped by locked map/,
+    );
+  });
+});
+
 describe("listSources", () => {
   it("walks src/ for .tsx and .jsx, skipping node_modules, dist and dotfiles", async () => {
     const tree: Record<string, { name: string; dir: boolean }[]> = {

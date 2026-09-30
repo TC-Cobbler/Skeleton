@@ -26,6 +26,7 @@ import {
   type IpcErrorCode,
   type IpcResult,
   type EditIntent,
+  type NodeRef,
   type PageEditRequest,
   type PageTreeRequest,
   type ProjectCreateRequest,
@@ -205,6 +206,12 @@ function idOf(obj: Record<string, unknown>, label: string, key: string): string 
   return v;
 }
 
+function nodeRefOf(ref: unknown): NodeRef {
+  if (typeof ref !== "object" || ref === null) throw new HandlerError("bad-request", "edit.ref must be an object");
+  const r = ref as Record<string, unknown>;
+  return "id" in r ? { id: idOf(r, "ref.id", "id") } : { parentId: idOf(r, "ref.parentId", "parentId"), index: indexOf(r, "ref.index", "index") };
+}
+
 function indexOf(obj: Record<string, unknown>, label: string, key: string): number {
   const v = obj[key];
   if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 10_000) {
@@ -226,12 +233,11 @@ function editIntentOf(raw: unknown): EditIntent {
       }
       return { op: "insert", parentId: id("parentId"), index: index("index"), paletteId };
     }
-    case "move": {
-      const ref = e["ref"];
-      if (typeof ref !== "object" || ref === null) throw new HandlerError("bad-request", "edit.ref must be an object");
-      const r = ref as Record<string, unknown>;
-      const nodeRef = "id" in r ? { id: idOf(r, "ref.id", "id") } : { parentId: idOf(r, "ref.parentId", "parentId"), index: indexOf(r, "ref.index", "index") };
-      return { op: "move", ref: nodeRef, newParentId: id("newParentId"), index: index("index") };
+    case "move":
+      return { op: "move", ref: nodeRefOf(e["ref"]), newParentId: id("newParentId"), index: index("index") };
+    case "remove": {
+      if (typeof e["allowLocked"] !== "boolean") throw new HandlerError("bad-request", "edit.allowLocked must be a boolean");
+      return { op: "remove", ref: nodeRefOf(e["ref"]), allowLocked: e["allowLocked"] };
     }
     default:
       throw new HandlerError("bad-request", `unknown edit op ${JSON.stringify(e["op"])}`);

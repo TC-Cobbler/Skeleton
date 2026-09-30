@@ -1,6 +1,6 @@
 # 008: Editing from the canvas
 
-**Status:** accepted · 2026-09-30 · T3.2, T3.3 (applies to all of Phase 3)
+**Status:** accepted · 2026-09-30 · T3.2–T3.4 (applies to all of Phase 3)
 
 ## Context
 
@@ -42,6 +42,13 @@ A drag on a `.map` row therefore moves the whole block, verbatim.
 - **Cancelling:** a move with no buttons down, `pointercancel` or blur cancels the drag. So does Escape, which lands in Skeleton's window and is forwarded to the frames as `drag-end`.
 - **Autoscroll:** near the frame's top or bottom edge, a drag (palette or move) scrolls the page.
 - **On release:** the overlay posts `move {key, target}`. The renderer turns it into `{ op: "move", ref, newParentId, index }`, and skips a drop back where the node was.
+
+**Delete asks only when agent code goes with it (T3.4).**
+
+- **Triggers:** the Delete button in the Selection panel, or Delete/Backspace. In select mode the overlay forwards Skeleton's shortcuts from the frame as `key` messages (focus can be in the frame after a click), so the app never sees them.
+- **What can be deleted:** the same nodes a move can address, per `refFor`: never a root, never an element a locked block wraps.
+- **Confirmation:** if the subtree holds locked blocks or protected props, an inline confirmation lists exactly that code (`agentLogicIn`), and confirming sends `allowLocked: true`. Layout Skeleton placed goes straight away.
+- **After deleting:** the parent is selected.
 
 **The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
 

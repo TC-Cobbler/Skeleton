@@ -26,6 +26,8 @@ export interface CanvasEvents {
   onDropTarget?: (frame: PreviewWidth, target: DropTarget | null) => void;
   /** A node was dragged to a new place on the canvas (T3.3). */
   onMove?: (key: string, target: DropTarget) => void;
+  /** A Skeleton shortcut pressed while the canvas had focus. */
+  onKey?: (key: string, mod: boolean, shift: boolean) => void;
 }
 
 /** A drag in progress over the canvas, in window coordinates (T3.2). */
@@ -195,6 +197,9 @@ function CanvasFrame(props: FrameProps) {
           break;
         case "move":
           p.onMove?.(msg.key, msg.target);
+          break;
+        case "key":
+          p.onKey?.(msg.key, msg.mod, msg.shift);
           break;
       }
     };

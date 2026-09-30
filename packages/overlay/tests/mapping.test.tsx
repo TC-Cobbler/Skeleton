@@ -293,6 +293,26 @@ describe("Overlay", () => {
     expect(mapped()).toHaveLength(count);
   });
 
+  it("forwards Skeleton's shortcuts to the host in select mode only", () => {
+    const { sent, send } = setup();
+    const press = (key: string, init: KeyboardEventInit = {}) => {
+      const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(press("Delete")).toBe(true);
+    expect(press("z", { metaKey: true, shiftKey: true })).toBe(true);
+    expect(press("a")).toBe(false);
+    expect(press("z")).toBe(false);
+    expect(sent.filter((m) => m.type === "key")).toEqual([
+      { source: "skeleton-overlay", type: "key", key: "Delete", mod: false, shift: false },
+      { source: "skeleton-overlay", type: "key", key: "z", mod: true, shift: true },
+    ]);
+    send({ source: "skeleton-host", type: "mode", mode: "interact" });
+    expect(press("Backspace")).toBe(false);
+    expect(sent.filter((m) => m.type === "key")).toHaveLength(2);
+  });
+
   it("toggles .dark on the previewed document", () => {
     const { send } = setup();
     send({ source: "skeleton-host", type: "theme", dark: true });
