@@ -58,6 +58,7 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         forget: async () => [],
       },
       chooseFolder: async () => "/chosen",
+      listSources: async () => ["src/pages/HomePage.tsx"],
       changes: () => ({ revision: 3, locked: false, changed: ["src/pages/HomePage.tsx"], error: null }),
       git: {
         status: async () => ({ head: "h", clean: true, changed: [] }),
@@ -80,6 +81,9 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         },
         redo: async () => ({ label: "Insert Card", files: ["src/pages/HomePage.tsx"], unchecked: null, history: { undo: "Insert Card", redo: null } }),
         history: async () => ({ undo: null, redo: "Insert Card" }),
+        tokens: async () => ({ file: "src/styles/globals.css", css: await readFile(path.join(fixtureRoot, "src/styles/globals.css"), "utf8") }),
+        promote: async () => Promise.reject(new Error("unused")),
+        keep: async () => Promise.reject(new Error("unused")),
       },
       ...overrides,
     },
@@ -428,6 +432,9 @@ describe("page:edit", () => {
         undo: async () => Promise.reject(new Error("unused")),
         redo: async () => Promise.reject(new Error("unused")),
         history: async () => ({ undo: null, redo: null }),
+        tokens: async () => Promise.reject(new Error("unused")),
+        promote: async () => Promise.reject(new Error("unused")),
+        keep: async () => Promise.reject(new Error("unused")),
       },
     });
     for (const ref of [{ id: "ui_abcde" }, { parentId: "ui_fghij", index: 2 }]) {
@@ -451,6 +458,9 @@ describe("page:edit", () => {
         undo: async () => Promise.reject(new Error("unused")),
         redo: async () => Promise.reject(new Error("unused")),
         history: async () => ({ undo: null, redo: null }),
+        tokens: async () => Promise.reject(new Error("unused")),
+        promote: async () => Promise.reject(new Error("unused")),
+        keep: async () => Promise.reject(new Error("unused")),
       },
     });
     const valid = [
@@ -550,5 +560,82 @@ describe("opening a project", () => {
     await dispatch("project:open", { projectRoot: fixtureRoot });
     await dispatch("project:create", { parentDir: "/tmp", name: "Fresh" });
     expect(opened).toEqual([fixtureRoot, "/tmp/stub"]);
+  });
+});
+
+describe("tokens (T4.1)", () => {
+  it("reads the project's tokens with light and dark values", async () => {
+    const { dispatch } = setup();
+    const result = await dispatch("tokens:read", { projectRoot: fixtureRoot });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const sheet = result.value as { file: string; tokens: { name: string; value: string; dark: string | null }[] };
+    expect(sheet.file).toBe("src/styles/globals.css");
+    expect(sheet.tokens.find((t) => t.name === "--primary")).toMatchObject({ value: "oklch(0.205 0 0)", dark: "oklch(0.922 0 0)" });
+  });
+
+  it("passes valid writes to the editor and answers with the new sheet", async () => {
+    const writes: unknown[] = [];
+    const { dispatch } = setup({
+      editor: {
+        apply: async () => Promise.reject(new Error("unused")),
+        page: async () => Promise.reject(new Error("unused")),
+        undo: async () => Promise.reject(new Error("unused")),
+        redo: async () => Promise.reject(new Error("unused")),
+        history: async () => ({ undo: "Set --radius", redo: null }),
+        tokens: async (_root, w) => {
+          writes.push(...w);
+          return { file: "src/styles/globals.css", css: ":root {\n  --radius: 1rem;\n}\n" };
+        },
+        promote: async () => Promise.reject(new Error("unused")),
+        keep: async () => Promise.reject(new Error("unused")),
+      },
+    });
+    const result = await dispatch("tokens:write", { projectRoot: fixtureRoot, writes: [{ name: "--radius", value: " 1rem ", mode: null }] });
+    expect(result).toMatchObject({ ok: true, value: { sheet: { tokens: [{ name: "--radius", value: "1rem" }] }, history: { undo: "Set --radius" } } });
+    expect(writes).toEqual([{ name: "--radius", value: "1rem", mode: null }]);
+  });
+
+  it("rejects writes that could escape the declaration", async () => {
+    const { dispatch } = setup();
+    for (const write of [
+      { name: "--radius", value: "1rem; color: red", mode: null },
+      { name: "--radius", value: "1rem } body {", mode: null },
+      { name: "--radius", value: "1rem /* x */", mode: null },
+      { name: "--radius", value: "1rem\n--x: 1", mode: null },
+      { name: "--radius", value: "", mode: null },
+      { name: "radius", value: "1rem", mode: null },
+      { name: "--primary", value: "red", mode: "sepia" },
+    ]) {
+      const result = await dispatch("tokens:write", { projectRoot: fixtureRoot, writes: [write] });
+      expect(result, JSON.stringify(write)).toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
+    await expect(dispatch("tokens:write", { projectRoot: fixtureRoot, writes: [] })).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe("violations (T4.6)", () => {
+  it("lists the project's violations with the kept ones marked", async () => {
+    const { dispatch } = setup();
+    const result = await dispatch("violations:list", { projectRoot: fixtureRoot });
+    expect(result).toMatchObject({ ok: true, value: { errors: [] } });
+  });
+
+  it("validates promote and keep requests", async () => {
+    const { dispatch } = setup();
+    const violation = { file: "src/pages/HomePage.tsx", offset: 10, value: "rounded-[14px]" };
+    for (const bad of [
+      { projectRoot: fixtureRoot, violation, name: "Hero" },
+      { projectRoot: fixtureRoot, violation, name: "" },
+      { projectRoot: fixtureRoot, violation: { ...violation, file: "/etc/passwd.tsx" }, name: "hero" },
+      { projectRoot: fixtureRoot, violation: { ...violation, file: "src/styles/globals.css" }, name: "hero" },
+      { projectRoot: fixtureRoot, violation: { ...violation, offset: -1 }, name: "hero" },
+    ]) {
+      await expect(dispatch("violations:promote", bad), JSON.stringify(bad)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
+    await expect(dispatch("violations:keep", { projectRoot: fixtureRoot, violation: { ...violation, file: "../x.tsx" } })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "bad-request" },
+    });
   });
 });

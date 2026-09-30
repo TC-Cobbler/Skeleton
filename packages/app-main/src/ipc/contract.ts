@@ -2,10 +2,10 @@
 // git, child processes, AST). This is the only module the renderer imports from
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
-import type { PageTree, RouteInfo } from "@skeleton/core";
+import type { PageTree, RouteInfo, Theme, TokenUsage, TokenWrite, ViolationDetail } from "@skeleton/core";
 import type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
-export type { PageTree, UiNode, NodeKind, RouteInfo } from "@skeleton/core";
+export type { PageTree, UiNode, NodeKind, RouteInfo, ColourMode, Theme, ThemeToken, TokenGroup, TokenUsage, TokenWrite, ViolationDetail, ViolationProperty, PromoteKind } from "@skeleton/core";
 export type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
 /** A page's parsed tree plus the version of the text it was parsed from (core's sourceVersion). */
@@ -263,6 +263,60 @@ export interface PageEditResult {
   unchecked: string | null;
 }
 
+/** The project's design tokens (T4.1), read from its globals.css. */
+export interface TokenSheet extends Theme {
+  /** Project-relative path of the token file. */
+  file: string;
+  /** What each token affects on the canvas (T4.2), by token name. */
+  usage: Record<string, TokenUsage>;
+}
+
+export interface TokenWriteRequest extends ProjectRootRequest {
+  /** Values to set, each in the mode it applies to; written together as one undoable step. */
+  writes: TokenWrite[];
+}
+
+export interface TokenWriteResult {
+  /** The tokens after the write. */
+  sheet: TokenSheet;
+  history: EditHistory;
+}
+
+/** A violation (T4.6), and whether the user chose to keep it. */
+export interface ViolationItem extends ViolationDetail {
+  /** Acknowledged ("Keep"), in skeleton/config.json. */
+  kept: boolean;
+}
+
+export interface ViolationReport {
+  items: ViolationItem[];
+  /** Files that couldn't be checked, with why. */
+  errors: string[];
+}
+
+/** A violation as listed: re-found by file, offset and class before any fix. */
+export interface ViolationRef {
+  file: string;
+  offset: number;
+  value: string;
+}
+
+export interface ViolationPromoteRequest extends ProjectRootRequest {
+  violation: ViolationRef;
+  /** The new token's name, e.g. "hero" for --radius-hero. */
+  name: string;
+}
+
+export interface ViolationKeepRequest extends ProjectRootRequest {
+  violation: ViolationRef;
+}
+
+export interface ViolationFixResult {
+  /** The class that replaced the override, or null for Keep. */
+  utility: string | null;
+  history: EditHistory;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
@@ -281,6 +335,16 @@ export interface IpcContract {
   "project:page": { request: PageOpRequest; response: PageOpResult };
   /** The curated components and primitives, checked against the project's files (T3.1). */
   "palette:list": { request: ProjectRootRequest; response: Palette };
+  /** The project's design tokens (T4.1). */
+  "tokens:read": { request: ProjectRootRequest; response: TokenSheet };
+  /** Set token values through the token writer (T4.1, T4.4); undoable like any edit. */
+  "tokens:write": { request: TokenWriteRequest; response: TokenWriteResult };
+  /** Every violation in the project's source (T4.6), outside scaffold code. */
+  "violations:list": { request: ProjectRootRequest; response: ViolationReport };
+  /** Make an override a new token, and use it (T4.6). Snapping is a page:edit setClass. */
+  "violations:promote": { request: ViolationPromoteRequest; response: ViolationFixResult };
+  /** Acknowledge a violation, in skeleton/config.json (T4.6). */
+  "violations:keep": { request: ViolationKeepRequest; response: ViolationFixResult };
   /** Pages from the project's router (T2.5). */
   "project:pages": { request: ProjectRootRequest; response: PageList };
   /** File-change revision for re-parsing (T2.6); starts watching on first call. */
@@ -317,6 +381,11 @@ export const CHANNELS = [
   "edit:history",
   "project:page",
   "palette:list",
+  "tokens:read",
+  "tokens:write",
+  "violations:list",
+  "violations:promote",
+  "violations:keep",
   "project:pages",
   "project:changes",
   "project:create",

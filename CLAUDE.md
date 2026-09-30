@@ -12,7 +12,15 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 3: composition: done.** Gates 0–3 passed (see `docs/spike-log.md`, TASKS.md). The canvas edits code through the palette, drag and drop (`insert`), moves (`move`), delete (`remove`), the properties panel (`setProp`, `setText`, `setClass`), page ops, the post-edit pipeline (Prettier on the node, typecheck, rollback) and undo/redo; see `docs/decisions/007`–`009`. Phase 4 (tokens + gizmos) is next: don't start it until asked. No handoff, notes or take-back until Phase 5.
+**Phase 4: tokens + gizmos: done.** Gates 0–4 passed (see `docs/spike-log.md`, TASKS.md). On top of Phase 3's composition (`docs/decisions/007`–`009`), the canvas now tunes the design system:
+
+- a token panel with light and dark values, formulas, and detach/attach
+- a live count of what each token affects
+- gizmo handles with live preview and three scopes (component token or scale step, Shift for the global token, Alt for this element only)
+- a colour picker that edits the mode on screen
+- a violations panel with snap, promote and keep
+
+See `docs/decisions/010`. Phase 5 (handoff loop) is next: don't start it until asked. No handoff, notes or take-back until Phase 5.
 
 ---
 

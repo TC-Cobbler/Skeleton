@@ -138,7 +138,7 @@ function PropControl({ prop, value, onChange }: { prop: PropSchema; value: PropV
 }
 
 /** A text field that edits on blur or Enter (Escape reverts), not on every keystroke. */
-function TextInput({ label, value, type = "text", onCommit }: { label: string; value: string; type?: "text" | "number"; onCommit: (text: string) => void }) {
+export function TextInput({ label, value, type = "text", onCommit }: { label: string; value: string; type?: "text" | "number"; onCommit: (text: string) => void }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {

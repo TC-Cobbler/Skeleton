@@ -26,11 +26,17 @@ import {
   setProp,
   setRoutePath,
   setText,
+  setTokens,
+  TokenError,
+  describeViolations,
+  promoteViolation,
   type EditResult,
+  type TokenWrite,
   type RouteInfo,
 } from "@skeleton/core";
-import { componentFor, pageNameError, PALETTE, renderPage, templateImports } from "@skeleton/templates";
-import type { EditHistory, EditIntent, HistoryStepResult, PageEditResult, PageIntent, PageOpResult } from "../ipc/contract.js";
+import { componentFor, GLOBALS_CSS, pageNameError, PALETTE, renderPage, templateImports } from "@skeleton/templates";
+import type { EditHistory, EditIntent, HistoryStepResult, PageEditResult, PageIntent, PageOpResult, ViolationRef } from "../ipc/contract.js";
+import { CONFIG_FILE, designContext, readKept } from "./violations.js";
 import { introduced, type Checker, type Diagnostic } from "./checker.js";
 import { formatEdited } from "./format.js";
 
@@ -92,6 +98,83 @@ export class Editor {
   /** Add, rename or delete a page: its route in src/router.tsx and its file (T3.6). */
   page(projectRoot: string, intent: PageIntent): Promise<PageOpResult> {
     return this.enqueue(projectRoot, () => this.runPage(projectRoot, intent));
+  }
+
+  /**
+   * Set token values in globals.css through the token writer (T4.1). One undoable
+   * step; CSS isn't typechecked, so it's written as it is.
+   */
+  tokens(projectRoot: string, writes: readonly TokenWrite[]): Promise<{ file: string; css: string }> {
+    return this.enqueue(projectRoot, async () => {
+      const before = await this.io.readFile(path.join(projectRoot, GLOBALS_CSS));
+      let after: string;
+      try {
+        after = setTokens(before, writes);
+      } catch (cause) {
+        if (cause instanceof TokenError) throw new EditRefused(`token write refused: ${cause.message}`, { cause });
+        throw cause;
+      }
+      if (after !== before) {
+        const changes = [{ file: GLOBALS_CSS, before, after }];
+        await this.commit(projectRoot, changes);
+        this.record(projectRoot, tokenLabel(writes), changes);
+      }
+      return { file: GLOBALS_CSS, css: after };
+    });
+  }
+
+  /**
+   * Promote an override to a new token and use it (T4.6): the token is created in
+   * globals.css and the class replaced on its element, as one undoable step.
+   */
+  promote(projectRoot: string, ref: ViolationRef, name: string): Promise<{ utility: string }> {
+    return this.enqueue(projectRoot, async () => {
+      const ctx = await designContext(this.io, projectRoot);
+      const absolute = path.join(projectRoot, ref.file);
+      const source = await this.io.readFile(absolute);
+      const detail = describeViolations(source, ref.file, ctx).find((v) => v.offset === ref.offset && v.value === ref.value);
+      if (!detail) throw new EditRefused(`${ref.value} is no longer at that place in ${ref.file}; the list was out of date`);
+      const id = detail.element?.id;
+      if (!detail.editable || !id) throw new EditRefused(`${ref.value} is in agent code, so it can't be changed from here`);
+      let css: string;
+      let utility: string;
+      let page: string;
+      try {
+        ({ css, utility } = promoteViolation(ctx.css, detail, name, ctx));
+        page = setClass(source, id, [utility], [ref.value]).source;
+      } catch (cause) {
+        if (cause instanceof TokenError || cause instanceof EditOpError) throw new EditRefused(`promote refused: ${cause.message}`, { cause });
+        throw cause;
+      }
+      page = await formatEdited(page, id, absolute);
+      const changes = [
+        { file: GLOBALS_CSS, before: ctx.css, after: css },
+        { file: ref.file, before: source, after: page },
+      ];
+      await this.commitChecked(projectRoot, changes);
+      this.record(projectRoot, `Promote ${ref.value} to a token`, changes);
+      return { utility };
+    });
+  }
+
+  /** Keep a violation (T4.6): acknowledged in skeleton/config.json, so it's listed as kept. */
+  keep(projectRoot: string, ref: ViolationRef): Promise<void> {
+    return this.enqueue(projectRoot, async () => {
+      const source = await this.io.readFile(path.join(projectRoot, ref.file));
+      // Only the element is needed here, not the nearest token.
+      const found = describeViolations(source, ref.file, { css: "", palette: {} }).find((v) => v.offset === ref.offset && v.value === ref.value);
+      if (!found) throw new EditRefused(`${ref.value} is no longer at that place in ${ref.file}; the list was out of date`);
+      const id = found.element?.id ?? null;
+      const configPath = path.join(projectRoot, CONFIG_FILE);
+      const before = await this.io.readFile(configPath);
+      const config = JSON.parse(before) as Record<string, unknown>;
+      const kept = readKept(before);
+      if (kept.some((k) => k.file === ref.file && k.id === id && k.value === ref.value)) return;
+      config["acknowledgedViolations"] = [...kept, { file: ref.file, id, value: ref.value }];
+      const changes = [{ file: CONFIG_FILE, before, after: `${JSON.stringify(config, null, 2)}\n` }];
+      await this.commit(projectRoot, changes);
+      this.record(projectRoot, `Keep ${ref.value}`, changes);
+    });
   }
 
   /** What Undo and Redo would do next. */
@@ -431,6 +514,13 @@ function labelFor(edit: EditIntent, before: string): string {
     case "setClass":
       return `Change layout of ${nameOf(edit.id)}`;
   }
+}
+
+/** "Set --radius-button", "Set --primary (dark)", "Set 2 tokens". */
+function tokenLabel(writes: readonly TokenWrite[]): string {
+  const [first] = writes;
+  if (!first || writes.length > 1) return `Set ${writes.length} tokens`;
+  return `Set ${first.name}${first.mode === "dark" ? " (dark)" : ""}`;
 }
 
 /** One file's change: `before: null` creates it, `after: null` deletes it. */

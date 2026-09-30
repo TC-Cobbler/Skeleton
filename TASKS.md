@@ -137,28 +137,43 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 4 — Tokens + gizmos
 
-- [ ] **T4.1** Token panel with every token, light/dark values side by side, and exact inputs. Derived tokens show their formula, with a detach toggle.
-- [ ] **T4.2** Token-to-element map: which elements each token affects (for the live count and highlighting).
-- [ ] **T4.3** Gizmo handles in the overlay:
-  - [ ] radius corner handle
-  - [ ] gap handles between siblings
-  - [ ] padding handles on stack edges
-  - [ ] type baseline handle (steps through the scale)
-  - [ ] border-width edge handle
-  - [ ] colour swatch chip → picker
-- [ ] **T4.4** Live drag: update CSS variables in the webview during the drag (no file write). Write to disk on release.
-- [ ] **T4.5** Scope modifiers:
+- [x] **T4.1** Token panel with every token, light/dark values side by side, and exact inputs. Derived tokens show their formula, with a detach toggle.
+- [x] **T4.2** Token-to-element map: which elements each token affects (for the live count and highlighting).
+- [x] **T4.3** Gizmo handles in the overlay:
+  - [x] radius corner handle
+  - [x] gap handles between siblings
+  - [x] padding handles on stack edges
+  - [x] type baseline handle (steps through the scale)
+  - [x] border-width edge handle
+  - [x] colour swatch chip → picker
+- [x] **T4.4** Live drag: update CSS variables in the webview during the drag (no file write). Write to disk on release.
+- [x] **T4.5** Scope modifiers:
   - plain drag → component token
   - Shift → global token
   - Alt → instance override (arbitrary class)
 
   A hover label shows the scope before the drag starts.
-- [ ] **T4.6** Violations panel:
+- [x] **T4.6** Violations panel:
   - list every violation with element, property, value and nearest token
   - actions: snap to token / promote to component token / keep (acknowledged, stored in `/skeleton/config.json`)
-- [ ] **T4.7** Colour edits target the mode currently shown (light/dark).
+- [x] **T4.7** Colour edits target the mode currently shown (light/dark).
 
 **Gate 4:** PRD flow F3 passes in all three scopes, in both light and dark mode.
+
+**Gate 4: passed** (2026-09-30) on a newly created project, with the real mouse, in light and then dark mode (`packages/app-main/e2e/gate4.test.ts`; 6 of 6 consecutive runs). The page has three Buttons, one of them inside a Card. Each drag is on the first Button's radius handle:
+
+| Scope | Live, during the drag | Written on release |
+|---|---|---|
+| Plain drag | All three Buttons follow (the label says "3 elements"); `globals.css` untouched | One line: `--radius-button: calc(var(--radius) * k)`, still derived from `--radius` |
+| Shift | Derived radii follow, the Card's included | One line: `--radius` in `:root`. Buttons and Card come to base × their factor |
+| Alt | Only that Button | `rounded-[Npx]` on that Button, one hunk around its element; `globals.css` untouched; the Violations tab shows 1 |
+
+- **Both modes:** the canvas is checked to be in dark mode (`.dark` on the app's `<html>`) for the second pass. The Alt edit is undone between passes, so each starts from the same page.
+- **What the gate found (fixed; see ADR 010's amendment):**
+  - An Alt radius on a shadcn component lost to its own `rounded-button` once written. The scaffold's `cn` now tells tailwind-merge that named radii are radii.
+  - Synthetic pointer moves cancelled gizmo drags.
+  - The radius dot moved as the radius changed.
+- **Caveat, KI-1 (`docs/known-issues.md`):** a gizmo press lost by Chromium starts no drag and writes nothing. The test retries it (1 retry in 6 runs). The page is written directly rather than built from the palette (Gate 3 covers that): palette drops are flaky in the test harness too (KI-1, and an uninvestigated wrong-entry drop, both in `docs/known-issues.md`).
 
 ---
 

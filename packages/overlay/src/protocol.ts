@@ -28,6 +28,30 @@ export interface DropTarget {
   index: number;
 }
 
+/** What a token affects (T4.2), from core's tokenUsage. */
+export interface TokenUsage {
+  /** Regex sources matching base utilities (variants stripped) that read the token. */
+  classes: string[];
+  /** Base-layer selectors styled with the token. */
+  selectors: string[];
+}
+
+/** A token as the gizmos need it (T4.3): the value in the mode shown, and what it comes to. */
+export interface GizmoToken {
+  name: string;
+  value: string;
+  /** The literal the value comes to (e.g. "0.5rem"), or null. */
+  resolved: string | null;
+  /** A colour token: colour utilities on the selection get a swatch chip. */
+  colour: boolean;
+}
+
+/** What releasing a gizmo drag writes (T4.4): a token value, or a class on the selected element. */
+export type GizmoCommit =
+  | { kind: "token"; name: string; value: string }
+  /** Replace the element's classes matching the regex source `remove` with `add`. */
+  | { kind: "class"; remove: string; add: string };
+
 export type HostMessage =
   /**
    * The page being shown and its nodes, parsed from the file text whose sourceVersion
@@ -48,7 +72,20 @@ export type HostMessage =
   /** The drag left this frame, ended or was cancelled; also cancels a move drag in the frame (Escape). */
   | { source: "skeleton-host"; type: "drag-end" }
   /** Load `path` (a same-origin path), replacing the current history entry. */
-  | { source: "skeleton-host"; type: "navigate"; path: string };
+  | { source: "skeleton-host"; type: "navigate"; path: string }
+  /** Count what each token affects and report `token-counts` as the page changes (T4.2); null stops. */
+  | { source: "skeleton-host"; type: "token-usage"; usage: Record<string, TokenUsage> | null }
+  /** Outline every element the token affects; null clears. */
+  | { source: "skeleton-host"; type: "token-highlight"; name: string | null }
+  /**
+   * What the gizmos on the selected element (`key`) can do (T4.3): the tokens, the
+   * spacing scale, and why its classes can't be edited (null when they can).
+   */
+  | { source: "skeleton-host"; type: "gizmos"; key: string; tokens: GizmoToken[]; spacingSteps: number[]; classEdits: string | null }
+  /** The last gizmo commit was written (the preview stays until the page updates) or failed (it goes now). */
+  | { source: "skeleton-host"; type: "gizmo-done"; ok: boolean }
+  /** Preview CSS on the page, with the selected element as the instance target (the colour picker, T4.4); null clears. */
+  | { source: "skeleton-host"; type: "preview"; css: string | null };
 
 export interface NodeBox {
   key: string;
@@ -78,7 +115,13 @@ export type OverlayMessage =
   /** The user dragged the node at `key` on the canvas and dropped it at `target` (T3.3). */
   | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget }
   /** A Skeleton shortcut pressed while the frame has focus, in select mode (Delete, undo…). */
-  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean };
+  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean }
+  /** How many rendered elements each token affects (T4.2): after `token-usage`, and when it changes. */
+  | { source: "skeleton-overlay"; type: "token-counts"; counts: Record<string, number> }
+  /** A gizmo drag on the node at `key` was released (T4.4): write this. */
+  | { source: "skeleton-overlay"; type: "gizmo-commit"; key: string; commit: GizmoCommit }
+  /** The colour chip for `utility` (bg, text, border) on the node at `key` was clicked; `alt` asks for this element only. */
+  | { source: "skeleton-overlay"; type: "colour-chip"; key: string; utility: string; token: string; alt: boolean };
 
 export function isOverlayMessage(value: unknown): value is OverlayMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -101,9 +144,41 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
       return typeof v["key"] === "string" && isDropTarget(v["target"]);
     case "key":
       return typeof v["key"] === "string" && typeof v["mod"] === "boolean" && typeof v["shift"] === "boolean";
+    case "token-counts":
+      return isRecordOf(v["counts"], (n) => Number.isInteger(n));
+    case "gizmo-commit":
+      return typeof v["key"] === "string" && isGizmoCommit(v["commit"]);
+    case "colour-chip":
+      return typeof v["key"] === "string" && typeof v["utility"] === "string" && typeof v["token"] === "string" && typeof v["alt"] === "boolean";
     default:
       return false;
   }
+}
+
+function isRecordOf(value: unknown, check: (v: unknown) => boolean): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every(check);
+}
+
+const isStringList = (value: unknown): boolean => Array.isArray(value) && value.every((s) => typeof s === "string");
+
+function isTokenUsage(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const u = value as Record<string, unknown>;
+  return isStringList(u["classes"]) && isStringList(u["selectors"]);
+}
+
+function isGizmoToken(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const t = value as Record<string, unknown>;
+  return typeof t["name"] === "string" && typeof t["value"] === "string" && (t["resolved"] === null || typeof t["resolved"] === "string") && typeof t["colour"] === "boolean";
+}
+
+function isGizmoCommit(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as Record<string, unknown>;
+  if (c["kind"] === "token") return typeof c["name"] === "string" && typeof c["value"] === "string";
+  if (c["kind"] === "class") return typeof c["remove"] === "string" && typeof c["add"] === "string";
+  return false;
 }
 
 function isDropTarget(value: unknown): value is DropTarget {
@@ -137,6 +212,23 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return true;
     case "navigate":
       return typeof v["path"] === "string" && v["path"].startsWith("/") && !v["path"].startsWith("//");
+    case "token-usage":
+      return v["usage"] === null || isRecordOf(v["usage"], isTokenUsage);
+    case "token-highlight":
+      return v["name"] === null || typeof v["name"] === "string";
+    case "gizmos":
+      return (
+        typeof v["key"] === "string" &&
+        Array.isArray(v["tokens"]) &&
+        v["tokens"].every(isGizmoToken) &&
+        Array.isArray(v["spacingSteps"]) &&
+        v["spacingSteps"].every((n) => Number.isFinite(n)) &&
+        (v["classEdits"] === null || typeof v["classEdits"] === "string")
+      );
+    case "gizmo-done":
+      return typeof v["ok"] === "boolean";
+    case "preview":
+      return v["css"] === null || (typeof v["css"] === "string" && v["css"].length < 10_000);
     default:
       return false;
   }

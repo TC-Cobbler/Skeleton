@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppInfo, EditHistory, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
-import type { DropTarget } from "@skeleton/overlay/protocol";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite, UiNode, ViolationItem } from "@skeleton/app-main/ipc";
+import type { DropTarget, GizmoCommit } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
-import { Canvas, type PreviewLayout } from "./Canvas.js";
+import { Canvas, type GizmoContext, type PreviewLayout } from "./Canvas.js";
+import { COLOUR_GROUP } from "./colour.js";
+import { ColourPanel, type ColourChip } from "./ColourPanel.js";
 import { useCanvasDrag } from "./canvas/drag.js";
 import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
 import { PropertiesPanel } from "./PropertiesPanel.js";
@@ -18,6 +20,8 @@ import { useDevServer } from "./useDevServer.js";
 import { usePageTree } from "./usePageTree.js";
 import { useProjectRevision } from "./useProjectRevision.js";
 import { ProjectPicker } from "./ProjectPicker.js";
+import { TokensPanel, useTokens } from "./TokensPanel.js";
+import { useViolations, ViolationsPanel } from "./ViolationsPanel.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
@@ -72,6 +76,14 @@ export function App() {
   );
 }
 
+/** Why gizmos can't edit an element's classes (instance overrides, scale steps), or null when they can. */
+function classEditsBlocked(node: UiNode): string | null {
+  if (node.kind === "locked") return "it's a locked block: its classes are agent code";
+  if (!node.id) return "it has no data-ui-id";
+  if (node.protectedProps.includes("className")) return "its className is set by agent code";
+  return null;
+}
+
 /** Shown until the router has been read. */
 const DEFAULT_PAGE = "src/pages/HomePage.tsx";
 
@@ -116,6 +128,8 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [revision, setRevision] = useState(0);
   const pages = usePages(project.projectRoot, revision);
   const palette = usePalette(project.projectRoot, revision);
+  const tokens = useTokens(project.projectRoot, revision);
+  const violations = useViolations(project.projectRoot, revision);
   const [pathname, setPathname] = useState("/");
   const [navigate, setNavigate] = useState<{ path: string } | null>(null);
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
@@ -154,14 +168,18 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     [pushToast],
   );
   const edit = useCallback(
-    (intent: EditIntent, after?: () => void) => {
-      if (!file) return;
+    (intent: EditIntent, after?: () => void, settled?: (ok: boolean) => void) => {
+      if (!file) {
+        settled?.(false);
+        return;
+      }
       const epoch = selectionEpoch.current;
       call("page:edit", { projectRoot: project.projectRoot, file, edit: intent }).then(
         (result) => {
           page.reload();
           setRevision((r) => r + 1);
           noteUnchecked(result.unchecked);
+          settled?.(true);
           if (selectionEpoch.current !== epoch) return;
           if (result.select) selectId(result.select);
           after?.();
@@ -169,12 +187,119 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         (err: unknown) => {
           // A rolled-back edit did touch the file: re-read it either way.
           page.reload();
+          settled?.(false);
           setEditError(err instanceof Error ? err.message.replace(/^page:edit: /, "") : String(err));
         },
       );
     },
     [file, project.projectRoot, page.reload, selectId, setEditError, noteUnchecked],
   );
+  // Token writes (T4.1): through the token writer in main, undoable like edits.
+  const setTokenSheet = tokens.set;
+  const writeTokens = useCallback(
+    (writes: TokenWrite[], settled?: (ok: boolean) => void) => {
+      call("tokens:write", { projectRoot: project.projectRoot, writes }).then(
+        (result) => {
+          setTokenSheet(result.sheet);
+          setRevision((r) => r + 1);
+          settled?.(true);
+        },
+        (err: unknown) => {
+          setRevision((r) => r + 1);
+          settled?.(false);
+          setEditError(err instanceof Error ? err.message.replace(/^tokens:write: /, "") : String(err));
+        },
+      );
+    },
+    [project.projectRoot, setTokenSheet, setEditError],
+  );
+  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens" | "violations">("element");
+  // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
+  const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
+  const [tokenHover, setTokenHover] = useState<string | null>(null);
+  // Always counted: gizmo drags show how many elements they affect (T4.2, T4.4).
+  const tokenUsage = tokens.sheet?.usage ?? null;
+  useEffect(() => {
+    if (inspectorTab !== "tokens") setTokenHover(null);
+  }, [inspectorTab]);
+  const [dark, setDark] = useState(false);
+  // Gizmos (T4.3–T4.5): what the selected element's handles can do, and their writes.
+  const [gizmoDone, setGizmoDone] = useState<{ ok: boolean } | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [colourChip, setColourChip] = useState<ColourChip | null>(null);
+  const selectedForGizmos = page.nodes.find((n) => n.key === selected) ?? null;
+  const spacingSteps = useMemo(
+    () =>
+      (palette.palette?.layout.stack.find((g) => g.id === "gap")?.options ?? [])
+        .map((o) => (o.class ? Number(o.class.slice("gap-".length)) : NaN))
+        .filter((n) => Number.isFinite(n)),
+    [palette.palette],
+  );
+  const gizmos = useMemo((): GizmoContext | null => {
+    if (!selectedForGizmos || !tokens.sheet) return null;
+    return {
+      key: selectedForGizmos.key,
+      tokens: tokens.sheet.tokens.map((t) => ({ name: t.name, value: dark && t.dark !== null ? t.dark : t.value, resolved: t.resolved, colour: t.group === "colour" })),
+      spacingSteps,
+      classEdits: classEditsBlocked(selectedForGizmos.node),
+    };
+  }, [selectedForGizmos, tokens.sheet, dark, spacingSteps]);
+  useEffect(() => setColourChip(null), [selected]);
+  const done = useCallback((ok: boolean) => setGizmoDone({ ok }), []);
+  /** Replace the element's classes matching `remove` (a regex source) with `add`. */
+  const setClassFor = (key: string, remove: string, add: string) => {
+    const node = page.nodes.find((n) => n.key === key)?.node;
+    const blocked = node ? classEditsBlocked(node) : "it isn't on the page any more";
+    if (!node?.id || blocked) {
+      setEditError(`Can't change this element: ${blocked ?? "it has no data-ui-id"}`);
+      done(false);
+      return;
+    }
+    const re = new RegExp(remove);
+    const classes = typeof node.props["className"] === "string" ? node.props["className"].split(/\s+/).filter(Boolean) : [];
+    edit({ op: "setClass", id: node.id, add: [add], remove: classes.filter((c) => re.test(c)) }, undefined, done);
+  };
+  const onGizmoCommit = (key: string, commit: GizmoCommit) => {
+    if (commit.kind === "token") writeTokens([{ name: commit.name, value: commit.value, mode: null }], done);
+    else setClassFor(key, commit.remove, commit.add);
+  };
+  // Violations (T4.6): snap is a setClass in the violation's file; promote and keep go to main.
+  const fixViolation = (task: Promise<unknown>, channel: string) => {
+    task.then(
+      () => {
+        page.reload();
+        setRevision((r) => r + 1);
+      },
+      (err: unknown) => {
+        page.reload();
+        setRevision((r) => r + 1);
+        setEditError(err instanceof Error ? err.message.replace(new RegExp(`^${channel}: `), "") : String(err));
+      },
+    );
+  };
+  const ref = (v: ViolationItem) => ({ file: v.file, offset: v.offset, value: v.value });
+  const violationActions = {
+    onSelect: (v: ViolationItem) => {
+      const id = v.element?.id;
+      if (v.file !== file) {
+        const target = pages.list?.pages.find((p) => p.file === v.file && !p.dynamic);
+        if (target) {
+          setPathname(target.path);
+          setNavigate({ path: target.path });
+        }
+      }
+      if (id) selectId(id);
+    },
+    onSnap: (v: ViolationItem) => {
+      if (!v.element?.id || !v.nearest) return;
+      const intent: EditIntent = { op: "setClass", id: v.element.id, add: [v.nearest.utility], remove: [v.value] };
+      fixViolation(call("page:edit", { projectRoot: project.projectRoot, file: v.file, edit: intent }), "page:edit");
+    },
+    onPromote: (v: ViolationItem, name: string) =>
+      fixViolation(call("violations:promote", { projectRoot: project.projectRoot, violation: ref(v), name }), "violations:promote"),
+    onKeep: (v: ViolationItem) => fixViolation(call("violations:keep", { projectRoot: project.projectRoot, violation: ref(v) }), "violations:keep"),
+  };
+  const activeViolations = violations.report?.items.filter((v) => !v.kept).length ?? 0;
   const moveNode = (key: string, target: DropTarget) => {
     const moved = page.nodes.find((n) => n.key === key)?.node;
     const parentKey = parentKeyOf(key);
@@ -294,7 +419,6 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
   const [layout, setLayout] = useState<PreviewLayout>("desktop");
-  const [dark, setDark] = useState(false);
   const [treeHover, setTreeHover] = useState<string | null>(null);
   // What the overlay last mapped, and for which version of the page file.
   const [mapped, setMapped] = useState<{ version: string; keys: Set<string> } | null>(null);
@@ -380,24 +504,63 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         />
       </aside>
       <aside className="inspector-panel" aria-label="Inspector">
-        <SelectionPanel
-          projectRoot={project.projectRoot}
-          file={file}
-          node={selectedNode?.node ?? null}
-          hovered={hovered !== null}
-          cannotDelete={selected ? deletion(selected).reason : null}
-          confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
-          onDelete={() => selected && requestDelete(selected)}
-          onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
-          onCancel={() => setConfirmDelete(null)}
-        />
-        {selectedNode && (
-          <PropertiesPanel
-            node={selectedNode.node}
-            schema={palette.palette?.elements[selectedNode.node.name] ?? null}
-            layout={palette.palette?.layout ?? null}
-            onEdit={(intent) => edit(intent)}
-          />
+        <div className="segmented tabs" role="tablist" aria-label="Inspector">
+          {(["element", "tokens", "violations"] as const).map((tab) => (
+            <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
+              {tab === "element" ? "Element" : tab === "tokens" ? "Tokens" : `Violations${activeViolations > 0 ? ` (${activeViolations})` : ""}`}
+            </button>
+          ))}
+        </div>
+        {inspectorTab === "violations" && <ViolationsPanel report={violations.report} error={violations.error} {...violationActions} />}
+        {inspectorTab === "tokens" && (
+          <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={tokenCounts} onWrite={writeTokens} onHover={setTokenHover} />
+        )}
+        {inspectorTab === "element" && (
+          <>
+            {colourChip && colourChip.key === selected && (
+              <ColourPanel
+                chip={colourChip}
+                token={tokens.sheet?.tokens.find((t) => t.name === colourChip.token) ?? null}
+                dark={dark}
+                classEdits={gizmos ? gizmos.classEdits : "nothing selected"}
+                onPreview={setPreview}
+                onToken={(value) => {
+                  const token = tokens.sheet?.tokens.find((t) => t.name === colourChip.token);
+                  writeTokens([{ name: colourChip.token, value, mode: token?.dark != null && dark ? "dark" : token?.dark != null ? "light" : null }], (ok) => {
+                    done(ok);
+                    setPreview(null);
+                  });
+                }}
+                onInstance={(utility, cls) => {
+                  setClassFor(colourChip.key, COLOUR_GROUP[utility] ?? "^$", cls);
+                  setPreview(null);
+                }}
+                onClose={() => {
+                  setPreview(null);
+                  setColourChip(null);
+                }}
+              />
+            )}
+            <SelectionPanel
+              projectRoot={project.projectRoot}
+              file={file}
+              node={selectedNode?.node ?? null}
+              hovered={hovered !== null}
+              cannotDelete={selected ? deletion(selected).reason : null}
+              confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
+              onDelete={() => selected && requestDelete(selected)}
+              onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
+              onCancel={() => setConfirmDelete(null)}
+            />
+            {selectedNode && (
+              <PropertiesPanel
+                node={selectedNode.node}
+                schema={palette.palette?.elements[selectedNode.node.name] ?? null}
+                layout={palette.palette?.layout ?? null}
+                onEdit={(intent) => edit(intent)}
+              />
+            )}
+          </>
         )}
       </aside>
       <Canvas
@@ -424,6 +587,17 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         onDropTarget={canvasDrag.report}
         onMove={moveNode}
         onKey={onShortcut}
+        tokenUsage={tokenUsage}
+        tokenHighlight={tokenHover}
+        onTokenCounts={setTokenCounts}
+        gizmos={gizmos}
+        gizmoDone={gizmoDone}
+        preview={preview}
+        onGizmoCommit={onGizmoCommit}
+        onColourChip={(chip) => {
+          setInspectorTab("element");
+          setColourChip(chip);
+        }}
       />
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (
