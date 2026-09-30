@@ -411,6 +411,77 @@ describe("Editor: post-edit pipeline (T3.7)", () => {
   });
 });
 
+describe("Editor: undo and redo (T3.8)", () => {
+  it("undoes and redoes edits in order, restoring each file exactly", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const v0 = p.home();
+    const card = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "card" });
+    const v1 = p.home();
+    await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "setClass", id: card.select as string, add: ["w-full"], remove: [] });
+    const v2 = p.home();
+    expect(await editor.history(ROOT)).toEqual({ undo: "Change layout of Card", redo: null });
+
+    expect(await editor.undo(ROOT)).toMatchObject({ label: "Change layout of Card", files: ["src/pages/HomePage.tsx"], history: { undo: "Insert Card", redo: "Change layout of Card" } });
+    expect(p.home()).toBe(v1);
+    await editor.undo(ROOT);
+    expect(p.home()).toBe(v0);
+    await expect(editor.undo(ROOT)).rejects.toThrow(/nothing to undo/);
+    await editor.redo(ROOT);
+    expect(p.home()).toBe(v1);
+    await editor.redo(ROOT);
+    expect(p.home()).toBe(v2);
+    await expect(editor.redo(ROOT)).rejects.toThrow(/nothing to redo/);
+  });
+
+  it("drops the redo stack on a new edit", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "badge" });
+    await editor.undo(ROOT);
+    expect((await editor.history(ROOT)).redo).toBe("Insert Badge");
+    await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "button" });
+    expect(await editor.history(ROOT)).toEqual({ undo: "Insert Button", redo: null });
+  });
+
+  it("won't overwrite changes made outside Skeleton since", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "badge" });
+    const page = path.join(ROOT, "src/pages/HomePage.tsx");
+    p.files.set(page, (p.files.get(page) as string).replace("gap-6", "gap-2"));
+    await expect(editor.undo(ROOT)).rejects.toThrow(/can't undo "Insert Badge": src\/pages\/HomePage.tsx changed since/);
+    expect(p.home()).toContain("gap-2");
+    expect((await editor.history(ROOT)).undo).toBe("Insert Badge");
+  });
+
+  it("undoes a page op across files: the page file goes, the router comes back", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const router = p.files.get(path.join(ROOT, "src/router.tsx"));
+    await editor.page(ROOT, { op: "addPage", name: "Orders", path: "/orders" });
+    const undone = await editor.undo(ROOT);
+    expect(undone.label).toBe("Add page /orders");
+    expect(undone.files.sort()).toEqual(["src/pages/OrdersPage.tsx", "src/router.tsx"]);
+    expect(p.files.has(path.join(ROOT, "src/pages/OrdersPage.tsx"))).toBe(false);
+    expect(p.files.get(path.join(ROOT, "src/router.tsx"))).toBe(router);
+    await editor.redo(ROOT);
+    expect(p.files.get(path.join(ROOT, "src/pages/OrdersPage.tsx"))).toContain("export default function OrdersPage");
+  });
+
+  it("doesn't record refused or rolled-back edits", async () => {
+    const p = memoryProject();
+    const checker: Checker = {
+      check: async () => ((p.files.get(path.join(ROOT, "src/pages/HomePage.tsx")) as string).includes("sideways") ? [{ file: "x", line: 1, code: 1, message: "bad" }] : []),
+      dispose: () => undefined,
+    };
+    const editor = new Editor(p.io, { checker: () => checker });
+    await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "setProp", id: p.stackId, key: "direction", value: "sideways" })).rejects.toThrow(EditRolledBack);
+    await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "remove", ref: { id: "ui_zzzzz" }, allowLocked: false })).rejects.toThrow(EditRefused);
+    expect(await editor.history(ROOT)).toEqual({ undo: null, redo: null });
+  });
+});
+
 describe("listSources", () => {
   it("walks src/ for .tsx and .jsx, skipping node_modules, dist and dotfiles", async () => {
     const tree: Record<string, { name: string; dir: boolean }[]> = {

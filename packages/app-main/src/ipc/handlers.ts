@@ -57,7 +57,7 @@ export interface HandlerDeps {
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
   changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
-  editor: Pick<Editor, "apply" | "page">;
+  editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history">;
 }
 
 const REV = /^([0-9a-f]{4,40}|HEAD)$/i;
@@ -159,6 +159,9 @@ const validators: Validators = {
     }
     return defaultPath === undefined ? { title } : { title, defaultPath };
   },
+  "edit:undo": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "edit:redo": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "edit:history": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:page": (raw): PageOpRequest => ({ projectRoot: projectRootOf(raw), page: pageIntentOf((raw as Record<string, unknown>)["page"]) }),
   "palette:list": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
@@ -335,14 +338,11 @@ function createHandlers(deps: HandlerDeps): Handlers {
     );
   return {
     "app:info": async () => deps.appInfo(),
+    "edit:undo": async ({ projectRoot }) => editing(() => deps.editor.undo(projectRoot)),
+    "edit:redo": async ({ projectRoot }) => editing(() => deps.editor.redo(projectRoot)),
+    "edit:history": async ({ projectRoot }) => deps.editor.history(projectRoot),
     "project:page": async ({ projectRoot, page }) => {
-      try {
-        return await deps.editor.page(projectRoot, page);
-      } catch (cause) {
-        if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
-        if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
-        throw cause;
-      }
+      return editing(() => deps.editor.page(projectRoot, page));
     },
     "palette:list": async ({ projectRoot }) => {
       // A component is available when its module exists and exports it.
@@ -383,13 +383,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
     "page:edit": async ({ projectRoot, file, edit }) => {
       await readPage(projectRoot, file); // inside the project, and exists
-      try {
-        return await deps.editor.apply(projectRoot, file, edit);
-      } catch (cause) {
-        if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
-        if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
-        throw cause;
-      }
+      return editing(() => deps.editor.apply(projectRoot, file, edit));
     },
     "project:changes": async ({ projectRoot }) => deps.changes(projectRoot),
     "project:pages": async ({ projectRoot }) => {
@@ -442,6 +436,17 @@ function createHandlers(deps: HandlerDeps): Handlers {
     "devserver:stop": async ({ projectRoot }) => deps.devServer.stop(projectRoot),
     "devserver:status": async ({ projectRoot, sinceSeq }) => deps.devServer.status(projectRoot, sinceSeq),
   };
+}
+
+/** Runs an editor call, turning its refusals and rollbacks into IPC errors. */
+async function editing<T>(task: () => Promise<T>): Promise<T> {
+  try {
+    return await task();
+  } catch (cause) {
+    if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
+    if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
+    throw cause;
+  }
 }
 
 function isNodeError(err: unknown): err is NodeJS.ErrnoException {

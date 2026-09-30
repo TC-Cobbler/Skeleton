@@ -526,3 +526,10 @@ button.danger {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.history {
+  margin-top: 8px;
+}
+.history button {
+  padding: 3px 10px;
+  font-size: 12px;
+}

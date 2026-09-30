@@ -75,6 +75,11 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
           if (page.op === "deletePage" && page.path === "/") throw new EditRefused("it's the only page; add another one first");
           return { path: page.op === "deletePage" ? "/" : page.path, files: [], unchecked: null };
         },
+        undo: async () => {
+          throw new EditRefused("nothing to undo");
+        },
+        redo: async () => ({ label: "Insert Card", files: ["src/pages/HomePage.tsx"], unchecked: null, history: { undo: "Insert Card", redo: null } }),
+        history: async () => ({ undo: null, redo: "Insert Card" }),
       },
       ...overrides,
     },
@@ -420,6 +425,9 @@ describe("page:edit", () => {
           return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0, unchecked: null };
         },
         page: async () => ({ path: null, files: [], unchecked: null }),
+        undo: async () => Promise.reject(new Error("unused")),
+        redo: async () => Promise.reject(new Error("unused")),
+        history: async () => ({ undo: null, redo: null }),
       },
     });
     for (const ref of [{ id: "ui_abcde" }, { parentId: "ui_fghij", index: 2 }]) {
@@ -440,6 +448,9 @@ describe("page:edit", () => {
           return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0, unchecked: null };
         },
         page: async () => ({ path: null, files: [], unchecked: null }),
+        undo: async () => Promise.reject(new Error("unused")),
+        redo: async () => Promise.reject(new Error("unused")),
+        history: async () => ({ undo: null, redo: null }),
       },
     });
     const valid = [
@@ -519,5 +530,15 @@ describe("project:page", () => {
     for (const page of [null, { op: "wipe" }, { op: "addPage", name: "", path: "/x" }, { op: "renamePage", path: "/x", name: null, newPath: null }, { op: "deletePage" }]) {
       await expect(dispatch("project:page", request(page)), JSON.stringify(page)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
     }
+  });
+});
+
+describe("edit history (T3.8)", () => {
+  it("answers history, undo and redo, with refusals as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("edit:history", { projectRoot: fixtureRoot })).resolves.toEqual({ ok: true, value: { undo: null, redo: "Insert Card" } });
+    await expect(dispatch("edit:undo", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: false, error: { code: "edit-refused", message: "nothing to undo" } });
+    await expect(dispatch("edit:redo", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: true, value: { label: "Insert Card" } });
+    await expect(dispatch("edit:undo", { projectRoot: "relative" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
   });
 });

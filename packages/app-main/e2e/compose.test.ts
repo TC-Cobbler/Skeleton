@@ -470,3 +470,59 @@ describe("post-edit pipeline (T3.7)", () => {
     expect(homeFile()).toMatch(new RegExp(`<Stack\\n\\s+data-ui-id="${row}"\\n`));
   });
 });
+
+describe("undo and redo (T3.8)", () => {
+  const history = () => page.getByRole("group", { name: "History" });
+  const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
+
+  it("undoes and redoes a drop with the buttons, restoring the file exactly", async () => {
+    const before = homeFile();
+    await placeFromPalette(page, "badge", canvasFrame(page).getByRole("heading", { name: "Compose" }), { fx: 0.5, fy: 0.9 });
+    const placed = homeFile();
+    await expect.poll(() => history().getByRole("button", { name: "Undo" }).getAttribute("title")).toBe("Undo Insert Badge (Ctrl+Z)");
+    await history().getByRole("button", { name: "Undo" }).click();
+    await expect.poll(homeFile).toBe(before);
+    await waitForCanvas(page, sourceVersion(before));
+    await history().getByRole("button", { name: "Redo" }).click();
+    await expect.poll(homeFile).toBe(placed);
+  });
+
+  it("takes Ctrl+Z and Ctrl+Shift+Z, from Skeleton's window or the canvas", async () => {
+    const placed = homeFile();
+    await page.locator("main > header h1").click(); // focus in Skeleton, not a field
+    await page.keyboard.press("Control+z");
+    await expect.poll(homeFile).not.toBe(placed);
+    const undone = homeFile();
+    await waitForCanvas(page, sourceVersion(undone));
+    // Focus the canvas, then redo from there: the overlay forwards the shortcut.
+    const heading = canvasFrame(page).getByRole("heading", { name: "Compose" });
+    const at = await canvasPoint(page, "canvas-frame", heading);
+    await page.mouse.click(at.x, at.y);
+    await page.keyboard.press("Control+Shift+z");
+    await expect.poll(homeFile).toBe(placed);
+  });
+
+  it("undoes adding a page: the file goes, and the canvas moves to a page that exists", async () => {
+    const pages = page.getByRole("region", { name: "Pages" });
+    await pages.getByRole("button", { name: "Add page" }).click();
+    await pages.getByRole("form", { name: "Add page" }).getByLabel("Name").fill("Scratch");
+    await pages.getByRole("form", { name: "Add page" }).getByRole("button", { name: "Add" }).click();
+    await canvasFrame(page).getByRole("heading", { name: "Scratch" }).waitFor();
+    await history().getByRole("button", { name: "Undo" }).click();
+    await expect.poll(() => readFileSync(path.join(projectRoot, "src/router.tsx"), "utf8")).not.toContain("ScratchPage");
+    await canvasFrame(page).getByRole("heading", { name: "Compose" }).waitFor();
+  });
+
+  it("won't undo over a change made outside Skeleton, and says so", async () => {
+    await placeFromPalette(page, "badge", canvasFrame(page).getByRole("heading", { name: "Compose" }), { fx: 0.5, fy: 0.9 });
+    const outside = homeFile().replace(`className="text-3xl font-semibold"`, `className="text-4xl font-semibold"`);
+    const tmp = path.join(projectRoot, "src/pages/.HomePage.tsx.test.tmp");
+    writeFileSync(tmp, outside);
+    renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
+    await waitForCanvas(page, sourceVersion(outside));
+    await history().getByRole("button", { name: "Undo" }).click();
+    await expect.poll(() => page.getByTestId("edit-error").last().textContent()).toMatch(/can't undo "Insert Badge": src\/pages\/HomePage.tsx changed since/);
+    expect(homeFile()).toBe(outside);
+    expect(idOf(stackId(), "Badge")).toBeTruthy();
+  });
+});

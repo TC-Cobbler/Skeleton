@@ -1,6 +1,6 @@
 # 008: Editing from the canvas
 
-**Status:** accepted · 2026-09-30 · T3.2–T3.7 (applies to all of Phase 3)
+**Status:** accepted · 2026-09-30 · T3.2–T3.8 (applies to all of Phase 3)
 
 ## Context
 
@@ -79,6 +79,14 @@ A drag on a `.map` row therefore moves the whole block, verbatim.
 - Each drag position carries a `seq`, which the overlay echoes. A frame the pointer isn't over answers `null` for that `seq` at once.
 - On release the renderer sends the release position, and drops only on answers for it. If none arrive within 500 ms, nothing is dropped.
 - Move drags recompute the target at the `pointerup` position.
+
+**Undo and redo are the editor's own stack, not git (T3.8).**
+
+- **What's recorded:** every committed edit or page op, per project, as a labelled list of file changes ("Insert Card", "Add page /orders"). Up to 100 are kept for the session. Refused and rolled-back edits aren't recorded, and a new edit clears the redo stack.
+- **How it runs:** undo applies the changes in reverse, and redo replays them, both through the checked pipeline (ADR 009), so they can be rolled back too.
+- **Never over outside changes:** undo or redo refuses, keeping the step, if any file isn't exactly as the step left it (the agent or an editor changed it).
+- **UI:** Undo and Redo buttons, titled with the step. The shortcuts are Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y, from Skeleton's window or forwarded by the overlay. Text fields keep their own undo.
+- **Pages:** after undoing a page op, the canvas moves to a page that still exists.
 
 **The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
 

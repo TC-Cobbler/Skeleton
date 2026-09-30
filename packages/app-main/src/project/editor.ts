@@ -8,6 +8,8 @@ import { format, resolveConfig } from "prettier";
 import {
   addRoute,
   buildIdIndex,
+  buildTree,
+  findNodeById,
   diffSources,
   parseModule,
   EditOpError,
@@ -28,7 +30,7 @@ import {
   type RouteInfo,
 } from "@skeleton/core";
 import { componentFor, pageNameError, PALETTE, renderPage, templateImports } from "@skeleton/templates";
-import type { EditIntent, PageEditResult, PageIntent, PageOpResult } from "../ipc/contract.js";
+import type { EditHistory, EditIntent, HistoryStepResult, PageEditResult, PageIntent, PageOpResult } from "../ipc/contract.js";
 import { introduced, type Checker, type Diagnostic } from "./checker.js";
 import { formatEdited } from "./format.js";
 
@@ -63,9 +65,20 @@ export interface EditorOptions {
   checker?: (projectRoot: string) => Checker | null;
 }
 
+/** One undoable step: what it was, and the file changes it made (T3.8). */
+interface HistoryEntry {
+  label: string;
+  changes: FileChange[];
+}
+
+/** Steps kept per project for undo. */
+const HISTORY_LIMIT = 100;
+
 export class Editor {
   /** Per-project queue: edits apply in order, each against the file as the last one left it. */
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** Per-project undo and redo stacks for this session (T3.8), newest last. */
+  private readonly stacks = new Map<string, { undo: HistoryEntry[]; redo: HistoryEntry[] }>();
 
   constructor(
     private readonly io: EditorIO,
@@ -79,6 +92,64 @@ export class Editor {
   /** Add, rename or delete a page: its route in src/router.tsx and its file (T3.6). */
   page(projectRoot: string, intent: PageIntent): Promise<PageOpResult> {
     return this.enqueue(projectRoot, () => this.runPage(projectRoot, intent));
+  }
+
+  /** What Undo and Redo would do next. */
+  history(projectRoot: string): Promise<EditHistory> {
+    const stack = this.stacks.get(projectRoot);
+    return Promise.resolve({ undo: stack?.undo.at(-1)?.label ?? null, redo: stack?.redo.at(-1)?.label ?? null });
+  }
+
+  /** Undo the newest step (T3.8): its changes in reverse, checked like any edit. */
+  undo(projectRoot: string): Promise<HistoryStepResult> {
+    return this.enqueue(projectRoot, () => this.step(projectRoot, "undo"));
+  }
+
+  /** Redo the newest undone step. */
+  redo(projectRoot: string): Promise<HistoryStepResult> {
+    return this.enqueue(projectRoot, () => this.step(projectRoot, "redo"));
+  }
+
+  private async step(projectRoot: string, direction: "undo" | "redo"): Promise<HistoryStepResult> {
+    const stack = this.stackOf(projectRoot);
+    const from = direction === "undo" ? stack.undo : stack.redo;
+    const to = direction === "undo" ? stack.redo : stack.undo;
+    const entry = from.at(-1);
+    if (!entry) throw new EditRefused(`nothing to ${direction}`);
+    // Undo turns each change around, newest first; redo replays them as they were.
+    const changes =
+      direction === "undo" ? [...entry.changes].reverse().map((c) => ({ file: c.file, before: c.after, after: c.before })) : entry.changes;
+    // Never overwrite what changed outside Skeleton since: every file must be as the step left it.
+    for (const change of changes) {
+      const now = await this.io.readFile(path.join(projectRoot, change.file)).catch((err: unknown) => {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+      });
+      if (now !== change.before) {
+        throw new EditRefused(`can't ${direction} "${entry.label}": ${change.file} changed since, and ${direction === "undo" ? "undoing" : "redoing"} would overwrite that`);
+      }
+    }
+    const unchecked = await this.commitChecked(projectRoot, changes);
+    from.pop();
+    to.push(entry);
+    return { label: entry.label, files: [...new Set(changes.map((c) => c.file))], unchecked, history: await this.history(projectRoot) };
+  }
+
+  private stackOf(projectRoot: string): { undo: HistoryEntry[]; redo: HistoryEntry[] } {
+    let stack = this.stacks.get(projectRoot);
+    if (!stack) {
+      stack = { undo: [], redo: [] };
+      this.stacks.set(projectRoot, stack);
+    }
+    return stack;
+  }
+
+  /** Remember a committed step; a new step ends what could be redone. */
+  private record(projectRoot: string, label: string, changes: FileChange[]): void {
+    const stack = this.stackOf(projectRoot);
+    stack.undo.push({ label, changes });
+    if (stack.undo.length > HISTORY_LIMIT) stack.undo.shift();
+    stack.redo = [];
   }
 
   private enqueue<T>(projectRoot: string, task: () => Promise<T>): Promise<T> {
@@ -134,7 +205,12 @@ export class Editor {
       after = await formatEdited(after, edit.id, absolute);
       parseModule(after);
     }
-    const unchecked = after === before ? null : await this.commitChecked(projectRoot, [{ file, before, after }]);
+    let unchecked: string | null = null;
+    if (after !== before) {
+      const changes = [{ file, before, after }];
+      unchecked = await this.commitChecked(projectRoot, changes);
+      this.record(projectRoot, labelFor(edit, before), changes);
+    }
     const diff = after === result.source ? result.diff : diffSources(before, after);
     return {
       file,
@@ -237,10 +313,12 @@ export class Editor {
           if (!file) throw new EditRefused(`the new route for ${intent.path} doesn't resolve to a page file`);
           if (await exists(file)) throw new EditRefused(`${file} already exists`);
           const page = renderPage(intent.name, await this.projectIds(projectRoot));
-          const unchecked = await this.commitChecked(projectRoot, [
+          const changes = [
             { file, before: null, after: page },
             { file: ROUTER, before: router, after: nextRouter },
-          ]);
+          ];
+          const unchecked = await this.commitChecked(projectRoot, changes);
+          this.record(projectRoot, `Add page ${intent.path}`, changes);
           return { path: intent.path, files: [file, ROUTER], unchecked };
         }
         case "renamePage": {
@@ -266,6 +344,7 @@ export class Editor {
           }
           if (nextRouter !== router) changes.unshift({ file: ROUTER, before: router, after: nextRouter });
           const unchecked = await this.commitChecked(projectRoot, changes);
+          if (changes.length > 0) this.record(projectRoot, `Rename page ${intent.path}`, changes);
           return { path: target, files: changes.map((c) => c.file), unchecked };
         }
         case "deletePage": {
@@ -276,10 +355,12 @@ export class Editor {
           if (users.length > 0) throw new EditRefused(`${page.file} is imported by ${users.join(", ")}; remove those imports first`);
           const source = await read(page.file);
           const nextRouter = removeRoute(router, intent.path).source;
-          const unchecked = await this.commitChecked(projectRoot, [
+          const changes = [
             { file: ROUTER, before: router, after: nextRouter },
             { file: page.file, before: source, after: null },
-          ]);
+          ];
+          const unchecked = await this.commitChecked(projectRoot, changes);
+          this.record(projectRoot, `Delete page ${intent.path}`, changes);
           const next = others.find((r) => r.path === "/" && !r.dynamic) ?? others.find((r) => !r.dynamic) ?? null;
           return { path: next?.path ?? null, files: [ROUTER, page.file], unchecked };
         }
@@ -331,6 +412,26 @@ export class Editor {
 }
 
 const ROUTER = "src/router.tsx";
+
+/** A short name for an edit, for the Undo and Redo buttons: "Insert Card", "Move Button". */
+function labelFor(edit: EditIntent, before: string): string {
+  // `before` parsed already: the op ran on it.
+  const nameOf = (id: string) => findNodeById(buildTree(before).roots, id)?.name ?? "element";
+  switch (edit.op) {
+    case "insert":
+      return `Insert ${PALETTE.find((p) => p.id === edit.paletteId)?.label ?? "element"}`;
+    case "move":
+      return `Move ${"id" in edit.ref ? nameOf(edit.ref.id) : "block"}`;
+    case "remove":
+      return `Delete ${"id" in edit.ref ? nameOf(edit.ref.id) : "block"}`;
+    case "setProp":
+      return `Set ${edit.key} on ${nameOf(edit.id)}`;
+    case "setText":
+      return `Edit text of ${nameOf(edit.id)}`;
+    case "setClass":
+      return `Change layout of ${nameOf(edit.id)}`;
+  }
+}
 
 /** One file's change: `before: null` creates it, `after: null` deletes it. */
 export interface FileChange {

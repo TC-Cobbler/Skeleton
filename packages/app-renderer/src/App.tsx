@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppInfo, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
+import type { AppInfo, EditHistory, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
 import type { DropTarget } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
@@ -221,18 +221,63 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     if (logic.length > 0) setConfirmDelete({ key, logic });
     else removeNode(key, false);
   };
-  const onShortcut = (key: string) => {
-    if ((key === "Delete" || key === "Backspace") && selected) requestDelete(selected);
+  // Undo and redo (T3.8): the session's edit stack in main.
+  const [history, setHistory] = useState<EditHistory>({ undo: null, redo: null });
+  useEffect(() => {
+    let cancelled = false;
+    call("edit:history", { projectRoot: project.projectRoot }).then(
+      (h) => !cancelled && setHistory(h),
+      (err: unknown) => !cancelled && setEditError(err instanceof Error ? err.message : String(err)),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [project.projectRoot, revision, setEditError]);
+  // After undoing a page op, the page on screen may be gone: show one that exists.
+  const [checkPage, setCheckPage] = useState(false);
+  const historyStep = (direction: "undo" | "redo") => {
+    call(direction === "undo" ? "edit:undo" : "edit:redo", { projectRoot: project.projectRoot }).then(
+      (result) => {
+        setHistory(result.history);
+        page.reload();
+        setRevision((r) => r + 1);
+        noteUnchecked(result.unchecked);
+        if (result.files.includes("src/router.tsx")) setCheckPage(true);
+      },
+      (err: unknown) => {
+        page.reload();
+        setRevision((r) => r + 1);
+        setEditError(err instanceof Error ? err.message.replace(/^edit:(undo|redo): /, "") : String(err));
+      },
+    );
+  };
+  useEffect(() => {
+    if (!checkPage || !pages.list) return;
+    setCheckPage(false);
+    if (current?.exists) return;
+    const fallback = pages.list.pages.find((p) => p.exists && !p.dynamic && p.path === "/") ?? pages.list.pages.find((p) => p.exists && !p.dynamic);
+    if (fallback) {
+      setPathname(fallback.path);
+      setNavigate({ path: fallback.path });
+    }
+  }, [checkPage, pages.list, current]);
+
+  const onShortcut = (key: string, mod: boolean, shift: boolean) => {
+    if ((key === "Delete" || key === "Backspace") && !mod && selected) requestDelete(selected);
+    else if (mod && (key === "z" || key === "Z")) historyStep(shift ? "redo" : "undo");
+    else if (mod && (key === "y" || key === "Y")) historyStep("redo");
   };
   const latestShortcut = useRef(onShortcut);
   latestShortcut.current = onShortcut;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
+      // Text fields keep their own keys, undo included.
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (e.key === "Delete" || e.key === "Backspace" || (mod && ["z", "Z", "y", "Y"].includes(e.key))) {
         e.preventDefault();
-        latestShortcut.current(e.key);
+        latestShortcut.current(e.key, mod, e.shiftKey);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -268,6 +313,14 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
           >
             {mode === "select" ? "Select mode" : "Interact mode"}
+          </button>
+        </div>
+        <div className="row history" role="group" aria-label="History">
+          <button type="button" disabled={!history.undo} title={history.undo ? `Undo ${history.undo} (Ctrl+Z)` : "Nothing to undo"} onClick={() => historyStep("undo")}>
+            Undo
+          </button>
+          <button type="button" disabled={!history.redo} title={history.redo ? `Redo ${history.redo} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={() => historyStep("redo")}>
+            Redo
           </button>
         </div>
         <div className="segmented" role="group" aria-label="Preview width">
@@ -370,7 +423,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, seq: canvasDrag.drag.seq, moving: null } : null}
         onDropTarget={canvasDrag.report}
         onMove={moveNode}
-        onKey={(key) => onShortcut(key)}
+        onKey={onShortcut}
       />
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (

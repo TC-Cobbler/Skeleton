@@ -232,6 +232,21 @@ export interface PageOpResult {
   unchecked: string | null;
 }
 
+/** What Undo and Redo would do next (T3.8), as labels like "Insert Button"; null when there's nothing. */
+export interface EditHistory {
+  undo: string | null;
+  redo: string | null;
+}
+
+export interface HistoryStepResult {
+  /** The edit that was undone or redone. */
+  label: string;
+  /** Project-relative files it wrote or deleted. */
+  files: string[];
+  unchecked: string | null;
+  history: EditHistory;
+}
+
 export interface PageEditRequest extends PageTreeRequest {
   edit: EditIntent;
 }
@@ -256,6 +271,12 @@ export interface IpcContract {
   "page:source": { request: PageTreeRequest; response: string };
   /** Apply one canvas edit to a page file (a core edit op) and write it. */
   "page:edit": { request: PageEditRequest; response: PageEditResult };
+  /** Undo the last canvas edit or page op this session (T3.8). */
+  "edit:undo": { request: ProjectRootRequest; response: HistoryStepResult };
+  /** Redo the last undone edit (T3.8). */
+  "edit:redo": { request: ProjectRootRequest; response: HistoryStepResult };
+  /** What Undo and Redo would do next. */
+  "edit:history": { request: ProjectRootRequest; response: EditHistory };
   /** Add, rename or delete a page: its route and its file (T3.6). */
   "project:page": { request: PageOpRequest; response: PageOpResult };
   /** The curated components and primitives, checked against the project's files (T3.1). */
@@ -291,6 +312,9 @@ export const CHANNELS = [
   "page:tree",
   "page:source",
   "page:edit",
+  "edit:undo",
+  "edit:redo",
+  "edit:history",
   "project:page",
   "palette:list",
   "project:pages",
