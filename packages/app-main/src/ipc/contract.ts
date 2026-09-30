@@ -35,6 +35,30 @@ export interface ProjectCreateResponse {
   timings: { write: number; install: number; git: number };
 }
 
+export interface ProjectInfo {
+  projectRoot: string;
+  /** From `skeleton/config.json`. */
+  name: string;
+}
+
+export interface RecentProject extends ProjectInfo {
+  lastOpened: number;
+  /** The folder or its Skeleton config no longer exists. */
+  missing: boolean;
+}
+
+export interface ProjectList {
+  recent: RecentProject[];
+  /** Suggested folder for new projects. */
+  defaultParentDir: string;
+}
+
+export interface ChooseFolderRequest {
+  title: string;
+  /** Show this folder first, if it exists. */
+  defaultPath?: string;
+}
+
 export type DevServerState = "starting" | "running" | "installing" | "stopped" | "crashed" | "failed";
 
 export interface LogLine {
@@ -79,6 +103,11 @@ export interface IpcContract {
   "devserver:start": { request: ProjectRootRequest; response: DevServerStatus };
   "devserver:stop": { request: ProjectRootRequest; response: DevServerStatus };
   "devserver:status": { request: DevServerStatusRequest; response: DevServerStatus };
+  "project:list": { request: null; response: ProjectList };
+  "project:open": { request: ProjectRootRequest; response: ProjectInfo };
+  "project:forget": { request: ProjectRootRequest; response: RecentProject[] };
+  /** Native folder picker; null when cancelled. */
+  "dialog:chooseFolder": { request: ChooseFolderRequest; response: string | null };
 }
 
 export type Channel = keyof IpcContract;
@@ -92,6 +121,10 @@ export const CHANNELS = [
   "devserver:start",
   "devserver:stop",
   "devserver:status",
+  "project:list",
+  "project:open",
+  "project:forget",
+  "dialog:chooseFolder",
 ] as const satisfies readonly Channel[];
 
 // Compile-time check that CHANNELS lists every channel in IpcContract.

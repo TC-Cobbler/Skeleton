@@ -6,7 +6,7 @@ const POLL_MS = 500;
 const MAX_LINES = 500;
 
 /** Start/stop a project's Vite server and follow its log (T1.3). */
-export function DevServerPanel({ projectRoot }: { projectRoot: string }) {
+export function DevServerPanel({ projectRoot, autoStart = false }: { projectRoot: string; autoStart?: boolean }) {
   const [status, setStatus] = useState<DevServerStatus | null>(null);
   const [lines, setLines] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +46,13 @@ export function DevServerPanel({ projectRoot }: { projectRoot: string }) {
       clearInterval(timer);
     };
   }, [projectRoot, apply]);
+
+  useEffect(() => {
+    if (!autoStart || !projectRoot) return;
+    call("devserver:start", { projectRoot }).catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
+  }, [autoStart, projectRoot]);
 
   async function run(channel: "devserver:start" | "devserver:stop") {
     setError(null);

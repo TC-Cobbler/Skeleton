@@ -8,7 +8,11 @@ import {
   isChannel,
   type AppInfo,
   type Channel,
+  type ChooseFolderRequest,
   type DevServerStatus,
+  type ProjectInfo,
+  type ProjectList,
+  type RecentProject,
   type DevServerStatusRequest,
   type ProjectRootRequest,
   type IpcError,
@@ -31,6 +35,14 @@ export interface HandlerDeps {
     stop: (projectRoot: string) => Promise<DevServerStatus>;
     status: (projectRoot: string, sinceSeq: number) => DevServerStatus;
   };
+  projects: {
+    list: () => Promise<ProjectList>;
+    /** The project's info, or null if the folder isn't a Skeleton project. */
+    info: (projectRoot: string) => Promise<ProjectInfo | null>;
+    touch: (project: ProjectInfo) => Promise<void>;
+    forget: (projectRoot: string) => Promise<RecentProject[]>;
+  };
+  chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
 }
 
 function projectRootOf(raw: unknown): string {
@@ -103,6 +115,21 @@ const validators: Validators = {
     if (nameError) throw new HandlerError("bad-request", nameError);
     return { parentDir, name };
   },
+  "project:list": (raw) => {
+    if (raw !== null) throw new HandlerError("bad-request", "expects null");
+    return null;
+  },
+  "project:open": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "project:forget": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "dialog:chooseFolder": (raw): ChooseFolderRequest => {
+    if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "expects { title }");
+    const { title, defaultPath } = raw as Record<string, unknown>;
+    if (typeof title !== "string" || title.length > 200) throw new HandlerError("bad-request", "title must be a short string");
+    if (defaultPath !== undefined && (typeof defaultPath !== "string" || !path.isAbsolute(defaultPath))) {
+      throw new HandlerError("bad-request", "defaultPath must be an absolute path");
+    }
+    return defaultPath === undefined ? { title } : { title, defaultPath };
+  },
   "devserver:start": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "devserver:stop": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "devserver:status": (raw): DevServerStatusRequest => {
@@ -148,7 +175,20 @@ function createHandlers(deps: HandlerDeps): Handlers {
       }
       return buildTree(source);
     },
-    "project:create": async (request) => deps.createProject(request),
+    "project:create": async (request) => {
+      const created = await deps.createProject(request);
+      await deps.projects.touch({ projectRoot: created.projectRoot, name: request.name });
+      return created;
+    },
+    "project:list": async () => deps.projects.list(),
+    "project:open": async ({ projectRoot }) => {
+      const info = await deps.projects.info(projectRoot);
+      if (!info) throw new HandlerError("not-found", `${projectRoot} isn't a Skeleton project (no skeleton/config.json)`);
+      await deps.projects.touch(info);
+      return info;
+    },
+    "project:forget": async ({ projectRoot }) => deps.projects.forget(projectRoot),
+    "dialog:chooseFolder": async (request) => deps.chooseFolder(request),
     "devserver:start": async ({ projectRoot }) => deps.devServer.start(projectRoot),
     "devserver:stop": async ({ projectRoot }) => deps.devServer.stop(projectRoot),
     "devserver:status": async ({ projectRoot, sinceSeq }) => deps.devServer.status(projectRoot, sinceSeq),

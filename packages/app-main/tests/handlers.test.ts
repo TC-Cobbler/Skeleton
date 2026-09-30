@@ -49,6 +49,13 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         stop: async (projectRoot) => stoppedStatus(projectRoot),
         status: (projectRoot, sinceSeq) => ({ ...stoppedStatus(projectRoot), lastSeq: sinceSeq }),
       },
+      projects: {
+        list: async () => ({ recent: [], defaultParentDir: "/home/u/Documents/Skeleton" }),
+        info: async (projectRoot) => (projectRoot === fixtureRoot ? { projectRoot, name: "Fixture" } : null),
+        touch: async () => undefined,
+        forget: async () => [],
+      },
+      chooseFolder: async () => "/chosen",
       ...overrides,
     },
     (error) => errors.push(error),
@@ -244,5 +251,55 @@ describe("devserver channels", () => {
       ok: true,
       value: { lastSeq: 7 },
     });
+  });
+});
+
+describe("project picker channels", () => {
+  const projects = () => {
+    const touched: string[] = [];
+    return {
+      touched,
+      deps: {
+        list: async () => ({ recent: [], defaultParentDir: "/d" }),
+        info: async (projectRoot: string) => (projectRoot === fixtureRoot ? { projectRoot, name: "Fixture" } : null),
+        touch: async (p: { projectRoot: string }) => {
+          touched.push(p.projectRoot);
+        },
+        forget: async () => [],
+      },
+    };
+  };
+
+  it("opens a Skeleton project and records it as recent", async () => {
+    const p = projects();
+    const { dispatch } = setup({ projects: p.deps });
+    await expect(dispatch("project:open", { projectRoot: fixtureRoot })).resolves.toEqual({
+      ok: true,
+      value: { projectRoot: fixtureRoot, name: "Fixture" },
+    });
+    expect(p.touched).toEqual([fixtureRoot]);
+  });
+
+  it("refuses a folder that isn't a Skeleton project, without recording it", async () => {
+    const p = projects();
+    const { dispatch } = setup({ projects: p.deps });
+    const result = await dispatch("project:open", { projectRoot: "/somewhere/else" });
+    expect(result).toMatchObject({ ok: false, error: { code: "not-found" } });
+    expect(p.touched).toEqual([]);
+  });
+
+  it("records a newly created project as recent", async () => {
+    const p = projects();
+    const { dispatch } = setup({ projects: p.deps });
+    await dispatch("project:create", { parentDir: "/tmp", name: "App" });
+    expect(p.touched).toEqual(["/tmp/stub"]);
+  });
+
+  it("validates folder-dialog requests", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("dialog:chooseFolder", { title: "Pick" })).resolves.toEqual({ ok: true, value: "/chosen" });
+    expect((await dispatch("dialog:chooseFolder", { title: "Pick", defaultPath: "rel" })).ok).toBe(false);
+    expect((await dispatch("dialog:chooseFolder", null)).ok).toBe(false);
+    expect((await dispatch("project:list", {})).ok).toBe(false);
   });
 });

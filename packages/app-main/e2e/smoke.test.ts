@@ -78,9 +78,12 @@ describe("Electron shell", () => {
     expect(result).toMatchObject({ ok: false, error: { code: "bad-request" } });
   });
 
-  it("shows the parsed tree in the UI", async () => {
-    await page.getByLabel("Project root").fill(fixtureRoot);
-    await page.getByRole("button", { name: "Open" }).click();
+  it("opens a project with Open… and shows its parsed tree", async () => {
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
+    }, fixtureRoot);
+    await page.getByRole("button", { name: "Open…" }).click();
+    await expect(page.getByTestId("project-root").textContent()).resolves.toBe(fixtureRoot);
     await page.getByRole("button", { name: "Parse" }).click();
     await expect(
       page.locator(".tree li").first().textContent(),

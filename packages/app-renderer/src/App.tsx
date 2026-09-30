@@ -1,15 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { AppInfo, PageTree, UiNode } from "@skeleton/app-main/ipc";
+import type { AppInfo, PageTree, ProjectInfo, UiNode } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { DevServerPanel } from "./DevServerPanel.js";
+import { ProjectPicker } from "./ProjectPicker.js";
 
-// Phase 1 shell. Proves the renderer → main → core path end to end; the project
-// picker (T1.4) replaces the project root field, and the canvas (Phase 2) the rest.
+// Phase 1 shell: pick or create a project, then its dev server and page tree.
+// The canvas (Phase 2) replaces the page tree probe.
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [projectRoot, setProjectRoot] = useState("");
+  const [project, setProject] = useState<ProjectInfo | null>(null);
 
   useEffect(() => {
     call("app:info", null).then(setInfo, (err: unknown) =>
@@ -17,9 +18,29 @@ export function App() {
     );
   }, []);
 
+  async function close() {
+    if (!project) return;
+    try {
+      await call("devserver:stop", { projectRoot: project.projectRoot });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+    setProject(null);
+  }
+
   return (
     <main>
-      <h1>Skeleton</h1>
+      <header className="row">
+        <h1>{project ? project.name : "Skeleton"}</h1>
+        {project && (
+          <>
+            <code className="muted" data-testid="project-root">{project.projectRoot}</code>
+            <button type="button" onClick={() => void close()}>
+              Close project
+            </button>
+          </>
+        )}
+      </header>
       {info && (
         <p className="muted" data-testid="app-info">
           v{info.appVersion} · Electron {info.electron} · Node {info.node} ·{" "}
@@ -27,30 +48,15 @@ export function App() {
         </p>
       )}
       {error && <p className="error">{error}</p>}
-      <ProjectRootField value={projectRoot} onChange={setProjectRoot} />
-      <DevServerPanel projectRoot={projectRoot} />
-      <PageTreeProbe projectRoot={projectRoot} />
+      {project ? (
+        <>
+          <DevServerPanel projectRoot={project.projectRoot} autoStart />
+          <PageTreeProbe projectRoot={project.projectRoot} />
+        </>
+      ) : (
+        <ProjectPicker onOpen={setProject} />
+      )}
     </main>
-  );
-}
-
-function ProjectRootField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const [draft, setDraft] = useState(value);
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        onChange(draft.trim());
-      }}
-    >
-      <input
-        aria-label="Project root"
-        placeholder="/absolute/path/to/project"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-      />
-      <button type="submit">Open</button>
-    </form>
   );
 }
 

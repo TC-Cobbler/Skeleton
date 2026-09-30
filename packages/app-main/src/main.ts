@@ -4,10 +4,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import { createDispatch } from "./ipc/handlers.js";
 import { registerIpc } from "./ipc/register.js";
 import { DevServerManager } from "./devserver/manager.js";
+import { readProjectInfo, RecentProjects } from "./project/recent.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
@@ -48,8 +49,15 @@ function createWindow(renderer: RendererLocation): BrowserWindow {
   return win;
 }
 
+// Tests (and anyone wanting an isolated profile) can point user data elsewhere.
+const userDataOverride = process.env["SKELETON_USER_DATA"];
+if (userDataOverride) app.setPath("userData", userDataOverride);
+
 const renderer = rendererLocation();
 const devServers = new DevServerManager();
+// Lazily: app paths are only valid once Electron has initialised.
+let recentStore: RecentProjects | null = null;
+const recent = () => (recentStore ??= new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json")));
 const log = (
   error: { code: string; channel: string; message: string },
   cause?: unknown,
@@ -76,6 +84,28 @@ const dispatch = createDispatch(
       start: (root) => devServers.start(root),
       stop: (root) => devServers.stop(root),
       status: (root, sinceSeq) => devServers.status(root, sinceSeq),
+    },
+    projects: {
+      list: async () => ({
+        recent: await recent().list(),
+        defaultParentDir: path.join(app.getPath("documents"), "Skeleton"),
+      }),
+      info: readProjectInfo,
+      touch: (project) => recent().touch(project),
+      forget: async (root) => {
+        await recent().forget(root);
+        return recent().list();
+      },
+    },
+    chooseFolder: async ({ title, defaultPath }) => {
+      const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const options = {
+        title,
+        properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[],
+        ...(defaultPath ? { defaultPath } : {}),
+      };
+      const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+      return result.canceled ? null : (result.filePaths[0] ?? null);
     },
   },
   log,
