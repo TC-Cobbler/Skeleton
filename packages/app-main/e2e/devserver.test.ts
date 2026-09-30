@@ -49,7 +49,8 @@ describe("new project → running dev server (PRD F1)", () => {
   it("creates a project from the picker and starts its dev server", async () => {
     await stubFolderDialog(parentDir);
     await page.getByRole("button", { name: "Change…" }).click();
-    await expect(page.getByTestId("parent-dir").textContent()).resolves.toBe(`in ${parentDir}`);
+    // The dialog answers asynchronously: wait for the label, don't read it once.
+    await expect.poll(() => page.getByTestId("parent-dir").textContent()).toBe(`in ${parentDir}`);
     await page.getByLabel("Project name").fill("E2E App");
     await page.getByRole("button", { name: "Create project" }).click();
     await page.getByTestId("project-root").waitFor({ timeout: 120_000 });
