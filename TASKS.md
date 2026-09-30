@@ -227,9 +227,9 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 6 — Dogfood (v1 ship gate)
 
-- [ ] **T6.1** Scaffold a real project in Skeleton, e.g. the gaming library app's UI.
-- [ ] **T6.2** Run 5 consecutive hand off / take back loops with real feature work.
-- [ ] **T6.3** After each loop, verify and log in `docs/dogfood-log.md`:
+- [x] **T6.1** Scaffold a real project in Skeleton, e.g. the gaming library app's UI.
+- [~] **T6.2** Run 5 consecutive hand off / take back loops with real feature work.
+- [~] **T6.3** After each loop, verify and log in `docs/dogfood-log.md`:
   - zero agent-authored logic altered (diff check)
   - 100% ID survival
   - token edits intact

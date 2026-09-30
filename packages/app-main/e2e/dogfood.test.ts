@@ -1,0 +1,314 @@
+// Phase 6 dogfood driver: plays the user in the real app, one step per run.
+//   DOGFOOD_STEP=<step> xvfb-run -a -s "-screen 0 1920x1200x24" pnpm exec vitest run -c vitest.e2e.config.ts e2e/dogfood.test.ts
+// The project lives outside the repo (DOGFOOD_DIR), so it survives between steps.
+// Skipped unless DOGFOOD_STEP is set.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { _electron, type ElectronApplication, type Locator, type Page } from "playwright-core";
+import { sourceVersion } from "@skeleton/core";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { canvasFrame, canvasPoint, placeFromPalette, waitForCanvas, type Aim } from "./canvas-click.js";
+
+const STEP = process.env["DOGFOOD_STEP"] ?? "";
+const DIR = process.env["DOGFOOD_DIR"] ?? "/home/user/dogfood";
+const NAME = "Game Library";
+const ROOT = path.join(DIR, "game-library");
+const SHOTS = path.join(DIR, "shots");
+const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+let app: ElectronApplication;
+let page: Page;
+let file = "src/pages/HomePage.tsx";
+const read = (f = file) => readFileSync(path.join(ROOT, f), "utf8");
+const frame = () => canvasFrame(page);
+const props = () => page.getByTestId("properties");
+const log = (s: string) => console.log(`[dogfood] ${s}`);
+
+async function shot(name: string) {
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(SHOTS, `${STEP}-${name}.png`) });
+}
+
+/** Waits until the page file changed from `before`, and the canvas shows and maps it. */
+async function edited(before: string, f = file) {
+  await expect.poll(() => read(f), { timeout: 20_000 }).not.toBe(before);
+  await waitForCanvas(page, sourceVersion(read(f)), "canvas-desktop").catch(() => undefined);
+  await page.waitForTimeout(300);
+}
+
+/** Runs `action` and waits for the edit it makes to land. Fails on an edit error. */
+async function edit(what: string, action: () => Promise<void>, f = file) {
+  const before = read(f);
+  await action();
+  try {
+    await edited(before, f);
+  } catch (e) {
+    const err = await page.getByTestId("edit-error").textContent().catch(() => null);
+    throw new Error(`${what}: no edit landed${err ? ` (${err})` : ""}`, { cause: e });
+  }
+  log(`edit: ${what}`);
+}
+
+async function select(id: string) {
+  await page.getByTestId(`layer-${id}`).click();
+  await expect.poll(() => page.getByTestId("selection-id").textContent()).toBe(id);
+}
+
+async function setText(id: string, text: string) {
+  await select(id);
+  const input = props().getByLabel("Text");
+  await edit(`text of ${id} → ${text}`, async () => {
+    await input.fill(text);
+    await input.press("Enter");
+  });
+}
+
+async function setProp(id: string, label: string, value: string) {
+  await select(id);
+  await edit(`${label} of ${id} → ${value}`, () => props().getByLabel(label).selectOption(value).then(() => undefined));
+}
+
+async function place(paletteId: string, target: Locator, aim: Aim): Promise<string> {
+  const before = read();
+  const id = await placeFromPalette(page, paletteId, target, aim);
+  await edited(before).catch(() => undefined);
+  log(`place: ${paletteId} → ${id}`);
+  return id;
+}
+
+const at = (id: string) => frame().locator(`[data-ui-id="${id}"]`).first();
+
+/** The page file's tree, as the UI gets it. */
+async function tree(): Promise<{ id: string | null; name: string; kind: string; children: unknown[] }[]> {
+  const res = await page.evaluate(({ root, f }) => window.skeleton.invoke("page:tree", { projectRoot: root, file: f }), { root: ROOT, f: file });
+  if (!res.ok) throw new Error(JSON.stringify(res));
+  return res.value.roots as never;
+}
+type N = { id: string | null; name: string; kind: string; children: N[] };
+async function find(pred: (n: N) => boolean, under?: string): Promise<N> {
+  const all: N[] = [];
+  const walk = (n: N, inside: boolean) => {
+    const now = inside || under === undefined || n.id === under;
+    if (now && n.id !== under) all.push(n);
+    n.children.forEach((c) => walk(c, now));
+  };
+  (await tree()).forEach((r) => walk(r as N, false));
+  const hit = all.find(pred);
+  if (!hit) throw new Error(`no node matching under ${under ?? "page"}`);
+  return hit;
+}
+
+/** Drags the selected element by its label (its grip) to a point on `target`: a real move. */
+async function moveByGrip(id: string, target: Locator, aim: Aim) {
+  await select(id);
+  const grip = frame().locator("skeleton-overlay [data-grab]");
+  await grip.waitFor();
+  // Like a user: scroll so the drop target is in view, then take the grip where it is now.
+  await target.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await frame().locator("body").evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.waitForTimeout(300);
+  await shot(`grip-${id}`);
+  await edit(`move ${id}`, async () => {
+    const to = await canvasPoint(page, "canvas-frame", target, aim);
+    const from = await canvasPoint(page, "canvas-frame", grip);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 6, from.y + 6, { steps: 2 });
+    await page.mouse.move(to.x, to.y, { steps: 12 });
+    await page.waitForTimeout(150);
+    await shot(`move-${id}`);
+    await page.mouse.up();
+  });
+}
+
+/** A text or number property (committed on Enter). */
+async function setInput(id: string, label: string, value: string) {
+  await select(id);
+  const input = props().getByLabel(label, { exact: true });
+  await edit(`${label} of ${id} → ${value}`, async () => {
+    await input.fill(value);
+    await input.press("Enter");
+  });
+}
+
+async function ledger(name: string, value: string) {
+  const f = path.join(DIR, "tokens.json");
+  const cur = existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as Record<string, string>) : {};
+  cur[name] = value;
+  writeFileSync(f, JSON.stringify(cur, null, 2));
+}
+
+async function note(id: string, type: "build" | "behaviour" | "question", text: string) {
+  await select(id);
+  await page.getByRole("tab", { name: /^Notes/ }).click();
+  const form = page.getByRole("form", { name: "Add a note" });
+  await form.getByLabel("Note type").selectOption(type);
+  await form.getByLabel("Note text").fill(text);
+  await form.getByRole("button", { name: "Add" }).click();
+  await expect.poll(() => (existsSync(path.join(ROOT, "skeleton/notes.json")) ? read("skeleton/notes.json") : "")).toContain(text);
+  await page.getByRole("tab", { name: "Element" }).click();
+  log(`note: ${type} on ${id}: ${text}`);
+}
+
+async function token(name: string, value: string, dark = false) {
+  await page.getByRole("tab", { name: /^Tokens/ }).click();
+  const input = page.getByTestId(`token-${name}`).getByLabel(`${name} ${dark ? "dark " : ""}value`);
+  await edit(`token ${name}${dark ? " (dark)" : ""} → ${value}`, async () => {
+    await input.fill(value);
+    await input.press("Enter");
+  }, "src/styles/globals.css");
+  await ledger(dark ? `${name}.dark` : name, value);
+  await page.getByRole("tab", { name: "Element" }).click();
+}
+
+async function addPage(name: string): Promise<string> {
+  const pages = page.getByRole("region", { name: "Pages" });
+  await pages.getByRole("button", { name: "Add page" }).click();
+  const form = pages.getByRole("form", { name: "Add page" });
+  await form.getByLabel("Name").fill(name);
+  await form.getByRole("button", { name: "Add" }).click();
+  const f = `src/pages/${name.replace(/\s+/g, "")}Page.tsx`;
+  await expect.poll(() => existsSync(path.join(ROOT, f)), { timeout: 20_000 }).toBe(true);
+  log(`page: ${name} (${f})`);
+  return f;
+}
+
+async function goToPage(label: RegExp, f: string) {
+  await page.getByRole("region", { name: "Pages" }).getByRole("button", { name: label }).click();
+  file = f;
+  await waitForCanvas(page, sourceVersion(read(f)), "canvas-desktop").catch(() => undefined);
+  await page.waitForTimeout(800);
+}
+
+async function handOff() {
+  await page.getByRole("button", { name: "Hand off" }).click();
+  await page.getByTestId("agent-veil").waitFor({ timeout: 240_000 });
+  log("handed off");
+  await shot("handed-off");
+}
+
+async function takeBack() {
+  await page.getByRole("button", { name: "Take back" }).click();
+  await expect.poll(() => page.getByTestId("loop").textContent(), { timeout: 240_000 }).toMatch(/With you/);
+  await page.getByRole("tab", { name: /^Pass/ }).click();
+  await page.waitForTimeout(800);
+  log(`pass summary:\n${await page.getByTestId("pass").innerText()}`);
+  await shot("pass");
+}
+
+beforeAll(async () => {
+  if (!STEP) return;
+  mkdirSync(SHOTS, { recursive: true });
+  const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined && e[0] !== "SKELETON_RENDERER_URL"));
+  app = await _electron.launch({ args: [pkgRoot, "--no-sandbox"], cwd: pkgRoot, env: { ...env, SKELETON_USER_DATA: path.join(DIR, "profile") } });
+  page = await app.firstWindow();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 1000));
+  await page.waitForFunction(() => window.innerWidth === 1600 && window.innerHeight === 1000);
+  const exists = existsSync(ROOT);
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
+  }, exists ? ROOT : DIR);
+  if (exists) {
+    await page.getByRole("button", { name: "Open…" }).click();
+  } else {
+    await page.getByRole("button", { name: "Change…" }).click();
+    await page.getByLabel("Project name").fill(NAME);
+    await page.getByRole("button", { name: "Create project" }).click();
+  }
+  await frame().locator("h1").first().waitFor({ timeout: 120_000 });
+  await page.waitForTimeout(1500);
+}, 240_000);
+
+afterAll(async () => {
+  await app?.close();
+});
+
+const steps: Record<string, () => Promise<void>> = {
+  async loop1() {
+    const home = await tree();
+    const stack = (home[0] as N).children[0] as N;
+    const title = stack.children[0] as N;
+    await setText(title.id as string, "My library");
+    await shot("scaffolded");
+
+    // Toolbar: search and Add game.
+    const bar = await place("stack-horizontal", at(title.id as string), { fx: 0.5, fy: 0.9 });
+    const search = await place("input", at(bar), { fx: 0.5, fy: 0.5 });
+    const add = await place("button", at(search), { fx: 0.9, fy: 0.5 });
+    await setText(add, "Add game");
+    await setProp(bar, "Justify", "justify-between");
+
+    // The library grid with one card: the agent repeats it per game.
+    const grid = await place("grid", at(bar), { fx: 0.5, fy: 0.95 });
+    const card = await place("card", at(grid), { fx: 0.5, fy: 0.5 });
+    const cardTitle = await find((n) => n.name === "CardTitle", card);
+    const cardDesc = await find((n) => n.name === "CardDescription", card);
+    await setText(cardTitle.id as string, "Game title");
+    await setText(cardDesc.id as string, "Platform");
+    const content = await find((n) => n.name === "CardContent", card);
+    await place("badge", at(content.id as string), { fx: 0.5, fy: 0.9 });
+    await token("--radius", "0.75rem");
+    await shot("composed");
+
+    await note(grid, "build", "Show my game library: one card per game from mock data (8 games with title, platform, hours played, status)");
+    await note(search, "behaviour", "Filter the cards by game title as I type, case-insensitive");
+    await note(add, "question", "What should adding a game ask for? Suggest the fields; don't build it yet");
+    await shot("notes");
+    await handOff();
+  },
+
+  async takeback1() {
+    await takeBack();
+  },
+
+  async loop2() {
+    const ids = { title: "ui_52d7x", bar: "ui_e68kd", search: "ui_wd9tf", grid: "ui_am9jy", add: "ui_27ttm", badge: "ui_zogii" };
+    await shot("start");
+    // The grid landed inside the toolbar in loop 1. Four columns first, so the page fits
+    // on screen, then move it out: title, grid, toolbar; then the toolbar up: title, toolbar, grid.
+    await setProp(ids.grid, "Columns", "grid-cols-4");
+    await moveByGrip(ids.grid, at(ids.title), { fx: 0.5, fy: 0.9 });
+    await moveByGrip(ids.bar, at(ids.title), { fx: 0.5, fy: 0.9 });
+    // A status filter next to the search.
+    const status = await place("select", at(ids.search), { fx: 0.9, fy: 0.5 });
+    const items = [await find((n) => n.name === "SelectItem", status)];
+    const all: N[] = [];
+    const collect = async () => {
+      const walk = (n: N) => {
+        if (n.name === "SelectItem") all.push(n);
+        n.children.forEach(walk);
+      };
+      (await tree()).forEach((r) => walk(r as N));
+    };
+    await collect();
+    const [first, second] = all.filter((n) => n.id !== null).slice(-2);
+    void items;
+    await setText(first!.id as string, "All statuses");
+    await setInput(first!.id as string, "value", "all");
+    await setText(second!.id as string, "Playing");
+    await setInput(second!.id as string, "value", "playing");
+    await token("--primary", "oklch(0.5 0.2 290)");
+    await shot("composed");
+
+    await note(status, "behaviour", "Filter the games by status; add the other statuses (Completed, Backlog, Dropped) as options; combine with the title filter");
+    await note(ids.grid, "build", "Show an empty state in the grid when no game matches the filters");
+    await note(ids.badge, "behaviour", "Colour the status badge by status, using theme tokens (ask for new tokens if you need them)");
+    await handOff();
+  },
+
+  async takeback2() {
+    await takeBack();
+  },
+};
+
+it.skipIf(!STEP)(`dogfood step ${STEP}`, async () => {
+  const step = steps[STEP];
+  if (!step) throw new Error(`unknown DOGFOOD_STEP ${STEP}; known: ${Object.keys(steps).join(", ")}`);
+  await step();
+}, 900_000);
+
+// Silence unused-helper checks until later loops use them.
+void addPage;
+void goToPage;
