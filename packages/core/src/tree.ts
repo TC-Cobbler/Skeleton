@@ -19,6 +19,8 @@ export interface UiNode {
   id: string | null;
   /** Element name for elements; component name or expression type for locked blocks. */
   name: string;
+  /** True for JSX elements, false for expression blocks (`.map`, conditionals, fragments, …). */
+  element: boolean;
   /** Why the node is locked. Null unless `kind === "locked"`. */
   lockReason: string | null;
   /**
@@ -131,6 +133,7 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
         kind,
         id: readUiId(node),
         name,
+        element: true,
         lockReason,
         protectedProps,
         text: kind === "locked" ? null : directText(node),
@@ -148,6 +151,7 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
       kind: "locked",
       id: null,
       name: label,
+      element: false,
       lockReason: reason,
       protectedProps: [],
       text: null,

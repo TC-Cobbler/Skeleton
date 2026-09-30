@@ -5,8 +5,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { DevServerState, DevServerStatus, LogLine } from "../ipc/contract.js";
 import { runCommand, type RunCommand } from "../project/scaffold.js";
 
@@ -31,15 +33,25 @@ const LOCAL_URL = /Local:\s+(https?:\/\/[^\s]+)/;
 const ERROR_LINE = /\berror\b|\bfailed\b|✘|ERR_/i;
 const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
 
+/** Same relative path from src/devserver and dist/devserver. */
+const LAUNCHER = fileURLToPath(new URL("../../launcher/vite-launcher.mjs", import.meta.url));
+
+function overlayBundle(): string {
+  const bundle = createRequire(import.meta.url).resolve("@skeleton/overlay/bundle");
+  if (!existsSync(bundle)) throw new Error(`overlay bundle missing at ${bundle}; run pnpm --filter @skeleton/overlay build`);
+  return bundle;
+}
+
 export const defaultDevServerDeps: DevServerDeps = {
   run: runCommand,
   freePort,
   spawnVite: (projectRoot, port) => {
-    const vite = path.join(projectRoot, "node_modules", "vite", "bin", "vite.js");
+    const vite = path.join(projectRoot, "node_modules", "vite", "package.json");
     if (!existsSync(vite)) throw new Error("Vite isn't installed in this project (no node_modules/vite); run pnpm install");
+    // The launcher runs the project's own Vite with Skeleton's dev plugin added (ADR 006).
     // process.execPath is Electron in the app; ELECTRON_RUN_AS_NODE makes it plain Node,
     // so users don't need Node on their PATH.
-    return spawn(process.execPath, [vite, "--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
+    return spawn(process.execPath, [LAUNCHER, projectRoot, String(port), overlayBundle()], {
       cwd: projectRoot,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NO_COLOR: "1", FORCE_COLOR: "0", BROWSER: "none" },
       detached: process.platform !== "win32",

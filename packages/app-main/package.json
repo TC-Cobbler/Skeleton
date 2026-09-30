@@ -16,15 +16,19 @@
     "dev": "tsx scripts/dev.ts",
     "start": "pnpm --filter @skeleton/app-renderer build && tsc -b && electron .",
     "test": "vitest run",
-    "test:e2e": "pnpm --filter @skeleton/app-renderer build && tsc -b && vitest run -c vitest.e2e.config.ts"
+    "test:e2e": "pnpm --filter @skeleton/overlay build && pnpm --filter @skeleton/app-renderer build && tsc -b && vitest run -c vitest.e2e.config.ts"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.9",
     "@skeleton/core": "workspace:*",
-    "@skeleton/templates": "workspace:*"
+    "@skeleton/overlay": "workspace:*",
+    "@skeleton/templates": "workspace:*",
+    "magic-string": "^0.30.21"
   },
   "devDependencies": {
     "electron": "^44.5.0",
     "playwright-core": "^1.63.0",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "vite": "^8.3.1"
   }
 }

@@ -1,0 +1,28 @@
+{
+  "name": "@skeleton/overlay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./protocol": {
+      "source": "./src/protocol.ts",
+      "types": "./dist/types/protocol.d.ts",
+      "default": "./dist/types/protocol.js"
+    },
+    "./bundle": "./dist/overlay.js"
+  },
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "test": "vitest run",
+    "prepare": "tsx scripts/build.ts"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^30.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

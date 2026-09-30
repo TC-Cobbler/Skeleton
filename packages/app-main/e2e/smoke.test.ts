@@ -78,15 +78,12 @@ describe("Electron shell", () => {
     expect(result).toMatchObject({ ok: false, error: { code: "bad-request" } });
   });
 
-  it("opens a project with Open… and shows its parsed tree", async () => {
+  it("opens a project with Open…", async () => {
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
     }, fixtureRoot);
     await page.getByRole("button", { name: "Open…" }).click();
     await expect(page.getByTestId("project-root").textContent()).resolves.toBe(fixtureRoot);
-    await page.getByRole("button", { name: "Parse" }).click();
-    await expect(
-      page.locator(".tree li").first().textContent(),
-    ).resolves.toMatch(/\w/);
+    await page.getByRole("region", { name: "Selection" }).waitFor();
   });
 });

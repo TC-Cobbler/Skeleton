@@ -85,7 +85,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 ## Phase 2 — Canvas (read-only)
 
 - [x] **T2.1** Embedded webview pointing at the dev server.
-- [ ] **T2.2** Overlay script injected into the webview: hover and selection outlines, and a DOM → `data-ui-id` lookup. Communicates with the host via `postMessage`.
+- [x] **T2.2** Overlay script injected into the webview: hover and selection outlines, and a DOM → `data-ui-id` lookup. Communicates with the host via `postMessage`.
 - [ ] **T2.3** Layers tree panel built from the parser output, with bi-directional selection sync between tree and canvas.
 - [ ] **T2.4** Locked-block rendering: label (component name or expression type), distinct outline, "view source" popover.
 - [ ] **T2.5** Page list mirroring the router, including navigate-on-select.

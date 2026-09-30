@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +67,38 @@ describe("new project → running dev server (PRD F1)", () => {
     // The embedded app has no bridge into main.
     const frame = page.frames().find((f) => f.url().startsWith(url));
     expect(await frame?.evaluate(() => typeof (window as unknown as { skeleton?: unknown }).skeleton)).toBe("undefined");
+  }, 60_000);
+
+  it("selects elements on the canvas through the overlay (T2.2)", async () => {
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    const heading = canvas.getByRole("heading", { name: "E2E App" });
+    await heading.click();
+    await page.getByTestId("selection-id").waitFor();
+    expect(await page.getByTestId("selection-name").textContent()).toBe("h1");
+    expect(await page.getByTestId("selection-id").textContent()).toMatch(/^ui_[a-z0-9]{5}$/);
+    const id = await page.getByTestId("selection-id").textContent();
+    const tagged = await heading.getAttribute("data-ui-id");
+    expect(tagged).toBe(id);
+    expect(await heading.getAttribute("data-skeleton-loc")).toMatch(/^src\/pages\/HomePage\.tsx:\d+$/);
+
+    // Interact mode hands clicks back to the app: no selection change.
+    await page.getByRole("button", { name: "Select mode" }).click();
+    await page.getByRole("button", { name: "Interact mode" }).waitFor();
+    await canvas.locator("body").click({ position: { x: 5, y: 5 } });
+    expect(await page.getByTestId("selection-id").textContent()).toBe(id);
+    await page.getByRole("button", { name: "Interact mode" }).click();
+  }, 60_000);
+
+  it("re-parses after an edit on disk and keeps the selection mapped (HMR)", async () => {
+    const file = path.join(projectRoot, "src/pages/HomePage.tsx");
+    const source = readFileSync(file, "utf8");
+    writeFileSync(file, source.replace("E2E App", "E2E App, edited"));
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    await canvas.getByRole("heading", { name: "E2E App, edited" }).waitFor({ timeout: 15_000 });
+    await canvas.getByRole("heading", { name: "E2E App, edited" }).click();
+    expect(await page.getByTestId("selection-name").textContent()).toBe("h1");
+    writeFileSync(file, source);
+    await canvas.getByRole("heading", { name: "E2E App", exact: true }).waitFor({ timeout: 15_000 });
   }, 60_000);
 
   it("closing the project stops its server and lists it as recent", async () => {

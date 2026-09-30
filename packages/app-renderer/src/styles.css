@@ -190,3 +190,15 @@ button.quiet {
 .bottom .log {
   max-height: 140px;
 }
+.inspector {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+.inspector dt {
+  color: var(--muted);
+}
+.inspector dd {
+  margin: 0;
+}

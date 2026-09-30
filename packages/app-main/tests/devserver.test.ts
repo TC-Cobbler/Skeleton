@@ -191,6 +191,12 @@ describe("DevServerManager (real Vite on a scaffolded project)", () => {
     expect(html).toContain('<div id="root"></div>');
     const page = await (await fetch(new URL("/src/pages/HomePage.tsx", status.url as string))).text();
     expect(page).toContain("Dev Server Test");
+    // Skeleton's dev plugin (ADR 006): overlay injected and page JSX tagged, in served code only.
+    expect(html).toContain('src="/@skeleton/overlay.js"');
+    expect(page).toMatch(/data-skeleton-loc/);
+    expect(await (await fetch(new URL("/@skeleton/overlay.js", status.url as string))).text()).toContain("Skeleton overlay");
+    expect(readFileSync(path.join(root, "src/pages/HomePage.tsx"), "utf8")).not.toContain("data-skeleton-loc");
+    expect(manager.status(root).logs.filter((l) => l.level === "error")).toEqual([]);
 
     // A source edit is HMR's job: same process.
     const file = path.join(root, "src/pages/HomePage.tsx");
