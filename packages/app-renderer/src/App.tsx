@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppInfo, ProjectInfo } from "@skeleton/app-main/ipc";
+import type { AppInfo, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas, type PreviewLayout } from "./Canvas.js";
+import { useCanvasDrag } from "./canvas/drag.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
@@ -73,14 +74,22 @@ const DEFAULT_PAGE = "src/pages/HomePage.tsx";
 /**
  * Selection by tree key, re-pointed after every re-parse: keys are child-index paths
  * and shift when elements are added, so the selection follows the element's
- * data-ui-id (or clears if it's gone), never the old position.
+ * data-ui-id (or clears if it's gone), never the old position. `selectId` selects an
+ * element that may not be parsed yet (one just placed): it's picked up when it appears.
  */
-function useSelection(nodes: KeyedNode[]): [string | null, (key: string | null) => void] {
-  const [selection, setSelection] = useState<{ key: string; id: string | null; name: string } | null>(null);
+function useSelection(nodes: KeyedNode[]): [string | null, (key: string | null) => void, (id: string) => void] {
+  const [selection, setSelection] = useState<{ key: string | null; id: string | null; name: string } | null>(null);
   const select = useCallback(
     (key: string | null) => {
       const node = key === null ? null : nodes.find((n) => n.key === key);
       setSelection(node ? { key: node.key, id: node.node.id, name: node.node.name } : null);
+    },
+    [nodes],
+  );
+  const selectId = useCallback(
+    (id: string) => {
+      const node = nodes.find((n) => n.node.id === id);
+      setSelection({ key: node?.key ?? null, id, name: node?.node.name ?? "" });
     },
     [nodes],
   );
@@ -90,11 +99,12 @@ function useSelection(nodes: KeyedNode[]): [string | null, (key: string | null) 
       const match = sel.id
         ? nodes.find((n) => n.node.id === sel.id)
         : nodes.find((n) => n.key === sel.key && n.node.name === sel.name);
-      if (!match) return null;
-      return match.key === sel.key ? sel : { ...sel, key: match.key };
+      // Still waiting for a placed element to be parsed.
+      if (!match) return sel.key === null ? sel : null;
+      return match.key === sel.key ? sel : { ...sel, key: match.key, name: match.node.name };
     });
   }, [nodes]);
-  return [selection?.key ?? null, select];
+  return [selection?.key ?? null, select, selectId];
 }
 
 function ProjectView({ project }: { project: ProjectInfo }) {
@@ -106,7 +116,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [navigate, setNavigate] = useState<{ path: string } | null>(null);
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
   const file = current?.exists ? current.file : pages.list ? null : DEFAULT_PAGE;
-  const page = usePageTree(project.projectRoot, file);
+  const page = usePageTree(project.projectRoot, file, palette.palette?.elements);
   // External changes (the agent, an editor): re-parse even if Vite's HMR didn't fire.
   const fsRevision = useProjectRevision(project.projectRoot);
   const reloadPage = page.reload;
@@ -115,7 +125,31 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     reloadPage();
     setRevision((r) => r + 1);
   }, [fsRevision.revision, reloadPage]);
-  const [selected, setSelected] = useSelection(page.nodes);
+  const [selected, setSelected, selectId] = useSelection(page.nodes);
+  const [editError, setEditError] = useState<string | null>(null);
+  const edit = useCallback(
+    (intent: EditIntent) => {
+      if (!file) return;
+      setEditError(null);
+      call("page:edit", { projectRoot: project.projectRoot, file, edit: intent }).then(
+        (result) => {
+          page.reload();
+          setRevision((r) => r + 1);
+          if (result.select) selectId(result.select);
+        },
+        (err: unknown) => setEditError(err instanceof Error ? err.message : String(err)),
+      );
+    },
+    [file, project.projectRoot, page.reload, selectId],
+  );
+  const canvasDrag = useCanvasDrag((source, target) => {
+    const parent = page.nodes.find((n) => n.key === target.parentKey)?.node;
+    if (!parent?.id) {
+      setEditError(`Can't drop there: ${parent?.name ?? "that element"} has no data-ui-id.`);
+      return;
+    }
+    if (source.kind === "palette") edit({ op: "insert", parentId: parent.id, index: target.index, paletteId: source.paletteId });
+  });
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
   const [layout, setLayout] = useState<PreviewLayout>("desktop");
@@ -153,6 +187,11 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           </button>
         </div>
         {page.error && <p className="error">{page.error}</p>}
+        {editError && (
+          <p className="error" role="alert" data-testid="edit-error">
+            {editError}
+          </p>
+        )}
         {fsRevision.error && <p className="error">{fsRevision.error}</p>}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
         <section aria-label="Selection" data-testid="selection">
@@ -195,7 +234,11 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           }}
         />
         {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
-        <PalettePanel palette={palette.palette} error={palette.error} />
+        <PalettePanel
+          palette={palette.palette}
+          error={palette.error}
+          onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
+        />
         <LayersPanel
           nodes={page.nodes}
           selected={selected}
@@ -208,6 +251,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       <Canvas
         status={server.status}
         file={page.tree ? file : null}
+        version={page.tree?.version ?? null}
         nodes={page.overlayNodes}
         selected={selected}
         highlighted={treeHover}
@@ -223,7 +267,14 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         layout={layout}
         dark={dark}
         onMapped={(boxes) => setOnScreen(new Set(boxes.map((b) => b.key)))}
+        drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, moving: null } : null}
+        onDropTarget={canvasDrag.report}
       />
+      {canvasDrag.drag && (
+        <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>
+          {canvasDrag.drag.source.label}
+        </div>
+      )}
       <footer className="bottom">
         <DevServerPanel server={server} />
       </footer>

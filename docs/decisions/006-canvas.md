@@ -45,3 +45,14 @@ The user's `vite.config.ts` and sources are never touched, and a production buil
 ## Amendment: scaling with CSS `zoom` (T2.7)
 
 Frames wider than the canvas are scaled with CSS `zoom` on the iframe, not `transform: scale()`. The inner viewport keeps its real width (1280, 768 or 390 CSS px) either way. Chromium intermittently dropped input to a transformed cross-origin iframe; `zoom` is laid out natively and reduced that, but didn't eliminate it. See `docs/known-issues.md` (KI-1).
+
+## Amendment: mapping that survives edits (T3.2)
+
+Placing elements from the canvas showed that the mapping broke after an edit. It had only been exercised against files that change rarely. Four fixes:
+
+- **Locs carry the file version.** The plugin writes `data-skeleton-loc="<file>:<offset>@<version>"`, where `<version>` is core's `sourceVersion` of the file text. `page:tree` returns the same hash with the tree, and the overlay only maps locs whose version matches its tree.
+  - Until the DOM and the tree have both caught up with an edit, nothing on the page maps. So a click or drop is ignored rather than resolved against the wrong node.
+  - After DOM changes, the overlay re-reports `mapped` if what's on screen changed, so the layers panel catches up whichever side arrived last.
+- **The current fiber, not the DOM node's fiber.** A DOM node's `__reactFiber$` can be the stale alternate after a re-render, still holding old props (old offsets). `mapping.ts` picks the fiber whose props are the node's current `__reactProps$`. It then climbs through parents that list the fiber as a child, because `return` pointers can be stale too.
+- **Dependencies are pre-bundled up front.** The plugin sets `optimizeDeps.entries` to every source file. Otherwise the first component of a kind placed on a page makes Vite discover a new dependency and reload the whole canvas.
+- **Edits are written atomically** (temp file, then rename; `project/atomic.ts`). With a plain `writeFile`, Vite can read the page while it's truncated and serve an empty module. React Fast Refresh then gives up ("export removed"), and the canvas stops updating.

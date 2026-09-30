@@ -8,6 +8,11 @@ import type { ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templat
 export type { PageTree, UiNode, NodeKind, RouteInfo } from "@skeleton/core";
 export type { ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
+/** A page's parsed tree plus the version of the text it was parsed from (core's sourceVersion). */
+export interface PageView extends PageTree {
+  version: string;
+}
+
 export interface PaletteEntry extends PaletteItem {
   /** The entry can be placed: it has a template and the project exports every component it uses. */
   available: boolean;
@@ -184,12 +189,33 @@ export interface ProjectChanges {
   error: string | null;
 }
 
+/** What the user did on the canvas, as an edit to one page file (Phase 3). */
+export type EditIntent =
+  /** Place a palette entry in `parentId` at child `index` (T3.2). */
+  { op: "insert"; parentId: string; index: number; paletteId: string };
+
+export interface PageEditRequest extends PageTreeRequest {
+  edit: EditIntent;
+}
+
+export interface PageEditResult {
+  file: string;
+  /** The ID to select after the edit (the placed element), or null. */
+  select: string | null;
+  /** The unified diff the edit made (no context lines). */
+  patch: string;
+  linesAdded: number;
+  linesRemoved: number;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
-  "page:tree": { request: PageTreeRequest; response: PageTree };
+  "page:tree": { request: PageTreeRequest; response: PageView };
   /** The page file's source text (for "view source" on locked blocks). */
   "page:source": { request: PageTreeRequest; response: string };
+  /** Apply one canvas edit to a page file (a core edit op) and write it. */
+  "page:edit": { request: PageEditRequest; response: PageEditResult };
   /** The curated components and primitives, checked against the project's files (T3.1). */
   "palette:list": { request: ProjectRootRequest; response: Palette };
   /** Pages from the project's router (T2.5). */
@@ -222,6 +248,7 @@ export const CHANNELS = [
   "app:info",
   "page:tree",
   "page:source",
+  "page:edit",
   "palette:list",
   "project:pages",
   "project:changes",
@@ -246,7 +273,8 @@ const allChannelsListed: [Missing] extends [never] ? true : Missing = true;
 void allChannelsListed;
 
 export type IpcErrorCode =
-  "bad-request" | "untrusted-sender" | "not-found" | "failed";
+  /** `edit-refused`: the edit op refused the edit (locked block, bad target…); the file is unchanged. */
+  "bad-request" | "untrusted-sender" | "not-found" | "edit-refused" | "failed";
 
 export interface IpcError {
   code: IpcErrorCode;

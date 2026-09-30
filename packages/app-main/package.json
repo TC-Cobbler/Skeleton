@@ -23,7 +23,8 @@
     "@skeleton/core": "workspace:*",
     "@skeleton/overlay": "workspace:*",
     "@skeleton/templates": "workspace:*",
-    "magic-string": "^0.30.21"
+    "magic-string": "^0.30.21",
+    "prettier": "^3.9.9"
   },
   "devDependencies": {
     "electron": "^44.5.0",

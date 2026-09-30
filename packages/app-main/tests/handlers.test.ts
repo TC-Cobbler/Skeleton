@@ -2,12 +2,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import { sourceVersion } from "@skeleton/core";
 import type { IpcError } from "../src/ipc/contract.js";
 import {
   createDispatch,
   resolveInside,
   type HandlerDeps,
 } from "../src/ipc/handlers.js";
+import { EditRefused } from "../src/project/editor.js";
 
 const fixtureRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -64,6 +66,12 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         diff: async (_root, from, to) => ({ from, to, files: [] }),
         revert: async (_root, commit) => ({ hash: "abc", subject: `skeleton: revert to ${commit}`, time: 1 }),
       },
+      editor: {
+        apply: async (_root, file, edit) => {
+          if (edit.op === "insert" && edit.parentId === "ui_lockd") throw new EditRefused("insert(ui_lockd): ui_lockd is a locked block");
+          return { file, select: "ui_new01", patch: "", linesAdded: 1, linesRemoved: 0 };
+        },
+      },
       ...overrides,
     },
     (error) => errors.push(error),
@@ -88,6 +96,8 @@ describe("dispatch", () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    const source = await readFile(path.join(fixtureRoot, "src/pages/HomePage.tsx"), "utf8");
+    expect((result.value as { version: string }).version).toBe(sourceVersion(source));
     const tree = result.value as {
       roots: { id: string | null }[];
       rootError: string | null;
@@ -383,5 +393,48 @@ describe("palette:list", () => {
   it("rejects a relative project root", async () => {
     const { dispatch } = setup();
     await expect(dispatch("palette:list", { projectRoot: "fixtures/base" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+  });
+});
+
+describe("page:edit", () => {
+  const request = (edit: unknown, file = "src/pages/HomePage.tsx") => ({ projectRoot: fixtureRoot, file, edit });
+
+  it("passes a valid insert to the editor", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_abcde", index: 0, paletteId: "button" }))).resolves.toMatchObject({
+      ok: true,
+      value: { file: "src/pages/HomePage.tsx", select: "ui_new01" },
+    });
+  });
+
+  it("rejects malformed intents before any edit", async () => {
+    const { dispatch } = setup();
+    for (const edit of [
+      null,
+      { op: "reformat" },
+      { op: "insert", parentId: "abc", index: 0, paletteId: "button" },
+      { op: "insert", parentId: "ui_abcde", index: -1, paletteId: "button" },
+      { op: "insert", parentId: "ui_abcde", index: 1.5, paletteId: "button" },
+      { op: "insert", parentId: "ui_abcde", index: 0, paletteId: "toast" },
+      { op: "insert", parentId: "ui_abcde", index: 0, paletteId: "<script>" },
+    ]) {
+      await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_abcde", index: 0, paletteId: "button" }, "../x.tsx"))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "bad-request" },
+    });
+  });
+
+  it("reports a missing page as not-found and a refused op as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_abcde", index: 0, paletteId: "button" }, "src/pages/Nope.tsx"))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "not-found" },
+    });
+    await expect(dispatch("page:edit", request({ op: "insert", parentId: "ui_lockd", index: 0, paletteId: "button" }))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "edit-refused", message: "insert(ui_lockd): ui_lockd is a locked block" },
+    });
   });
 });

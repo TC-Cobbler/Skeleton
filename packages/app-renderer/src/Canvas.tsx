@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DevServerStatus } from "@skeleton/app-main/ipc";
 import {
   isOverlayMessage,
+  type DropTarget,
   type HostMessage,
   type NodeBox,
   type OverlayMessage,
@@ -20,12 +21,24 @@ export interface CanvasEvents {
   onUpdated?: () => void;
   onLocation?: (pathname: string) => void;
   onMapped?: (boxes: NodeBox[]) => void;
+  /** Where the current drag would land in a frame (null: nowhere in it). */
+  onDropTarget?: (frame: PreviewWidth, target: DropTarget | null) => void;
+}
+
+/** A drag in progress over the canvas, in window coordinates (T3.2). */
+export interface CanvasDrag {
+  clientX: number;
+  clientY: number;
+  /** Key of the node being moved, or null for a new element. */
+  moving: string | null;
 }
 
 export interface CanvasProps extends CanvasEvents {
   status: DevServerStatus | null;
   /** Page file the nodes belong to, project-relative. */
   file: string | null;
+  /** sourceVersion of the file text the nodes were parsed from. */
+  version: string | null;
   nodes: OverlayNode[];
   selected: string | null;
   highlighted: string | null;
@@ -35,6 +48,7 @@ export interface CanvasProps extends CanvasEvents {
   layout: PreviewLayout;
   /** Preview the app in dark mode (T2.8). */
   dark: boolean;
+  drag: CanvasDrag | null;
 }
 
 /**
@@ -65,7 +79,7 @@ export function Canvas(props: CanvasProps) {
   const widths: PreviewWidth[] = layout === "side-by-side" ? ["desktop", "tablet", "mobile"] : [layout];
   const primary = widths[0] as PreviewWidth;
   return (
-    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}`}>
+    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}${props.drag ? " is-dragging" : ""}`}>
       {widths.map((w) => (
         <CanvasFrame
           key={w}
@@ -136,8 +150,8 @@ function CanvasFrame(props: FrameProps) {
     if (win && ready.current) win.postMessage(message, origin);
   };
   const sendTree = () => {
-    const { file, nodes } = latest.current;
-    if (file) post({ source: "skeleton-host", type: "tree", file, nodes });
+    const { file, version, nodes } = latest.current;
+    if (file && version) post({ source: "skeleton-host", type: "tree", file, version, nodes });
   };
 
   useEffect(() => {
@@ -171,17 +185,40 @@ function CanvasFrame(props: FrameProps) {
         case "mapped":
           if (p.primary) p.onMapped?.(msg.boxes);
           break;
+        case "drop-target":
+          p.onDropTarget?.(p.width, msg.target);
+          break;
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [origin]);
 
-  useEffect(sendTree, [props.file, props.nodes]);
+  useEffect(sendTree, [props.file, props.version, props.nodes]);
   useEffect(() => post({ source: "skeleton-host", type: "select", key: props.selected }), [props.selected]);
   useEffect(() => post({ source: "skeleton-host", type: "highlight", key: props.highlighted }), [props.highlighted]);
   useEffect(() => post({ source: "skeleton-host", type: "mode", mode: props.mode }), [props.mode]);
   useEffect(() => post({ source: "skeleton-host", type: "theme", dark: props.dark }), [props.dark]);
+  // Forward a drag over this frame to its overlay, in the frame's own (unscaled)
+  // coordinates. The iframe ignores the pointer during a drag (see .is-dragging).
+  const dragInside = useRef(false);
+  useEffect(() => {
+    const drag = props.drag;
+    const iframe = frame.current;
+    const r = iframe?.getBoundingClientRect();
+    const inside = !!drag && !!r && drag.clientX >= r.left && drag.clientX < r.right && drag.clientY >= r.top && drag.clientY < r.bottom;
+    if (!inside || !drag || !iframe || !r) {
+      if (dragInside.current) post({ source: "skeleton-host", type: "drag-end" });
+      dragInside.current = false;
+      return;
+    }
+    dragInside.current = true;
+    const cs = getComputedStyle(iframe);
+    const x = (drag.clientX - r.left) / scale - parseFloat(cs.borderLeftWidth);
+    const y = (drag.clientY - r.top) / scale - parseFloat(cs.borderTopWidth);
+    post({ source: "skeleton-host", type: "drag", x, y, moving: drag.moving });
+  }, [props.drag]);
+
   useEffect(() => {
     const target = props.navigate ? new URL(props.navigate.path, origin).href : null;
     if (!target || !frame.current || frame.current.src === target) return;

@@ -2,9 +2,10 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree, exportedNames, readRoutes } from "@skeleton/core";
+import { buildTree, exportedNames, readRoutes, sourceVersion } from "@skeleton/core";
 import { ELEMENTS, PALETTE, PALETTE_GROUPS, moduleFile, projectNameError, templateImports } from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
+import { EditRefused, type Editor } from "../project/editor.js";
 import {
   isChannel,
   type AppInfo,
@@ -24,6 +25,8 @@ import {
   type IpcError,
   type IpcErrorCode,
   type IpcResult,
+  type EditIntent,
+  type PageEditRequest,
   type PageTreeRequest,
   type ProjectCreateRequest,
   type ProjectCreateResponse,
@@ -51,6 +54,7 @@ export interface HandlerDeps {
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
   changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
+  editor: Pick<Editor, "apply">;
 }
 
 const REV = /^([0-9a-f]{4,40}|HEAD)$/i;
@@ -95,6 +99,10 @@ const validators: Validators = {
     return null;
   },
   "page:source": (raw): PageTreeRequest => validators["page:tree"](raw),
+  "page:edit": (raw): PageEditRequest => {
+    const { projectRoot, file } = validators["page:tree"](raw);
+    return { projectRoot, file, edit: editIntentOf((raw as Record<string, unknown>)["edit"]) };
+  },
   "page:tree": (raw): PageTreeRequest => {
     if (typeof raw !== "object" || raw === null) {
       throw new HandlerError("bad-request", "expects { projectRoot, file }");
@@ -189,6 +197,36 @@ const validators: Validators = {
   },
 };
 
+const UI_ID = /^ui_[a-z0-9]{5}$/;
+
+function editIntentOf(raw: unknown): EditIntent {
+  if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "edit must be an object");
+  const e = raw as Record<string, unknown>;
+  const id = (key: string): string => {
+    const v = e[key];
+    if (typeof v !== "string" || !UI_ID.test(v)) throw new HandlerError("bad-request", `edit.${key} must be a data-ui-id`);
+    return v;
+  };
+  const index = (key: string): number => {
+    const v = e[key];
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 10_000) {
+      throw new HandlerError("bad-request", `edit.${key} must be a non-negative integer`);
+    }
+    return v;
+  };
+  switch (e["op"]) {
+    case "insert": {
+      const paletteId = e["paletteId"];
+      if (typeof paletteId !== "string" || !PALETTE.some((p) => p.id === paletteId && p.template !== null)) {
+        throw new HandlerError("bad-request", "edit.paletteId must name a placeable palette entry");
+      }
+      return { op: "insert", parentId: id("parentId"), index: index("index"), paletteId };
+    }
+    default:
+      throw new HandlerError("bad-request", `unknown edit op ${JSON.stringify(e["op"])}`);
+  }
+}
+
 /** Resolves `file` inside `root`, refusing anything that escapes it. */
 export function resolveInside(root: string, file: string): string {
   const resolved = path.resolve(root, file);
@@ -265,6 +303,15 @@ function createHandlers(deps: HandlerDeps): Handlers {
       return { groups: [...PALETTE_GROUPS], items, elements: { ...ELEMENTS } };
     },
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
+    "page:edit": async ({ projectRoot, file, edit }) => {
+      await readPage(projectRoot, file); // inside the project, and exists
+      try {
+        return await deps.editor.apply(projectRoot, file, edit);
+      } catch (cause) {
+        if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
+        throw cause;
+      }
+    },
     "project:changes": async ({ projectRoot }) => deps.changes(projectRoot),
     "project:pages": async ({ projectRoot }) => {
       const routerFile = "src/router.tsx";
@@ -289,7 +336,10 @@ function createHandlers(deps: HandlerDeps): Handlers {
       );
       return { routerFile, pages, error: result.error };
     },
-    "page:tree": async ({ projectRoot, file }) => buildTree(await readPage(projectRoot, file)),
+    "page:tree": async ({ projectRoot, file }) => {
+      const source = await readPage(projectRoot, file);
+      return { ...buildTree(source), version: sourceVersion(source) };
+    },
     "project:create": async (request) => {
       const created = await deps.createProject(request);
       await deps.projects.touch({ projectRoot: created.projectRoot, name: request.name });

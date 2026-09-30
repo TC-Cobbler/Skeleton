@@ -30,7 +30,7 @@ Main serves both over `palette:list`, marking any entry the project can't place:
 
 **Templates avoid mixed content.** A checkbox and its label sit in a horizontal Stack, not inside a `<Label>`: `insert` refuses text siblings, and text editing needs text-only children.
 
-**Empty containers get padding** (`p-4`, or `py-8` in Container) so a freshly placed Stack or Grid has an area to drop into.
+**Nothing placed is zero-sized.** An empty element renders 0px tall and can't be dropped into, so empty Stacks and Grids get padding (`p-4`, or `py-8` in Container), and a Card's or tab's content starts with a placeholder paragraph. Aiming at the text drops into its container.
 
 ## Consequences
 

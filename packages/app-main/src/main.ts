@@ -1,7 +1,7 @@
 // Electron main process. Owns the filesystem, git, child processes and all AST work
 // (through @skeleton/core). The renderer reaches it only through ipc/contract.ts.
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, shell } from "electron";
@@ -11,6 +11,8 @@ import { DevServerManager } from "./devserver/manager.js";
 import { GitService } from "./git/service.js";
 import { readProjectInfo, RecentProjects } from "./project/recent.js";
 import { ProjectWatcher } from "./project/watcher.js";
+import { Editor, listSources } from "./project/editor.js";
+import { writeFileAtomic } from "./project/atomic.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
@@ -58,6 +60,11 @@ if (userDataOverride) app.setPath("userData", userDataOverride);
 const renderer = rendererLocation();
 const devServers = new DevServerManager();
 const watcher = new ProjectWatcher();
+const editor = new Editor({
+  readFile: (p) => readFile(p, "utf8"),
+  writeFile: writeFileAtomic,
+  listSources: (root) => listSources(root, readdir),
+});
 // Lazily: app paths are only valid once Electron has initialised.
 let recentStore: RecentProjects | null = null;
 const recent = () => (recentStore ??= new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json")));
@@ -112,6 +119,7 @@ const dispatch = createDispatch(
     },
     git: new GitService(),
     changes: (root) => watcher.changes(root),
+    editor,
   },
   log,
 );

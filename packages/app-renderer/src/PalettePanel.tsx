@@ -26,6 +26,8 @@ export function usePalette(projectRoot: string, revision: number): { palette: Pa
 export interface PalettePanelProps {
   palette: Palette | null;
   error: string | null;
+  /** A press on a placeable entry: may become a drag onto the canvas (T3.2). */
+  onStartDrag: (item: PaletteEntry, event: React.PointerEvent) => void;
 }
 
 /** Why an entry can't be placed, or null if it can. */
@@ -35,8 +37,8 @@ export function unavailableReason(item: PaletteEntry): string | null {
   return `This project doesn't have ${item.missing.join(", ")}.`;
 }
 
-/** The curated components and layout primitives (T3.1, PRD §9.1), by group. */
-export function PalettePanel({ palette, error }: PalettePanelProps) {
+/** The curated components and layout primitives (T3.1, PRD §9.1), by group. Drag one onto the canvas to place it. */
+export function PalettePanel({ palette, error, onStartDrag }: PalettePanelProps) {
   return (
     <section aria-label="Palette" className="palette">
       <h2>Palette</h2>
@@ -57,6 +59,7 @@ export function PalettePanel({ palette, error }: PalettePanelProps) {
                     aria-disabled={why !== null}
                     className={`palette-item${why ? " is-disabled" : ""}`}
                     title={why ?? item.description}
+                    onPointerDown={why === null ? (e) => onStartDrag(item, e) : undefined}
                   >
                     {item.label}
                   </li>

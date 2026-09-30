@@ -380,3 +380,21 @@ button.quiet {
 .palette + .layers {
   margin-top: 16px;
 }
+/* During a drag the frames ignore the pointer, so the renderer keeps getting its events. */
+.canvas.is-dragging iframe {
+  pointer-events: none;
+}
+.canvas.is-dragging {
+  cursor: copy;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 10;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}

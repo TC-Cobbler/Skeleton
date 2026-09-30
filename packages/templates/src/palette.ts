@@ -18,10 +18,13 @@ export interface ElementSchema {
   from: string;
   props: readonly PropSchema[];
   /**
-   * What goes between the tags: `nodes` accepts dropped elements (a drop target),
-   * `text` has editable text content, `none` is self-closing.
+   * What goes between the tags:
+   * - `nodes`: any elements; a drop target on the canvas
+   * - `parts`: its own sub-components only (a Select's trigger and content, a table's rows); not a drop target
+   * - `text`: editable text content
+   * - `none`: nothing (self-closing)
    */
-  children: "nodes" | "text" | "none";
+  children: "nodes" | "parts" | "text" | "none";
   /** Layout properties the properties panel edits as classes (T3.5). */
   layout?: "stack" | "grid";
 }
@@ -98,10 +101,10 @@ const ELEMENT_LIST: readonly ElementSchema[] = [
     { name: "size", type: "enum", options: ["default", "sm"], default: "default" },
     disabled,
   ]),
-  el("Select", UI("select"), "nodes", [{ name: "defaultValue", type: "string", default: null }, disabled]),
-  el("SelectTrigger", UI("select"), "nodes", [{ name: "size", type: "enum", options: ["default", "sm"], default: "default" }]),
+  el("Select", UI("select"), "parts", [{ name: "defaultValue", type: "string", default: null }, disabled]),
+  el("SelectTrigger", UI("select"), "parts", [{ name: "size", type: "enum", options: ["default", "sm"], default: "default" }]),
   el("SelectValue", UI("select"), "none", [{ name: "placeholder", type: "string", default: null }]),
-  el("SelectContent", UI("select"), "nodes", [{ name: "position", type: "enum", options: ["item-aligned", "popper"], default: "item-aligned" }]),
+  el("SelectContent", UI("select"), "parts", [{ name: "position", type: "enum", options: ["item-aligned", "popper"], default: "item-aligned" }]),
   el("SelectItem", UI("select"), "text", [{ name: "value", type: "string", default: "option" }, disabled]),
 
   // Display
@@ -111,19 +114,19 @@ const ELEMENT_LIST: readonly ElementSchema[] = [
   el("CardDescription", UI("card"), "text"),
   el("CardContent", UI("card"), "nodes"),
   el("Badge", UI("badge"), "text", [{ name: "variant", type: "enum", options: VARIANTS, default: "default" }]),
-  el("Avatar", UI("avatar"), "nodes", [{ name: "size", type: "enum", options: ["default", "sm", "lg"], default: "default" }]),
+  el("Avatar", UI("avatar"), "parts", [{ name: "size", type: "enum", options: ["default", "sm", "lg"], default: "default" }]),
   el("AvatarFallback", UI("avatar"), "text"),
-  el("Table", UI("table"), "nodes"),
-  el("TableHeader", UI("table"), "nodes"),
-  el("TableBody", UI("table"), "nodes"),
-  el("TableRow", UI("table"), "nodes"),
+  el("Table", UI("table"), "parts"),
+  el("TableHeader", UI("table"), "parts"),
+  el("TableBody", UI("table"), "parts"),
+  el("TableRow", UI("table"), "parts"),
   el("TableHead", UI("table"), "text"),
   el("TableCell", UI("table"), "text"),
-  el("Tabs", UI("tabs"), "nodes", [
+  el("Tabs", UI("tabs"), "parts", [
     { name: "defaultValue", type: "string", default: null },
     { name: "orientation", type: "enum", options: ["horizontal", "vertical"], default: "horizontal" },
   ]),
-  el("TabsList", UI("tabs"), "nodes", [{ name: "variant", type: "enum", options: ["default", "line"], default: "default" }]),
+  el("TabsList", UI("tabs"), "parts", [{ name: "variant", type: "enum", options: ["default", "line"], default: "default" }]),
   el("TabsTrigger", UI("tabs"), "text", [{ name: "value", type: "string", default: "tab" }, disabled]),
   el("TabsContent", UI("tabs"), "nodes", [{ name: "value", type: "string", default: "tab" }]),
   el("Separator", UI("separator"), "none", [
@@ -131,16 +134,16 @@ const ELEMENT_LIST: readonly ElementSchema[] = [
   ]),
 
   // Overlay
-  el("Dialog", UI("dialog"), "nodes", [{ name: "defaultOpen", type: "boolean", default: false }]),
-  el("DialogTrigger", UI("dialog"), "nodes", [asChild]),
+  el("Dialog", UI("dialog"), "parts", [{ name: "defaultOpen", type: "boolean", default: false }]),
+  el("DialogTrigger", UI("dialog"), "parts", [asChild]),
   el("DialogContent", UI("dialog"), "nodes", [{ name: "showCloseButton", type: "boolean", default: true }]),
   el("DialogHeader", UI("dialog"), "nodes"),
   el("DialogTitle", UI("dialog"), "text"),
   el("DialogDescription", UI("dialog"), "text"),
   el("DialogFooter", UI("dialog"), "nodes", [{ name: "showCloseButton", type: "boolean", default: false }]),
-  el("DialogClose", UI("dialog"), "nodes", [asChild]),
-  el("Sheet", UI("sheet"), "nodes", [{ name: "defaultOpen", type: "boolean", default: false }]),
-  el("SheetTrigger", UI("sheet"), "nodes", [asChild]),
+  el("DialogClose", UI("dialog"), "parts", [asChild]),
+  el("Sheet", UI("sheet"), "parts", [{ name: "defaultOpen", type: "boolean", default: false }]),
+  el("SheetTrigger", UI("sheet"), "parts", [asChild]),
   el("SheetContent", UI("sheet"), "nodes", [
     { name: "side", type: "enum", options: ["top", "right", "bottom", "left"], default: "right" },
     { name: "showCloseButton", type: "boolean", default: true },
@@ -148,9 +151,9 @@ const ELEMENT_LIST: readonly ElementSchema[] = [
   el("SheetHeader", UI("sheet"), "nodes"),
   el("SheetTitle", UI("sheet"), "text"),
   el("SheetDescription", UI("sheet"), "text"),
-  el("DropdownMenu", UI("dropdown-menu"), "nodes"),
-  el("DropdownMenuTrigger", UI("dropdown-menu"), "nodes", [asChild]),
-  el("DropdownMenuContent", UI("dropdown-menu"), "nodes", [
+  el("DropdownMenu", UI("dropdown-menu"), "parts"),
+  el("DropdownMenuTrigger", UI("dropdown-menu"), "parts", [asChild]),
+  el("DropdownMenuContent", UI("dropdown-menu"), "parts", [
     { name: "align", type: "enum", options: ["start", "center", "end"], default: "center" },
     { name: "side", type: "enum", options: ["top", "right", "bottom", "left"], default: "bottom" },
   ]),
@@ -162,18 +165,18 @@ const ELEMENT_LIST: readonly ElementSchema[] = [
   el("DropdownMenuSeparator", UI("dropdown-menu"), "none"),
 
   // Navigation
-  el("SidebarProvider", UI("sidebar"), "nodes", [{ name: "defaultOpen", type: "boolean", default: true }]),
-  el("Sidebar", UI("sidebar"), "nodes", [
+  el("SidebarProvider", UI("sidebar"), "parts", [{ name: "defaultOpen", type: "boolean", default: true }]),
+  el("Sidebar", UI("sidebar"), "parts", [
     { name: "side", type: "enum", options: ["left", "right"], default: "left" },
     { name: "variant", type: "enum", options: ["sidebar", "floating", "inset"], default: "sidebar" },
     { name: "collapsible", type: "enum", options: ["offcanvas", "icon", "none"], default: "offcanvas" },
   ]),
-  el("SidebarContent", UI("sidebar"), "nodes"),
-  el("SidebarGroup", UI("sidebar"), "nodes"),
+  el("SidebarContent", UI("sidebar"), "parts"),
+  el("SidebarGroup", UI("sidebar"), "parts"),
   el("SidebarGroupLabel", UI("sidebar"), "text"),
   el("SidebarGroupContent", UI("sidebar"), "nodes"),
-  el("SidebarMenu", UI("sidebar"), "nodes"),
-  el("SidebarMenuItem", UI("sidebar"), "nodes"),
+  el("SidebarMenu", UI("sidebar"), "parts"),
+  el("SidebarMenuItem", UI("sidebar"), "parts"),
   el("SidebarMenuButton", UI("sidebar"), "text", [
     { name: "variant", type: "enum", options: ["default", "outline"], default: "default" },
     { name: "size", type: "enum", options: ["default", "sm", "lg"], default: "default" },
@@ -188,6 +191,7 @@ export const ELEMENTS: Readonly<Record<string, ElementSchema>> = Object.fromEntr
 /** Plain HTML elements palette templates use. Editable, but they carry no prop schema. */
 export const PLAIN_ELEMENTS: Readonly<Record<string, Pick<ElementSchema, "children">>> = {
   form: { children: "nodes" },
+  p: { children: "text" },
 };
 
 export const PALETTE: readonly PaletteItem[] = [
@@ -304,7 +308,9 @@ export const PALETTE: readonly PaletteItem[] = [
     <CardTitle>Card title</CardTitle>
     <CardDescription>Card description</CardDescription>
   </CardHeader>
-  <CardContent />
+  <CardContent>
+    <p>Card content</p>
+  </CardContent>
 </Card>`,
   },
   { id: "badge", label: "Badge", group: "display", description: "Small status label.", template: `<Badge>Badge</Badge>` },
@@ -347,8 +353,12 @@ export const PALETTE: readonly PaletteItem[] = [
     <TabsTrigger value="tab-1">Tab 1</TabsTrigger>
     <TabsTrigger value="tab-2">Tab 2</TabsTrigger>
   </TabsList>
-  <TabsContent value="tab-1" />
-  <TabsContent value="tab-2" />
+  <TabsContent value="tab-1">
+    <p>Tab 1 content</p>
+  </TabsContent>
+  <TabsContent value="tab-2">
+    <p>Tab 2 content</p>
+  </TabsContent>
 </Tabs>`,
   },
   { id: "separator", label: "Separator", group: "display", description: "Thin dividing line.", template: `<Separator />` },

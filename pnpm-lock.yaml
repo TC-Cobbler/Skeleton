@@ -41,6 +41,9 @@ importers:
       magic-string:
         specifier: ^0.30.21
         version: 0.30.21
+      prettier:
+        specifier: ^3.9.9
+        version: 3.9.9
     devDependencies:
       electron:
         specifier: ^44.5.0

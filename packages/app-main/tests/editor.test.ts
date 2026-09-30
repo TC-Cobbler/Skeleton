@@ -1,0 +1,132 @@
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { buildIdIndex, buildTree, findNodeById, parseModule } from "@skeleton/core";
+import { loadTemplate, renderProject } from "@skeleton/templates";
+import { Editor, EditRefused, listSources, type EditorIO } from "../src/project/editor.js";
+
+const ROOT = "/projects/demo";
+
+/** An in-memory project: a freshly rendered template plus a second page. */
+function memoryProject() {
+  const files = new Map<string, string>();
+  for (const [rel, content] of Object.entries(renderProject(loadTemplate(), { name: "Demo", skeletonVersion: "0" }))) {
+    files.set(path.join(ROOT, rel), content);
+  }
+  files.set(path.join(ROOT, "src/pages/Other.tsx"), `export default function Other() {\n  return <div data-ui-id="ui_other" />;\n}\n`);
+  const writes: string[] = [];
+  const io: EditorIO = {
+    readFile: async (p) => {
+      const content = files.get(p);
+      if (content === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: "ENOENT" });
+      return content;
+    },
+    writeFile: async (p, content) => {
+      writes.push(p);
+      files.set(p, content);
+    },
+    listSources: async () =>
+      [...files.keys()].filter((p) => p.startsWith(`${ROOT}/src/`) && /\.(tsx|jsx)$/.test(p)).map((p) => path.relative(ROOT, p)),
+  };
+  const home = () => files.get(path.join(ROOT, "src/pages/HomePage.tsx")) as string;
+  const stackId = /<Stack data-ui-id="(ui_[a-z0-9]{5})"/.exec(home())?.[1] as string;
+  return { files, io, writes, home, stackId };
+}
+
+describe("Editor: insert (T3.2)", () => {
+  it("places a palette entry with fresh IDs, its imports, and one minimal diff", async () => {
+    const p = memoryProject();
+    const before = p.home();
+    const result = await new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "card" });
+    const after = p.home();
+    expect(p.writes).toEqual([path.join(ROOT, "src/pages/HomePage.tsx")]);
+    expect(() => parseModule(after)).not.toThrow();
+    expect(after).toContain('import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";');
+
+    // The placed element is selected, is the stack's second child, and every new element has an ID.
+    const card = findNodeById(buildTree(after).roots, result.select as string);
+    expect(card?.name).toBe("Card");
+    const stack = findNodeById(buildTree(after).roots, p.stackId);
+    expect(stack?.children.map((c) => c.name)).toEqual(["h1", "Card"]);
+    expect(card?.children.map((c) => c.name)).toEqual(["CardHeader", "CardContent"]);
+
+    // Every pre-existing ID survives; new ones are unique project-wide.
+    const beforeIds = [...buildIdIndex({ a: before }).ids.keys()];
+    const index = buildIdIndex(Object.fromEntries([...p.files].filter(([f]) => f.endsWith(".tsx"))));
+    for (const id of beforeIds) expect(index.ids.has(id), id).toBe(true);
+    expect(index.duplicates).toEqual([]);
+    expect(index.ids.size).toBe(beforeIds.length + 1 + 6); // Other's ID + 6 card elements
+
+    // Only the import line and the inserted lines changed; the rest is byte-identical.
+    expect(result.linesRemoved).toBe(0);
+    expect(result.patch.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"))).toEqual([]);
+    const beforeLines = before.split("\n");
+    const kept = after.split("\n").filter((l) => beforeLines.includes(l));
+    expect(kept).toEqual(beforeLines);
+  });
+
+  it("formats the template and indents it under its parent", async () => {
+    const p = memoryProject();
+    await new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 0, paletteId: "button" });
+    expect(p.home()).toMatch(/\n {8}<Button data-ui-id="ui_[a-z0-9]{5}">Button<\/Button>\n {8}<h1 /);
+  });
+
+  it("mints IDs that don't clash with other pages", async () => {
+    const p = memoryProject();
+    const random = Math.random;
+    // Force the first minted candidate to collide with Other.tsx's ID.
+    const sequence = [..."other"].map((c) => "abcdefghijklmnopqrstuvwxyz0123456789".indexOf(c) / 36 + 0.001);
+    Math.random = () => sequence.shift() ?? random();
+    try {
+      const result = await new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 0, paletteId: "badge" });
+      expect(result.select).not.toBe("ui_other");
+    } finally {
+      Math.random = random;
+    }
+  });
+
+  it("refuses an insert into a missing or locked target without writing", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: "ui_zzzzz", index: 0, paletteId: "button" })).rejects.toThrow(
+      new EditRefused("insert(ui_zzzzz): ui_zzzzz not found"),
+    );
+    await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 9, paletteId: "button" })).rejects.toThrow(
+      /index 9 out of range/,
+    );
+    expect(p.writes).toEqual([]);
+  });
+
+  it("applies queued edits in order, each on the previous result", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await Promise.all([
+      editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "button" }),
+      editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "badge" }).catch((e: unknown) => e),
+      editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 99, paletteId: "badge" }).catch((e: unknown) => e),
+      editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 3, paletteId: "separator" }),
+    ]);
+    const stack = findNodeById(buildTree(p.home()).roots, p.stackId);
+    expect(stack?.children.map((c) => c.name)).toEqual(["h1", "Badge", "Button", "Separator"]);
+  });
+});
+
+describe("listSources", () => {
+  it("walks src/ for .tsx and .jsx, skipping node_modules, dist and dotfiles", async () => {
+    const tree: Record<string, { name: string; dir: boolean }[]> = {
+      "/p/src": [
+        { name: "main.tsx", dir: false },
+        { name: "pages", dir: true },
+        { name: "node_modules", dir: true },
+        { name: ".cache", dir: true },
+        { name: "styles.css", dir: false },
+      ],
+      "/p/src/pages": [
+        { name: "Home.tsx", dir: false },
+        { name: "Old.jsx", dir: false },
+        { name: "util.ts", dir: false },
+      ],
+    };
+    const readdir = async (dir: string) => (tree[dir] ?? []).map((e) => ({ name: e.name, isDirectory: () => e.dir }));
+    await expect(listSources("/p", readdir)).resolves.toEqual(["src/main.tsx", "src/pages/Home.tsx", "src/pages/Old.jsx"]);
+  });
+});

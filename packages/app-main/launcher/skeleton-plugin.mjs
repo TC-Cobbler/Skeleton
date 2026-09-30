@@ -1,15 +1,21 @@
 // Skeleton's dev-only Vite plugin (ADR 006). Added by vite-launcher.mjs; never
 // written into the user's project, and absent from production builds.
 //
-// 1. Tags every JSX element in page files with data-skeleton-loc="<file>:<offset>",
-//    in the served code only. <offset> is the element's start in the file on disk,
-//    the same number core's parser reports as range.start.
+// 1. Tags every JSX element in page files with
+//    data-skeleton-loc="<file>:<offset>@<version>", in the served code only. <offset>
+//    is the element's start in the file on disk, the same number core's parser reports
+//    as range.start; <version> is core's sourceVersion of the file's text, so the
+//    overlay never maps DOM to a tree parsed from a different version of the file.
 // 2. Injects the overlay and serves it as a Vite module (so it gets import.meta.hot).
+// 3. Has Vite pre-bundle the dependencies of every source file at startup, not just
+//    those the current pages import. Otherwise placing the first component of a
+//    kind (T3.2) makes Vite discover a new dependency and reload the whole canvas.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parse } from "@babel/parser";
 import MagicString from "magic-string";
+import { sourceVersion } from "@skeleton/core/version";
 
 export const OVERLAY_URL = "/@skeleton/overlay.js";
 const LOC_ATTR = "data-skeleton-loc";
@@ -28,6 +34,7 @@ function nameOf(node) {
  * source in the source map. Returns null if nothing changed.
  */
 export function tagJsx(code, file, sourcePath = file) {
+  const version = sourceVersion(code);
   const ast = parse(code, { sourceType: "module", plugins: ["typescript", "jsx"], errorRecovery: false });
   const s = new MagicString(code);
   let changed = false;
@@ -37,7 +44,7 @@ export function tagJsx(code, file, sourcePath = file) {
       const opening = node.openingElement;
       const alreadyTagged = opening.attributes.some((a) => a.type === "JSXAttribute" && a.name.name === LOC_ATTR);
       if (!FRAGMENTS.has(nameOf(opening.name)) && !alreadyTagged) {
-        s.appendLeft(opening.name.end, ` ${LOC_ATTR}="${file}:${node.start}"`);
+        s.appendLeft(opening.name.end, ` ${LOC_ATTR}="${file}:${node.start}@${version}"`);
         changed = true;
       }
     }
@@ -61,6 +68,9 @@ export function skeletonPlugin({ root, overlayBundle, pagesDir = "src/pages" }) 
     name: "skeleton",
     enforce: "pre",
     apply: "serve",
+    config() {
+      return { optimizeDeps: { entries: ["index.html", "src/**/*.{ts,tsx,js,jsx}"] } };
+    },
     resolveId(id) {
       return id === OVERLAY_URL ? OVERLAY_URL : null;
     },

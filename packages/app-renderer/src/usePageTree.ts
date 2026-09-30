@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PageTree } from "@skeleton/app-main/ipc";
+import type { ElementSchema, PageView } from "@skeleton/app-main/ipc";
 import type { OverlayNode } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import { flatten, toOverlayNodes, type KeyedNode } from "./canvas/nodes.js";
 
 export interface PageTreeState {
-  tree: PageTree | null;
+  tree: PageView | null;
   nodes: KeyedNode[];
   overlayNodes: OverlayNode[];
   error: string | null;
@@ -13,9 +13,14 @@ export interface PageTreeState {
   reload: () => void;
 }
 
-/** A page's parsed tree from main (parsed trees are derived data: always re-read, never stored). */
-export function usePageTree(projectRoot: string, file: string | null): PageTreeState {
-  const [tree, setTree] = useState<PageTree | null>(null);
+const NO_ELEMENTS: Record<string, ElementSchema> = {};
+
+/**
+ * A page's parsed tree from main (parsed trees are derived data: always re-read, never
+ * stored). `elements` are the palette's schemas, which say which nodes take drops.
+ */
+export function usePageTree(projectRoot: string, file: string | null, elements: Record<string, ElementSchema> = NO_ELEMENTS): PageTreeState {
+  const [tree, setTree] = useState<PageView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
 
@@ -41,7 +46,7 @@ export function usePageTree(projectRoot: string, file: string | null): PageTreeS
   }, [projectRoot, file, revision]);
 
   const nodes = useMemo(() => (tree ? flatten(tree) : []), [tree]);
-  const overlayNodes = useMemo(() => toOverlayNodes(nodes), [nodes]);
+  const overlayNodes = useMemo(() => toOverlayNodes(nodes, elements), [nodes, elements]);
   const reload = useCallback(() => setRevision((r) => r + 1), []);
   return { tree, nodes, overlayNodes, error, reload };
 }

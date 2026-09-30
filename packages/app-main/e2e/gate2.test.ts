@@ -81,7 +81,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
       const locs = await frame().evaluate(() =>
         [...document.querySelectorAll("[data-skeleton-loc]")].map((el) => el.getAttribute("data-skeleton-loc") ?? ""),
       );
-      const offsets = new Set(locs.filter((l) => l.startsWith(`${FILE}:`)).map((l) => Number(l.split(":")[1])));
+      const offsets = new Set(locs.filter((l) => l.startsWith(`${FILE}:`)).map((l) => Number(/:(\d+)@/.exec(l)?.[1])));
       const starts = new Set(nodes.filter((n) => n.element).map((n) => n.start));
       // Every tagged DOM element is a node in the tree...
       for (const o of offsets) expect(starts.has(o), `DOM loc ${o} has no tree node`).toBe(true);

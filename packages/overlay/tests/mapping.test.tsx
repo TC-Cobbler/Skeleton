@@ -8,7 +8,7 @@ import type { HostMessage, OverlayMessage, OverlayNode } from "../src/protocol.j
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const F = "src/pages/HomePage.tsx";
-const loc = (offset: number) => ({ "data-skeleton-loc": `${F}:${offset}` });
+const V = "0000000000000a";
 
 /** A custom component that doesn't forward unknown props (the common case). */
 function Dialog({ children }: { children?: ReactNode }) {
@@ -20,7 +20,9 @@ function Dialog({ children }: { children?: ReactNode }) {
   );
 }
 
-function Page({ rows }: { rows: string[] }) {
+/** `shift` moves every offset, like an edit above the JSX does after HMR. */
+function Page({ rows, shift = 0, version = V }: { rows: string[]; shift?: number; version?: string }) {
+  const loc = (offset: number) => ({ "data-skeleton-loc": `${F}:${offset + shift}@${version}` });
   return (
     <div {...loc(10)} id="root-div">
       <Dialog {...(loc(50) as object)}>
@@ -39,18 +41,20 @@ function Page({ rows }: { rows: string[] }) {
 }
 
 const nodes: OverlayNode[] = [
-  { key: "0", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300 },
-  { key: "0.0", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110 },
-  { key: "0.0.0", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105 },
-  { key: "0.1", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200 },
-  { key: "0.1.0", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190 },
+  { key: "0", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true },
+  { key: "0.0", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110 , drop: false },
+  { key: "0.0.0", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105 , drop: false },
+  { key: "0.1", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200 , drop: false },
+  { key: "0.1.0", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190 , drop: false },
 ];
 
 let container: HTMLElement;
+let root: ReturnType<typeof createRoot>;
 beforeEach(async () => {
   container = document.createElement("div");
   document.body.appendChild(container);
-  await act(async () => createRoot(container).render(<Page rows={["a", "b", "c"]} />));
+  root = createRoot(container);
+  await act(async () => root.render(<Page rows={["a", "b", "c"]} />));
 });
 afterEach(() => {
   document.body.innerHTML = "";
@@ -59,16 +63,38 @@ const $ = (sel: string) => document.querySelector(sel) as Element;
 
 describe("locChain", () => {
   it("walks fibers through components that don't render the loc", () => {
-    expect(locChain($(".inner"), F)).toEqual([50, 10]);
-    expect(locChain($("#trigger"), F)).toEqual([80, 50, 10]);
-    expect(locChain($(".row"), F)).toEqual([130, 10]);
-    expect(locChain($("#plain-text"), F)).toEqual([10]);
-    expect(locChain($(".inner"), "src/pages/Other.tsx")).toEqual([]);
+    expect(locChain($(".inner"), F, V)).toEqual([50, 10]);
+    expect(locChain($("#trigger"), F, V)).toEqual([80, 50, 10]);
+    expect(locChain($(".row"), F, V)).toEqual([130, 10]);
+    expect(locChain($("#plain-text"), F, V)).toEqual([10]);
+    expect(locChain($(".inner"), "src/pages/Other.tsx", V)).toEqual([]);
+  });
+
+  it("reads the current props after a re-render moves the offsets (HMR)", async () => {
+    // React swaps each fiber with its alternate on every render; a DOM node's own
+    // fiber pointer can be the stale one, still holding the old offsets.
+    for (const shift of [100, 200, 300]) {
+      await act(async () => root.render(<Page rows={["a", "b", "c"]} shift={shift} />));
+      expect(locChain($("#trigger"), F, V), `shift ${shift}`).toEqual([80 + shift, 50 + shift, 10 + shift]);
+      expect(locChain($(".inner"), F, V), `shift ${shift}`).toEqual([50 + shift, 10 + shift]);
+      expect(locChain($(".row"), F, V), `shift ${shift}`).toEqual([130 + shift, 10 + shift]);
+    }
+  });
+});
+
+describe("versions", () => {
+  it("ignores locs from another version of the file, until the tree catches up", async () => {
+    const next = "0000000000000b";
+    // The app re-rendered with an edit's new offsets; the tree is still the old one.
+    await act(async () => root.render(<Page rows={["a", "b", "c"]} shift={40} version={next} />));
+    expect(locChain($("#trigger"), F, V)).toEqual([]);
+    expect(new NodeIndex(F, V, nodes).hit($("#trigger"))).toBeNull();
+    expect(locChain($("#trigger"), F, next)).toEqual([120, 90, 50]);
   });
 });
 
 describe("NodeIndex", () => {
-  const index = () => new NodeIndex(F, nodes);
+  const index = () => new NodeIndex(F, V, nodes);
 
   it("hits the innermost source element", () => {
     expect(index().hit($("#trigger"))?.key).toBe("0.0.0");
@@ -116,7 +142,7 @@ describe("Overlay", () => {
   it("announces itself, maps the tree, and selects on click without the app seeing it", () => {
     const { sent, send, flush } = setup();
     expect(sent[0]).toMatchObject({ type: "ready", pathname: "/" });
-    send({ source: "skeleton-host", type: "tree", file: F, nodes });
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
     const mapped = sent.find((m) => m.type === "mapped");
     expect(mapped?.type === "mapped" && mapped.boxes.map((b) => b.key)).toEqual(["0", "0.0", "0.0.0", "0.1", "0.1.0"]);
 
@@ -132,7 +158,7 @@ describe("Overlay", () => {
 
   it("scrolls to selections made elsewhere, but not to the echo of its own click", () => {
     const { send } = setup();
-    send({ source: "skeleton-host", type: "tree", file: F, nodes });
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     ($("#trigger") as HTMLElement).click();
@@ -144,7 +170,7 @@ describe("Overlay", () => {
 
   it("lets clicks through in interact mode", () => {
     const { sent, send } = setup();
-    send({ source: "skeleton-host", type: "tree", file: F, nodes });
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
     send({ source: "skeleton-host", type: "mode", mode: "interact" });
     const appClick = vi.fn();
     $("#trigger").addEventListener("click", appClick);
@@ -152,6 +178,55 @@ describe("Overlay", () => {
     ($("#trigger") as HTMLElement).click();
     expect(appClick).toHaveBeenCalledOnce();
     expect(sent.slice(before).some((m) => m.type === "select")).toBe(false);
+  });
+
+  it("answers drags with the drop target and draws the indicator (T3.2)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    // jsdom has no layout: the dialog sits at y 0–40, the rows at y 50–90.
+    const box = (y: number, h: number) => () => ({ x: 0, y, left: 0, top: y, right: 100, bottom: y + h, width: 100, height: h, toJSON: () => ({}) }) as DOMRect;
+    ($("#root-div") as HTMLElement).getBoundingClientRect = box(0, 100);
+    ($(".dialog") as HTMLElement).getBoundingClientRect = box(0, 40);
+    ($("#trigger") as HTMLElement).getBoundingClientRect = box(10, 20);
+    document.querySelectorAll<HTMLElement>(".row").forEach((el, i) => (el.getBoundingClientRect = box(50 + i * 20, 20)));
+    document.elementFromPoint = () => $("#trigger");
+    const target = () => {
+      const m = sent.at(-1);
+      return m?.type === "drop-target" ? m.target : "none";
+    };
+
+    // Over the trigger: the Dialog is locked, so the drop goes into the div, between the dialog and the rows.
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: null });
+    expect(target()).toEqual({ parentKey: "0", index: 1 });
+    flush();
+    const html = document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
+    expect(html).toContain("data-drop-indicator");
+    expect(html).toContain("Into div #ui_root0");
+
+    // Moving the dialog itself: never into itself, and indexes count it as taken out.
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: "0.0" });
+    expect(target()).toEqual({ parentKey: "0", index: 0 });
+
+    send({ source: "skeleton-host", type: "drag-end" });
+    expect(target()).toBeNull();
+    flush();
+    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).not.toContain("data-drop-indicator");
+  });
+
+  it("re-reports what's mapped when the DOM catches up with the tree", async () => {
+    const { sent, send, flush } = setup();
+    const next = "0000000000000b";
+    // The tree for the next version arrives before the app has re-rendered.
+    send({ source: "skeleton-host", type: "tree", file: F, version: next, nodes });
+    const mapped = () => sent.filter((m) => m.type === "mapped").map((m) => (m.type === "mapped" ? m.boxes.map((b) => b.key) : []));
+    expect(mapped().at(-1)).toEqual([]);
+    await act(async () => root.render(<Page rows={["a", "b", "c"]} version={next} />));
+    await new Promise((r) => setTimeout(r, 0)); // MutationObserver
+    flush();
+    expect(mapped().at(-1)).toEqual(["0", "0.0", "0.0.0", "0.1", "0.1.0"]);
+    const count = mapped().length;
+    flush();
+    expect(mapped()).toHaveLength(count);
   });
 
   it("toggles .dark on the previewed document", () => {
@@ -164,7 +239,7 @@ describe("Overlay", () => {
 
   it("ignores messages that don't come from the host", () => {
     const { sent, send } = setup();
-    send({ source: "skeleton-host", type: "tree", file: F, nodes }, window);
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes }, window);
     expect(sent.some((m) => m.type === "mapped")).toBe(false);
   });
 });

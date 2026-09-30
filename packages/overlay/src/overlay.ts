@@ -2,8 +2,9 @@
 // Draws hover/selection outlines and maps DOM ↔ source through NodeIndex. Talks to
 // the host only via postMessage; never imports from core.
 
+import { dropIndex, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
 import { NodeIndex } from "./mapping.js";
-import { isHostMessage, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
+import { isHostMessage, type DropTarget, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
 
 type Rect = NodeBox["rects"][number];
 
@@ -11,7 +12,15 @@ const COLORS = {
   hover: "#3b82f6",
   selected: "#2563eb",
   locked: "#ea580c",
+  drop: "#2563eb",
 };
+
+interface DropState extends DropTarget {
+  container: Rect;
+  indicator: Rect;
+  /** The container is empty: the indicator fills it. */
+  fill: boolean;
+}
 
 export interface OverlayOptions {
   win: Window;
@@ -25,6 +34,10 @@ export class Overlay {
   private selected: string | null = null;
   private highlighted: string | null = null;
   private mode: "select" | "interact" = "select";
+  private drop: DropState | null = null;
+  /** The DOM changed since `mapped` was last reported. */
+  private remap = false;
+  private lastMapped = "";
   private readonly layer: HTMLElement;
   private readonly shadow: ShadowRoot;
   private frame = 0;
@@ -52,6 +65,7 @@ export class Overlay {
     this.doc.addEventListener("mouseleave", () => this.setHover(null), { signal });
     this.observer = new MutationObserver(() => {
       this.index?.invalidate();
+      this.remap = true;
       this.schedule();
     });
     this.observer.observe(this.doc.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -85,9 +99,9 @@ export class Overlay {
     const msg: HostMessage = event.data;
     switch (msg.type) {
       case "tree":
-        this.index = new NodeIndex(msg.file, msg.nodes);
+        this.index = new NodeIndex(msg.file, msg.version, msg.nodes);
         if (this.selected && !msg.nodes.some((n) => n.key === this.selected)) this.selected = null;
-        this.post({ source: "skeleton-overlay", type: "mapped", boxes: this.boxes() });
+        this.reportMapped(true);
         break;
       case "select":
         // An echo of this frame's own click must not scroll the page under the cursor;
@@ -107,8 +121,54 @@ export class Overlay {
       case "theme":
         this.doc.documentElement.classList.toggle("dark", msg.dark);
         break;
+      case "drag": {
+        this.hovered = null;
+        this.drop = this.dropAt(msg.x, msg.y, msg.moving);
+        const target = this.drop ? { parentKey: this.drop.parentKey, index: this.drop.index } : null;
+        this.post({ source: "skeleton-overlay", type: "drop-target", target });
+        break;
+      }
+      case "drag-end":
+        this.drop = null;
+        this.post({ source: "skeleton-overlay", type: "drop-target", target: null });
+        break;
     }
     this.schedule();
+  }
+
+  /**
+   * Where a drop at (x, y) lands: the innermost drop container at the point (never
+   * the node being moved or anything inside it), and the index among its children
+   * from their rendered positions along the container's flow.
+   */
+  private dropAt(x: number, y: number, moving: string | null): DropState | null {
+    if (!this.index || !this.doc.body) return null;
+    const at = deepestAt(this.doc.elementFromPoint(x, y), x, y);
+    if (!at || at === this.layer) return null;
+    const hit = this.index.hit(at);
+    const inMoving = (key: string) => moving !== null && (key === moving || key.startsWith(`${moving}.`));
+    for (let key: string | null = hit?.key ?? null; key !== null; key = parentKeyOf(key)) {
+      const node = this.node(key);
+      if (!node?.drop || inMoving(key)) continue;
+      const elements = this.index.elementsOf(node, this.doc.body, this.layer);
+      const container = unionRect(elements.map(rectOf));
+      if (!elements[0] || !container) continue;
+      const style = this.options.win.getComputedStyle(elements[0]);
+      const flow = flowOf(style.display, style.flexDirection, style.gridTemplateColumns);
+      // Indexes count the children as they'll be once the moved node is taken out.
+      const placed: PlacedChild[] = [];
+      let count = 0;
+      for (const child of this.index.nodes) {
+        if (parentKeyOf(child.key) !== key || child.key === moving) continue;
+        const rect = unionRect(this.rects(child));
+        if (rect) placed.push({ index: count, rect });
+        count++;
+      }
+      const index = dropIndex(flow, placed, x, y, count);
+      const { rect, fill } = indicatorRect(flow, container, placed, index);
+      return { parentKey: key, index, container, indicator: rect, fill };
+    }
+    return null;
   }
 
   private target(event: Event): OverlayNode | null {
@@ -126,7 +186,7 @@ export class Overlay {
   }
 
   private onMove(event: MouseEvent): void {
-    if (this.mode !== "select") return;
+    if (this.mode !== "select" || this.drop) return;
     this.setHover(this.target(event)?.key ?? null);
   }
 
@@ -158,10 +218,7 @@ export class Overlay {
 
   private rects(node: OverlayNode): Rect[] {
     if (!this.index || !this.doc.body) return [];
-    return this.index.elementsOf(node, this.doc.body, this.layer).map((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, width: r.width, height: r.height };
-    });
+    return this.index.elementsOf(node, this.doc.body, this.layer).map(rectOf);
   }
 
   private boxes(): NodeBox[] {
@@ -185,7 +242,21 @@ export class Overlay {
     });
   }
 
+  /**
+   * Tell the host which nodes are on screen: always after a tree, and after DOM
+   * changes when the answer changed (the DOM can catch up with a tree after it arrived).
+   */
+  private reportMapped(always: boolean): void {
+    this.remap = false;
+    const boxes = this.boxes();
+    const keys = boxes.map((b) => b.key).join(" ");
+    if (!always && keys === this.lastMapped) return;
+    this.lastMapped = keys;
+    this.post({ source: "skeleton-overlay", type: "mapped", boxes });
+  }
+
   private draw(): void {
+    if (this.remap && this.index) this.reportMapped(false);
     const parts: string[] = [];
     // Labels placed so far; a new label slides right until it doesn't overlap one.
     const placed: Rect[] = [];
@@ -228,6 +299,19 @@ export class Overlay {
       box(hovered, hovered.kind === "locked" ? COLORS.locked : COLORS.hover, 1, hovered.kind === "locked", true);
     }
     if (selected) box(selected, selected.kind === "locked" ? COLORS.locked : COLORS.selected, 2, selected.kind === "locked", true);
+    const drop = this.drop;
+    const dropNode = drop ? this.node(drop.parentKey) : null;
+    if (drop && dropNode) {
+      const { container: c, indicator: i } = drop;
+      parts.push(
+        `<div class="box" style="left:${c.x}px;top:${c.y}px;width:${c.width}px;height:${c.height}px;border:1px dashed ${COLORS.drop}"></div>`,
+        `<div class="box" data-drop-indicator style="left:${i.x}px;top:${i.y}px;width:${i.width}px;height:${i.height}px;` +
+          `background:${drop.fill ? "rgb(37 99 235 / 0.15)" : COLORS.drop}"></div>`,
+      );
+      const text = `Into ${labelOf(dropNode)}`;
+      const at = place(c.x, c.y >= 18 ? c.y - 18 : c.y, text);
+      parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${COLORS.drop}">${escapeHtml(text)}</div>`);
+    }
     this.shadow.innerHTML =
       `<style>.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
       `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}</style>` +
@@ -256,7 +340,17 @@ export class Overlay {
   }
 }
 
-/** Canvas label: element name and ID; locked blocks say what locks them. */
+function rectOf(el: Element): Rect {
+  const r = el.getBoundingClientRect();
+  return { x: r.x, y: r.y, width: r.width, height: r.height };
+}
+
+/** "0.2.1" → "0.2"; a root's parent is null. */
+export function parentKeyOf(key: string): string | null {
+  const dot = key.lastIndexOf(".");
+  return dot < 0 ? null : key.slice(0, dot);
+}
+
 /**
  * The deepest descendant of `el` whose box contains the point, children checked
  * last-first (roughly topmost first). Unlike elementFromPoint this includes elements
@@ -274,6 +368,7 @@ export function deepestAt(el: Element | null, x: number, y: number): Element | n
   return el;
 }
 
+/** Canvas label: element name and ID; locked blocks say what locks them. */
 export function labelOf(node: OverlayNode): string {
   const id = node.id ? ` #${node.id}` : "";
   if (node.kind !== "locked") return `${node.name}${id}`;

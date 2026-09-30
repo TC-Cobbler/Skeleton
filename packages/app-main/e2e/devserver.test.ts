@@ -80,7 +80,7 @@ describe("new project → running dev server (PRD F1)", () => {
     const id = await page.getByTestId("selection-id").textContent();
     const tagged = await heading.getAttribute("data-ui-id");
     expect(tagged).toBe(id);
-    expect(await heading.getAttribute("data-skeleton-loc")).toMatch(/^src\/pages\/HomePage\.tsx:\d+$/);
+    expect(await heading.getAttribute("data-skeleton-loc")).toMatch(/^src\/pages\/HomePage\.tsx:\d+@[0-9a-f]{14}$/);
 
     // Interact mode hands clicks back to the app: no selection change.
     await page.getByRole("button", { name: "Select mode" }).click();
