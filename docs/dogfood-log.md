@@ -100,6 +100,33 @@ A loop is clean when all four checks pass and Skeleton needed no workaround outs
 | Build | passes |
 | Agent logic (Skeleton's loop 4 edits) | unchanged. The agent-controlled Select (`value`/`onValueChange`) was moved before the search box: re-indented only. The Stats grid's gap change touched only its opening tag. |
 
+### Loop 4: Add game dialog, persistence (clean)
+
+**Skeleton edits (UI):**
+- Grip-moved the agent-controlled Select before the search box.
+- Stats grid gap `gap-4` → `gap-6`.
+- Dropped a Dialog into the toolbar. Set its trigger text ("Add game") and variant, its title and its description.
+- Deleted the loop 1 placeholder "Add game" Button.
+- Set `--radius` again (0.75rem → 0.5rem).
+
+**Notes:**
+- Build on the Dialog: the form with the fields the agent suggested in loop 1.
+- Behaviour on Confirm: disabled until titled, then close and reset.
+- Behaviour on the grid: persist added games.
+
+**Agent pass:**
+- A `useAddGameForm()` hook and an `addGame()` in `useGames()` with localStorage.
+- 21 new elements (fields, Labels, Selects, option `.map`s), all ID'd and listed.
+
+**Take back:** 3 of 3 tasks done. Build passes. 0 breaches, 0 repairs. 21 elements added, 4 new locked blocks. **1 orphaned note:** the loop 1 Question, whose Button was deleted. It shows in the Notes tray, as designed.
+
+| Check | Result |
+|---|---|
+| IDs | 62/62 survive, 0 duplicates, all well-formed (21 new) |
+| Tokens | 3/3 intact (the ledger follows the latest value); the agent didn't touch `globals.css` |
+| Build | passes |
+| Agent logic (Skeleton's loop 5 edits) | unchanged. The only agent-authored lines touched are the two I targeted, from the Layers tree, inside the closed dialog: a form-field Stack's opening tag (`gap-2` → `gap-1`) and a Label's text ("Hours played" → "Hours"). |
+
 ## Friction (for T6.4)
 
 - **F-1: A drop meant for "below the toolbar" went inside it.** Aiming at the bottom edge of a horizontal Stack still counts as inside it (the nearest container under the pointer). Dropping *after* a container that's the last child means finding its parent's padding. In loop 1 the Grid ended up in the toolbar, next to the search box, and had to be moved out in loop 2.

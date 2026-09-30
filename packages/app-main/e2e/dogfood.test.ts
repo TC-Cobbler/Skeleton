@@ -388,6 +388,43 @@ const steps: Record<string, () => Promise<void>> = {
   async takeback4() {
     await takeBack();
   },
+
+  async loop5() {
+    await shot("start");
+    // (Resumable: a step that already landed is skipped.)
+    // Orphan tray: the loop 1 Question's button was deleted in loop 4; discard its note.
+    if (read("skeleton/notes.json").includes("What should adding a game ask for?")) {
+      await page.getByRole("tab", { name: /^Notes/ }).click();
+      const tray = page.getByTestId("orphan-tray");
+      await tray.waitFor();
+      await shot("orphan-tray");
+      const notesBefore = read("skeleton/notes.json");
+      await tray.getByTestId("orphan").first().getByRole("button", { name: "Discard" }).click();
+      await expect.poll(() => read("skeleton/notes.json")).not.toBe(notesBefore);
+      await expect.poll(() => tray.count()).toBe(0);
+      log("orphan note discarded");
+      await page.getByRole("tab", { name: "Element" }).click();
+    }
+
+    // Edit the agent's form fields inside the closed dialog, from the Layers tree.
+    if (!read().includes('data-ui-id="ui_dkbru">Hours<')) await setText("ui_dkbru", "Hours");
+    if (!read().includes('data-ui-id="ui_xxt2l" className="gap-1"')) await setProp("ui_xxt2l", "Gap", "gap-1");
+
+    // A separator under the title, and a softer secondary colour.
+    if (!read().includes("<Separator")) await place("separator", at("ui_52d7x"), { fx: 0.5, fy: 0.9 });
+    if (!read("src/styles/globals.css").includes("oklch(0.95 0.03 290)")) await token("--secondary", "oklch(0.95 0.03 290)");
+    await shot("composed");
+
+    const notes = () => read("skeleton/notes.json");
+    if (!notes().includes("details sheet")) await note("ui_uxdga", "build", "Clicking a game card opens a details sheet (title, platform, hours played) where I can change the game's status");
+    await goToPage(/Stats/, "src/pages/StatsPage.tsx");
+    if (!notes().includes("count Dropped")) await note("ui_7sj6n", "question", "Should the stats count Dropped games? Say what you'd suggest; don't change it yet");
+    await handOff();
+  },
+
+  async takeback5() {
+    await takeBack();
+  },
 };
 
 it.skipIf(!STEP)(`dogfood step ${STEP}`, async () => {
