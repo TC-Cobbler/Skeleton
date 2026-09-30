@@ -78,6 +78,8 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 **Gate 1:** New project to running app on screen in under 30 s (PRD F1).
 
+**Gate 1: passed** (2026-09-30). From clicking **Create project** in the Electron app to the new app's home page rendering its heading: 4.6 s with a warm pnpm store, 6.2 s with an empty one (126 packages downloaded). Until the canvas exists (T2.1), the app renders in a second Electron window pointed at its dev server. Benchmark: `packages/app-main/e2e/gate1.test.ts` (`GATE1_COLD=1` for an empty store).
+
 ---
 
 ## Phase 2 — Canvas (read-only)
