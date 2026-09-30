@@ -293,6 +293,44 @@ describe("Overlay", () => {
     expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).not.toContain("data-drop-indicator");
   });
 
+  it("moves the selected node by its label, even where its children cover it (T5 gate)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    const box = (y: number, h: number) => () => ({ x: 0, y, left: 0, top: y, right: 100, bottom: y + h, width: 100, height: h, toJSON: () => ({}) }) as DOMRect;
+    ($("#root-div") as HTMLElement).getBoundingClientRect = box(0, 100);
+    ($(".dialog") as HTMLElement).getBoundingClientRect = box(20, 40);
+    ($("#trigger") as HTMLElement).getBoundingClientRect = box(30, 20);
+    document.querySelectorAll<HTMLElement>(".row").forEach((el, i) => (el.getBoundingClientRect = box(60 + i * 10, 10)));
+    send({ source: "skeleton-host", type: "select", key: "0.0" });
+    flush();
+    const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
+    const grip = shadow.querySelector("[data-grab]") as HTMLElement;
+    expect(grip.getAttribute("data-grab")).toBe("0.0");
+    expect(grip.textContent).toBe("⠿ 🔒 Dialog");
+    const at = { el: $(".row") as Element };
+    document.elementFromPoint = () => at.el;
+    const mouse = (type: string, el: Element, x: number, y: number, buttons = 1) =>
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, buttons }));
+    // A drag from the grip moves the Dialog, not what's under the pointer.
+    mouse("pointerdown", grip, 5, 10);
+    mouse("pointermove", at.el, 50, 60);
+    mouse("pointermove", at.el, 50, 95);
+    const before = sent.length;
+    mouse("pointerup", at.el, 50, 95, 0);
+    expect(sent.slice(before)).toEqual([{ source: "skeleton-overlay", type: "move", key: "0.0", target: { parentKey: "0", index: 1 } }]);
+    // Hit tests look through the drawing layer: a drop aimed where the grip is drawn
+    // still finds the app's element under it.
+    const layer = document.querySelector("skeleton-overlay") as Element;
+    document.elementFromPoint = () => layer;
+    document.elementsFromPoint = () => [layer, $("#trigger"), $("#root-div")];
+    send({ source: "skeleton-host", type: "drag", x: 5, y: 35, moving: null, seq: 7 });
+    expect(sent.at(-1)).toMatchObject({ type: "drop-target", seq: 7, target: { parentKey: "0" } });
+    // Nodes that can't move have no grip.
+    send({ source: "skeleton-host", type: "select", key: "0.0.0" });
+    flush();
+    expect(shadow.querySelector("[data-grab]")).toBeNull();
+  });
+
   it("treats a press without movement as a click, and Escape cancels a move", () => {
     const { sent, send } = setup();
     send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
@@ -377,6 +415,35 @@ describe("Overlay", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     send({ source: "skeleton-host", type: "theme", dark: false });
     expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
+  it("draws note pins in select mode, and a click on one goes to the host, not the app (T5.1)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    send({
+      source: "skeleton-host",
+      type: "pins",
+      pins: [
+        { key: "0.0.0", open: 2, total: 3, type: "question", replied: true },
+        { key: "0.1.0", open: 0, total: 1, type: "build", replied: false },
+      ],
+    });
+    flush();
+    const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
+    const pin = shadow.querySelector('[data-pin="0.0.0"]') as HTMLElement;
+    expect(pin.textContent).toBe("2\u2009↩");
+    expect(pin.title).toBe("2 open of 3 notes · agent replied");
+    expect(shadow.querySelector('[data-pin="0.1.0"]')?.textContent).toBe("✓");
+    pin.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true, cancelable: true }));
+    expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "pin", key: "0.0.0" });
+    expect(sent.some((m) => m.type === "select")).toBe(false);
+    send({ source: "skeleton-host", type: "mode", mode: "interact" });
+    flush();
+    expect(shadow.querySelector("[data-pin]")).toBeNull();
+    send({ source: "skeleton-host", type: "mode", mode: "select" });
+    send({ source: "skeleton-host", type: "pins", pins: [] });
+    flush();
+    expect(shadow.querySelector("[data-pin]")).toBeNull();
   });
 
   it("ignores messages that don't come from the host", () => {

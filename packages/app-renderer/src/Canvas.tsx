@@ -7,6 +7,7 @@ import {
   type GizmoToken,
   type HostMessage,
   type NodeBox,
+  type NotePin,
   type OverlayMessage,
   type OverlayNode,
   type TokenUsage,
@@ -40,6 +41,8 @@ export interface CanvasEvents {
   onGizmoCommit?: (key: string, commit: GizmoCommit) => void;
   /** A colour chip was clicked (T4.3). */
   onColourChip?: (chip: { key: string; utility: string; token: string; alt: boolean }) => void;
+  /** A note pin was clicked (T5.1). */
+  onPin?: (key: string) => void;
 }
 
 /** What the selected element's gizmos can do (T4.3). */
@@ -87,6 +90,10 @@ export interface CanvasProps extends CanvasEvents {
   gizmoDone: { ok: boolean } | null;
   /** CSS to preview on the page (the colour picker), or null. */
   preview: string | null;
+  /** Note pins to draw (T5.1). */
+  pins: NotePin[];
+  /** With the agent (T5.2): the canvas is veiled and takes no input; shows this handoff. */
+  withAgent: number | null;
 }
 
 /**
@@ -117,7 +124,15 @@ export function Canvas(props: CanvasProps) {
   const widths: PreviewWidth[] = layout === "side-by-side" ? ["desktop", "tablet", "mobile"] : [layout];
   const primary = widths[0] as PreviewWidth;
   return (
-    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}${props.drag ? " is-dragging" : ""}`}>
+    <div className={`canvas canvas-${layout === "side-by-side" ? "multi" : "single"}${props.drag ? " is-dragging" : ""}${props.withAgent !== null ? " is-with-agent" : ""}`}>
+      {props.withAgent !== null && (
+        <div className="agent-veil" data-testid="agent-veil">
+          <div>
+            <strong>With agent · handoff #{props.withAgent}</strong>
+            <p>The canvas is locked while your agent works. Press Take back when it's done.</p>
+          </div>
+        </div>
+      )}
       {widths.map((w) => (
         <CanvasFrame
           key={w}
@@ -222,6 +237,7 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "token-usage", usage: p.primary ? p.tokenUsage : null });
           post({ source: "skeleton-host", type: "token-highlight", name: p.tokenHighlight });
           if (p.gizmos) post({ source: "skeleton-host", type: "gizmos", ...p.gizmos });
+          post({ source: "skeleton-host", type: "pins", pins: p.pins });
           p.onLocation?.(msg.pathname);
           break;
         }
@@ -258,6 +274,9 @@ function CanvasFrame(props: FrameProps) {
         case "colour-chip":
           p.onColourChip?.({ key: msg.key, utility: msg.utility, token: msg.token, alt: msg.alt });
           break;
+        case "pin":
+          p.onPin?.(msg.key);
+          break;
       }
     };
     window.addEventListener("message", onMessage);
@@ -279,6 +298,7 @@ function CanvasFrame(props: FrameProps) {
     if (props.gizmoDone) post({ source: "skeleton-host", type: "gizmo-done", ok: props.gizmoDone.ok });
   }, [props.gizmoDone]);
   useEffect(() => post({ source: "skeleton-host", type: "preview", css: props.preview }), [props.preview]);
+  useEffect(() => post({ source: "skeleton-host", type: "pins", pins: props.pins }), [props.pins]);
   // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
   // Skeleton's window, so the overlay doesn't see the key itself.
   useEffect(() => {

@@ -52,6 +52,18 @@ export type GizmoCommit =
   /** Replace the element's classes matching the regex source `remove` with `add`. */
   | { kind: "class"; remove: string; add: string };
 
+/** Notes pinned to an element on the page (T5.1): drawn as a pin at its top-right corner. */
+export interface NotePin {
+  key: string;
+  /** Open notes; 0 when every note on it is resolved. */
+  open: number;
+  total: number;
+  /** The type of its first open note (or first note), for the pin's colour. */
+  type: "build" | "behaviour" | "question";
+  /** The agent replied about this element. */
+  replied: boolean;
+}
+
 export type HostMessage =
   /**
    * The page being shown and its nodes, parsed from the file text whose sourceVersion
@@ -85,7 +97,9 @@ export type HostMessage =
   /** The last gizmo commit was written (the preview stays until the page updates) or failed (it goes now). */
   | { source: "skeleton-host"; type: "gizmo-done"; ok: boolean }
   /** Preview CSS on the page, with the selected element as the instance target (the colour picker, T4.4); null clears. */
-  | { source: "skeleton-host"; type: "preview"; css: string | null };
+  | { source: "skeleton-host"; type: "preview"; css: string | null }
+  /** The note pins to draw in select mode (T5.1); an empty list clears them. */
+  | { source: "skeleton-host"; type: "pins"; pins: NotePin[] };
 
 export interface NodeBox {
   key: string;
@@ -121,7 +135,9 @@ export type OverlayMessage =
   /** A gizmo drag on the node at `key` was released (T4.4): write this. */
   | { source: "skeleton-overlay"; type: "gizmo-commit"; key: string; commit: GizmoCommit }
   /** The colour chip for `utility` (bg, text, border) on the node at `key` was clicked; `alt` asks for this element only. */
-  | { source: "skeleton-overlay"; type: "colour-chip"; key: string; utility: string; token: string; alt: boolean };
+  | { source: "skeleton-overlay"; type: "colour-chip"; key: string; utility: string; token: string; alt: boolean }
+  /** The note pin on the node at `key` was clicked (T5.1). */
+  | { source: "skeleton-overlay"; type: "pin"; key: string };
 
 export function isOverlayMessage(value: unknown): value is OverlayMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -150,6 +166,8 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
       return typeof v["key"] === "string" && isGizmoCommit(v["commit"]);
     case "colour-chip":
       return typeof v["key"] === "string" && typeof v["utility"] === "string" && typeof v["token"] === "string" && typeof v["alt"] === "boolean";
+    case "pin":
+      return typeof v["key"] === "string";
     default:
       return false;
   }
@@ -179,6 +197,18 @@ function isGizmoCommit(value: unknown): boolean {
   if (c["kind"] === "token") return typeof c["name"] === "string" && typeof c["value"] === "string";
   if (c["kind"] === "class") return typeof c["remove"] === "string" && typeof c["add"] === "string";
   return false;
+}
+
+function isNotePin(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p["key"] === "string" &&
+    Number.isInteger(p["open"]) &&
+    Number.isInteger(p["total"]) &&
+    (p["type"] === "build" || p["type"] === "behaviour" || p["type"] === "question") &&
+    typeof p["replied"] === "boolean"
+  );
 }
 
 function isDropTarget(value: unknown): value is DropTarget {
@@ -229,6 +259,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return typeof v["ok"] === "boolean";
     case "preview":
       return v["css"] === null || (typeof v["css"] === "string" && v["css"].length < 10_000);
+    case "pins":
+      return Array.isArray(v["pins"]) && v["pins"].every(isNotePin);
     default:
       return false;
   }

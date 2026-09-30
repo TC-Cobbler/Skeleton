@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite, UiNode, ViolationItem } from "@skeleton/app-main/ipc";
+import type { AppInfo, EditHistory, EditIntent, NoteOp, NoteView, ProjectInfo, TokenWrite, UiNode, ViolationItem } from "@skeleton/app-main/ipc";
 import type { DropTarget, GizmoCommit } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
@@ -22,6 +22,9 @@ import { useProjectRevision } from "./useProjectRevision.js";
 import { ProjectPicker } from "./ProjectPicker.js";
 import { TokensPanel, useTokens } from "./TokensPanel.js";
 import { useViolations, ViolationsPanel } from "./ViolationsPanel.js";
+import { LoopPanel, PassPanel, useLoop } from "./LoopPanel.js";
+import { NotesPanel, useNotes } from "./NotesPanel.js";
+import { pinsFor } from "./notes.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
@@ -130,6 +133,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const palette = usePalette(project.projectRoot, revision);
   const tokens = useTokens(project.projectRoot, revision);
   const violations = useViolations(project.projectRoot, revision);
+  const notes = useNotes(project.projectRoot, revision);
+  const loop = useLoop(project.projectRoot, revision);
+  // With the agent (T5.2): nothing on the canvas or in the panels can be edited until Take back.
+  const withAgent = loop.status?.state === "with-agent";
   const [pathname, setPathname] = useState("/");
   const [navigate, setNavigate] = useState<{ path: string } | null>(null);
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
@@ -213,7 +220,8 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     },
     [project.projectRoot, setTokenSheet, setEditError],
   );
-  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens" | "violations">("element");
+  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens" | "violations" | "notes" | "pass">("element");
+  const [noteFocus, setNoteFocus] = useState<string | null>(null);
   // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
   const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
   const [tokenHover, setTokenHover] = useState<string | null>(null);
@@ -278,18 +286,19 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     );
   };
   const ref = (v: ViolationItem) => ({ file: v.file, offset: v.offset, value: v.value });
-  const violationActions = {
-    onSelect: (v: ViolationItem) => {
-      const id = v.element?.id;
-      if (v.file !== file) {
-        const target = pages.list?.pages.find((p) => p.file === v.file && !p.dynamic);
-        if (target) {
-          setPathname(target.path);
-          setNavigate({ path: target.path });
-        }
+  /** Show the page `inFile` is on (if it's a page) and select the element with `id`. */
+  const goTo = (inFile: string, id: string | null | undefined) => {
+    if (inFile !== file) {
+      const target = pages.list?.pages.find((p) => p.file === inFile && !p.dynamic);
+      if (target) {
+        setPathname(target.path);
+        setNavigate({ path: target.path });
       }
-      if (id) selectId(id);
-    },
+    }
+    if (id) selectId(id);
+  };
+  const violationActions = {
+    onSelect: (v: ViolationItem) => goTo(v.file, v.element?.id),
     onSnap: (v: ViolationItem) => {
       if (!v.element?.id || !v.nearest) return;
       const intent: EditIntent = { op: "setClass", id: v.element.id, add: [v.nearest.utility], remove: [v.value] };
@@ -388,6 +397,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   }, [checkPage, pages.list, current]);
 
   const onShortcut = (key: string, mod: boolean, shift: boolean) => {
+    if (withAgent) return;
     if ((key === "Delete" || key === "Backspace") && !mod && selected) requestDelete(selected);
     else if (mod && (key === "z" || key === "Z")) historyStep(shift ? "redo" : "undo");
     else if (mod && (key === "y" || key === "Y")) historyStep("redo");
@@ -416,6 +426,28 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     }
     if (source.kind === "palette") edit({ op: "insert", parentId: parent.id, index: target.index, paletteId: source.paletteId });
   });
+  // Notes (T5.1, T5.5) and the handoff loop (T5.2–T5.8).
+  const setNotesView = notes.set;
+  const writeNote = useCallback(
+    (op: NoteOp) =>
+      call("notes:write", { projectRoot: project.projectRoot, op }).then(setNotesView, (err: unknown) => {
+        setEditError(err instanceof Error ? err.message.replace(/^notes:write: /, "") : String(err));
+        throw err;
+      }),
+    [project.projectRoot, setNotesView, setEditError],
+  );
+  const pins = useMemo(() => pinsFor(notes.view, page.nodes), [notes.view, page.nodes]);
+  const openNotes = notes.view?.notes.filter((n) => n.status === "open" && !n.orphaned).length ?? 0;
+  const afterLoop = (action: "handoff" | "takeBack" | "revert") => {
+    void loop.run(action).then((status) => {
+      page.reload();
+      setRevision((r) => r + 1);
+      if (!status) return;
+      if (action === "handoff") setSelectedRaw(null);
+      if (action === "takeBack") setInspectorTab("pass");
+      if (action === "revert") setCheckPage(true);
+    });
+  };
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
   const [layout, setLayout] = useState<PreviewLayout>("desktop");
@@ -439,11 +471,12 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             {mode === "select" ? "Select mode" : "Interact mode"}
           </button>
         </div>
+        <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
         <div className="row history" role="group" aria-label="History">
-          <button type="button" disabled={!history.undo} title={history.undo ? `Undo ${history.undo} (Ctrl+Z)` : "Nothing to undo"} onClick={() => historyStep("undo")}>
+          <button type="button" disabled={!history.undo || withAgent} title={history.undo ? `Undo ${history.undo} (Ctrl+Z)` : "Nothing to undo"} onClick={() => historyStep("undo")}>
             Undo
           </button>
-          <button type="button" disabled={!history.redo} title={history.redo ? `Redo ${history.redo} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={() => historyStep("redo")}>
+          <button type="button" disabled={!history.redo || withAgent} title={history.redo ? `Redo ${history.redo} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={() => historyStep("redo")}>
             Redo
           </button>
         </div>
@@ -489,11 +522,13 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           }}
         />
         {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
-        <PalettePanel
-          palette={palette.palette}
-          error={palette.error}
-          onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
-        />
+        <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
+          <PalettePanel
+            palette={palette.palette}
+            error={palette.error}
+            onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
+          />
+        </div>
         <LayersPanel
           nodes={page.nodes}
           selected={selected}
@@ -505,12 +540,36 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       </aside>
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="segmented tabs" role="tablist" aria-label="Inspector">
-          {(["element", "tokens", "violations"] as const).map((tab) => (
+          {(["element", "tokens", "violations", "notes", "pass"] as const).map((tab) => (
             <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
-              {tab === "element" ? "Element" : tab === "tokens" ? "Tokens" : `Violations${activeViolations > 0 ? ` (${activeViolations})` : ""}`}
+              {tab === "element"
+                ? "Element"
+                : tab === "tokens"
+                  ? "Tokens"
+                  : tab === "violations"
+                    ? `Violations${activeViolations > 0 ? ` (${activeViolations})` : ""}`
+                    : tab === "notes"
+                      ? `Notes${openNotes > 0 ? ` (${openNotes})` : ""}`
+                      : "Pass"}
             </button>
           ))}
         </div>
+        {inspectorTab === "notes" && (
+          <NotesPanel
+            view={notes.view}
+            error={notes.error}
+            selected={selectedNode ? { id: selectedNode.node.id, name: selectedNode.node.name } : null}
+            focus={noteFocus}
+            onFocus={setNoteFocus}
+            readOnly={withAgent}
+            onWrite={writeNote}
+            onSelectTarget={(n: NoteView) => n.file && goTo(n.file, n.target)}
+          />
+        )}
+        {inspectorTab === "pass" && (
+          <PassPanel projectRoot={project.projectRoot} status={loop.status} busy={loop.busy} onRevert={() => afterLoop("revert")} onSelectId={(id, inFile) => goTo(inFile, id)} />
+        )}
+        <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
         {inspectorTab === "violations" && <ViolationsPanel report={violations.report} error={violations.error} {...violationActions} />}
         {inspectorTab === "tokens" && (
           <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={tokenCounts} onWrite={writeTokens} onHover={setTokenHover} />
@@ -562,6 +621,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             )}
           </>
         )}
+        </div>
       </aside>
       <Canvas
         status={server.status}
@@ -598,6 +658,13 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           setInspectorTab("element");
           setColourChip(chip);
         }}
+        pins={pins}
+        onPin={(key) => {
+          setSelected(key);
+          setNoteFocus(page.nodes.find((n) => n.key === key)?.node.id ?? null);
+          setInspectorTab("notes");
+        }}
+        withAgent={withAgent ? (loop.status?.handoff?.number ?? 0) : null}
       />
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (
