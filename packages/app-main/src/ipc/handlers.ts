@@ -2,7 +2,7 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree } from "@skeleton/core";
+import { buildTree, readRoutes } from "@skeleton/core";
 import { projectNameError } from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
 import {
@@ -146,6 +146,7 @@ const validators: Validators = {
     }
     return defaultPath === undefined ? { title } : { title, defaultPath };
   },
+  "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:commit": (raw): GitCommitRequest => {
     const projectRoot = projectRootOf(raw);
@@ -216,6 +217,36 @@ function createHandlers(deps: HandlerDeps): Handlers {
   return {
     "app:info": async () => deps.appInfo(),
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
+    "project:pages": async ({ projectRoot }) => {
+      const routerFile = "src/router.tsx";
+      let source: string;
+      try {
+        source = await deps.readFile(resolveInside(projectRoot, routerFile));
+      } catch (err) {
+        if (isNodeError(err) && err.code === "ENOENT") return { routerFile, pages: [], error: `${routerFile} not found` };
+        throw err;
+      }
+      let result: ReturnType<typeof readRoutes>;
+      try {
+        result = readRoutes(source, routerFile);
+      } catch (cause) {
+        return { routerFile, pages: [], error: `${routerFile} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      const pages = await Promise.all(
+        result.routes.map(async (route) => {
+          if (!route.file) return { ...route, exists: false };
+          const exists = await deps.readFile(resolveInside(projectRoot, route.file)).then(
+            () => true,
+            (err: unknown) => {
+              if (isNodeError(err) && err.code === "ENOENT") return false;
+              throw err;
+            },
+          );
+          return { ...route, exists };
+        }),
+      );
+      return { routerFile, pages, error: result.error };
+    },
     "page:tree": async ({ projectRoot, file }) => buildTree(await readPage(projectRoot, file)),
     "project:create": async (request) => {
       const created = await deps.createProject(request);

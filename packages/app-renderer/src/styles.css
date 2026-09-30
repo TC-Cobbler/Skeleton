@@ -279,3 +279,27 @@ button.quiet {
   color: var(--muted);
   user-select: none;
 }
+.pages ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  font-size: 13px;
+}
+.page {
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: default;
+}
+.page:hover {
+  background: color-mix(in srgb, #3b82f6 12%, transparent);
+}
+.page.is-selected {
+  background: #2563eb;
+  color: #fff;
+}
+.page.is-selected .muted {
+  color: #dbeafe;
+}
+.page.is-disabled {
+  opacity: 0.5;
+}

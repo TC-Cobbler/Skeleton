@@ -2,9 +2,22 @@
 // git, child processes, AST). This is the only module the renderer imports from
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
-import type { PageTree } from "@skeleton/core";
+import type { PageTree, RouteInfo } from "@skeleton/core";
 
-export type { PageTree, UiNode, NodeKind } from "@skeleton/core";
+export type { PageTree, UiNode, NodeKind, RouteInfo } from "@skeleton/core";
+
+export interface PageEntry extends RouteInfo {
+  /** The page file exists on disk (false for missing or unresolvable files). */
+  exists: boolean;
+}
+
+export interface PageList {
+  /** The router file that was read. */
+  routerFile: string;
+  pages: PageEntry[];
+  /** Why the router couldn't be read, or null. */
+  error: string | null;
+}
 
 export interface AppInfo {
   appVersion: string;
@@ -150,6 +163,8 @@ export interface IpcContract {
   "page:tree": { request: PageTreeRequest; response: PageTree };
   /** The page file's source text (for "view source" on locked blocks). */
   "page:source": { request: PageTreeRequest; response: string };
+  /** Pages from the project's router (T2.5). */
+  "project:pages": { request: ProjectRootRequest; response: PageList };
   "project:create": { request: ProjectCreateRequest; response: ProjectCreateResponse };
   "devserver:start": { request: ProjectRootRequest; response: DevServerStatus };
   "devserver:stop": { request: ProjectRootRequest; response: DevServerStatus };
@@ -176,6 +191,7 @@ export const CHANNELS = [
   "app:info",
   "page:tree",
   "page:source",
+  "project:pages",
   "project:create",
   "devserver:start",
   "devserver:stop",

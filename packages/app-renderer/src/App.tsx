@@ -4,7 +4,9 @@ import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas } from "./Canvas.js";
 import { DevServerPanel } from "./DevServerPanel.js";
+import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
+import { PagesPanel, usePages } from "./PagesPanel.js";
 import { useDevServer } from "./useDevServer.js";
 import { ViewSource } from "./ViewSource.js";
 import { usePageTree } from "./usePageTree.js";
@@ -63,6 +65,7 @@ export function App() {
   );
 }
 
+/** Shown until the router has been read. */
 const DEFAULT_PAGE = "src/pages/HomePage.tsx";
 
 /**
@@ -94,7 +97,13 @@ function useSelection(nodes: KeyedNode[]): [string | null, (key: string | null) 
 
 function ProjectView({ project }: { project: ProjectInfo }) {
   const server = useDevServer(project.projectRoot, true);
-  const page = usePageTree(project.projectRoot, DEFAULT_PAGE);
+  const [revision, setRevision] = useState(0);
+  const pages = usePages(project.projectRoot, revision);
+  const [pathname, setPathname] = useState("/");
+  const [navigate, setNavigate] = useState<{ path: string } | null>(null);
+  const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
+  const file = current?.exists ? current.file : pages.list ? null : DEFAULT_PAGE;
+  const page = usePageTree(project.projectRoot, file);
   const [selected, setSelected] = useSelection(page.nodes);
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
@@ -144,9 +153,19 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             <p className="muted">{hovered ? "Click to select." : "Nothing selected."}</p>
           )}
           {selectedNode?.node.kind === "locked" && (
-            <ViewSource projectRoot={project.projectRoot} file={DEFAULT_PAGE} node={selectedNode.node} />
+            file && <ViewSource projectRoot={project.projectRoot} file={file} node={selectedNode.node} />
           )}
         </section>
+        <PagesPanel
+          list={pages.list}
+          error={pages.error}
+          current={current}
+          onOpen={(p) => {
+            setPathname(p.path);
+            setNavigate({ path: p.path });
+          }}
+        />
+        {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
         <LayersPanel
           nodes={page.nodes}
           selected={selected}
@@ -158,14 +177,19 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       </aside>
       <Canvas
         status={server.status}
-        file={page.tree ? DEFAULT_PAGE : null}
+        file={page.tree ? file : null}
         nodes={page.overlayNodes}
         selected={selected}
         highlighted={treeHover}
         mode={mode}
         onSelect={setSelected}
         onHover={setHovered}
-        onUpdated={page.reload}
+        onUpdated={() => {
+          page.reload();
+          setRevision((r) => r + 1);
+        }}
+        onLocation={setPathname}
+        navigate={navigate}
         onMapped={(boxes) => setOnScreen(new Set(boxes.map((b) => b.key)))}
       />
       <footer className="bottom">

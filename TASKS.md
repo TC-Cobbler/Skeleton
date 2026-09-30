@@ -88,7 +88,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 - [x] **T2.2** Overlay script injected into the webview: hover and selection outlines, and a DOM → `data-ui-id` lookup. Communicates with the host via `postMessage`.
 - [x] **T2.3** Layers tree panel built from the parser output, with bi-directional selection sync between tree and canvas.
 - [x] **T2.4** Locked-block rendering: label (component name or expression type), distinct outline, "view source" popover.
-- [ ] **T2.5** Page list mirroring the router, including navigate-on-select.
+- [x] **T2.5** Page list mirroring the router, including navigate-on-select.
 - [ ] **T2.6** File watcher: re-parse and reload on external change (unlocked state only).
 - [ ] **T2.7** Preview widths: desktop / tablet / mobile toggle, plus a side-by-side mode.
 - [ ] **T2.8** Light/dark toggle, which sets `.dark` on the previewed document.

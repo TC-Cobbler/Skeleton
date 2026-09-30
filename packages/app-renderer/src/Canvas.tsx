@@ -25,6 +25,8 @@ export interface CanvasProps extends CanvasEvents {
   selected: string | null;
   highlighted: string | null;
   mode: "select" | "interact";
+  /** Point the app at this path; a new object navigates even to the same path. */
+  navigate: { path: string } | null;
 }
 
 /**
@@ -93,6 +95,11 @@ export function Canvas(props: CanvasProps) {
   useEffect(() => post({ source: "skeleton-host", type: "select", key: props.selected }), [props.selected]);
   useEffect(() => post({ source: "skeleton-host", type: "highlight", key: props.highlighted }), [props.highlighted]);
   useEffect(() => post({ source: "skeleton-host", type: "mode", mode: props.mode }), [props.mode]);
+  useEffect(() => {
+    if (!props.navigate || !origin || !frame.current) return;
+    ready.current = false;
+    frame.current.src = new URL(props.navigate.path, origin).href;
+  }, [props.navigate]);
 
   if (url) {
     return (

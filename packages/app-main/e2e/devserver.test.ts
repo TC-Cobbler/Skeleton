@@ -132,6 +132,49 @@ describe("new project → running dev server (PRD F1)", () => {
     await expect.poll(() => rows.count(), { timeout: 15_000 }).toBe(3);
   }, 60_000);
 
+  it("lists pages from the router and navigates between them (T2.5)", async () => {
+    writeFileSync(
+      path.join(projectRoot, "src/pages/OrdersPage.tsx"),
+      `import { Stack } from "@/components/layout";
+
+export default function OrdersPage() {
+  return (
+    <Stack data-ui-id="ui_ord01" className="gap-4 p-8">
+      <h2 data-ui-id="ui_ord02">Orders page</h2>
+    </Stack>
+  );
+}
+`,
+    );
+    const router = path.join(projectRoot, "src/router.tsx");
+    const original = readFileSync(router, "utf8");
+    writeFileSync(
+      router,
+      original
+        .replace('import HomePage from "./pages/HomePage";', 'import HomePage from "./pages/HomePage";\nimport OrdersPage from "./pages/OrdersPage";')
+        .replace('{ path: "/", element: <HomePage /> },', '{ path: "/", element: <HomePage /> },\n  { path: "/orders", element: <OrdersPage /> },'),
+    );
+    const list = page.getByRole("listbox", { name: "Pages list" });
+    await list.getByRole("option", { name: /\/orders/ }).waitFor({ timeout: 15_000 });
+    expect(await list.getByRole("option", { name: /^\/ HomePage/ }).getAttribute("aria-selected")).toBe("true");
+
+    await list.getByRole("option", { name: /\/orders/ }).click();
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    await canvas.getByRole("heading", { name: "Orders page" }).waitFor({ timeout: 15_000 });
+    await page.getByTestId("layer-ui_ord02").waitFor();
+    expect(await list.getByRole("option", { name: /\/orders/ }).getAttribute("aria-selected")).toBe("true");
+
+    // Navigating inside the app switches the page too.
+    const frame = page.frames().find((f) => f.url().startsWith(url));
+    await frame?.evaluate(() => {
+      window.history.pushState({}, "", "/");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await canvas.getByRole("heading", { name: "E2E App" }).waitFor({ timeout: 15_000 });
+    await expect.poll(() => list.getByRole("option", { name: /^\/ HomePage/ }).getAttribute("aria-selected")).toBe("true");
+    await expect.poll(() => page.getByTestId("layer-ui_ord02").count()).toBe(0);
+  }, 60_000);
+
   it("closing the project stops its server and lists it as recent", async () => {
     await page.getByRole("button", { name: "Close project" }).click();
     await page.getByRole("heading", { name: "New project" }).waitFor();

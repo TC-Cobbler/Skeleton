@@ -339,3 +339,23 @@ describe("git channels", () => {
     });
   });
 });
+
+describe("project:pages", () => {
+  it("lists the fixture's routes with their page files", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("project:pages", { projectRoot: fixtureRoot })).resolves.toEqual({
+      ok: true,
+      value: {
+        routerFile: "src/router.tsx",
+        pages: [{ path: "/", component: "HomePage", file: "src/pages/HomePage.tsx", dynamic: false, exists: true }],
+        error: null,
+      },
+    });
+  });
+
+  it("reports a missing router instead of failing", async () => {
+    const { dispatch } = setup();
+    const result = await dispatch("project:pages", { projectRoot: path.join(fixtureRoot, "src") });
+    expect(result).toMatchObject({ ok: true, value: { pages: [], error: "src/router.tsx not found" } });
+  });
+});
