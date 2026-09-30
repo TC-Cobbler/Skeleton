@@ -6,6 +6,7 @@ import { Canvas } from "./Canvas.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { LayersPanel } from "./LayersPanel.js";
 import { useDevServer } from "./useDevServer.js";
+import { ViewSource } from "./ViewSource.js";
 import { usePageTree } from "./usePageTree.js";
 import { ProjectPicker } from "./ProjectPicker.js";
 
@@ -129,12 +130,21 @@ function ProjectView({ project }: { project: ProjectInfo }) {
               {selectedNode.node.lockReason && (
                 <>
                   <dt>Locked</dt>
-                  <dd>{selectedNode.node.lockReason}</dd>
+                  <dd data-testid="selection-lock">{selectedNode.node.lockReason}</dd>
+                </>
+              )}
+              {selectedNode.node.protectedProps.length > 0 && (
+                <>
+                  <dt>Agent logic</dt>
+                  <dd>{selectedNode.node.protectedProps.join(", ")}</dd>
                 </>
               )}
             </dl>
           ) : (
             <p className="muted">{hovered ? "Click to select." : "Nothing selected."}</p>
+          )}
+          {selectedNode?.node.kind === "locked" && (
+            <ViewSource projectRoot={project.projectRoot} file={DEFAULT_PAGE} node={selectedNode.node} />
           )}
         </section>
         <LayersPanel

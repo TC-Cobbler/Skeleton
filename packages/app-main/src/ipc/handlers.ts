@@ -92,6 +92,7 @@ const validators: Validators = {
     if (raw !== null) throw new HandlerError("bad-request", "expects null");
     return null;
   },
+  "page:source": (raw): PageTreeRequest => validators["page:tree"](raw),
   "page:tree": (raw): PageTreeRequest => {
     if (typeof raw !== "object" || raw === null) {
       throw new HandlerError("bad-request", "expects { projectRoot, file }");
@@ -201,21 +202,21 @@ export function resolveInside(root: string, file: string): string {
 }
 
 function createHandlers(deps: HandlerDeps): Handlers {
+  const readPage = async (projectRoot: string, file: string): Promise<string> => {
+    const absolute = resolveInside(projectRoot, file);
+    try {
+      return await deps.readFile(absolute);
+    } catch (err) {
+      if (isNodeError(err) && err.code === "ENOENT") {
+        throw new HandlerError("not-found", `no such page: ${file}`);
+      }
+      throw err;
+    }
+  };
   return {
     "app:info": async () => deps.appInfo(),
-    "page:tree": async ({ projectRoot, file }) => {
-      const absolute = resolveInside(projectRoot, file);
-      let source: string;
-      try {
-        source = await deps.readFile(absolute);
-      } catch (err) {
-        if (isNodeError(err) && err.code === "ENOENT") {
-          throw new HandlerError("not-found", `no such page: ${file}`);
-        }
-        throw err;
-      }
-      return buildTree(source);
-    },
+    "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
+    "page:tree": async ({ projectRoot, file }) => buildTree(await readPage(projectRoot, file)),
     "project:create": async (request) => {
       const created = await deps.createProject(request);
       await deps.projects.touch({ projectRoot: created.projectRoot, name: request.name });

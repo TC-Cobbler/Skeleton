@@ -148,6 +148,8 @@ export interface GitRevertRequest extends ProjectRootRequest {
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
   "page:tree": { request: PageTreeRequest; response: PageTree };
+  /** The page file's source text (for "view source" on locked blocks). */
+  "page:source": { request: PageTreeRequest; response: string };
   "project:create": { request: ProjectCreateRequest; response: ProjectCreateResponse };
   "devserver:start": { request: ProjectRootRequest; response: DevServerStatus };
   "devserver:stop": { request: ProjectRootRequest; response: DevServerStatus };
@@ -173,6 +175,7 @@ export type ResponseOf<C extends Channel> = IpcContract[C]["response"];
 export const CHANNELS = [
   "app:info",
   "page:tree",
+  "page:source",
   "project:create",
   "devserver:start",
   "devserver:stop",

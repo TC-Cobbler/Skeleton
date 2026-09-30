@@ -248,3 +248,34 @@ button.quiet {
   font-size: 10px;
   color: var(--muted);
 }
+.view-source {
+  margin-top: 8px;
+}
+.popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(640px, 70vw);
+  padding: 8px;
+  border: 1px solid #ea580c;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+}
+.popover header {
+  font-size: 12px;
+}
+.popover pre {
+  margin: 6px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  font: 12px/1.5 ui-monospace, monospace;
+}
+.popover .ln {
+  display: inline-block;
+  width: 3ch;
+  margin-right: 8px;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}

@@ -172,6 +172,19 @@ export class Overlay {
 
   private draw(): void {
     const parts: string[] = [];
+    // Labels placed so far; a new label slides right until it doesn't overlap one.
+    const placed: Rect[] = [];
+    const place = (x: number, y: number, text: string): { x: number; y: number } => {
+      const width = text.length * 6.6 + 12;
+      let left = x;
+      for (let guard = 0; guard < 20; guard++) {
+        const hit = placed.find((p) => left < p.x + p.width && left + width > p.x && y < p.y + p.height && y + 18 > p.y);
+        if (!hit) break;
+        left = hit.x + hit.width + 2;
+      }
+      placed.push({ x: left, y, width, height: 18 });
+      return { x: left, y };
+    };
     const box = (node: OverlayNode, color: string, width: number, dashed: boolean, label: boolean) => {
       const rects = this.rects(node);
       rects.forEach((r, i) => {
@@ -180,12 +193,18 @@ export class Overlay {
             `border:${width}px ${dashed ? "dashed" : "solid"} ${color}"></div>`,
         );
         if (label && i === 0) {
-          const text = escapeHtml(labelOf(node));
-          const top = r.y >= 18 ? r.y - 18 : r.y + r.height;
-          parts.push(`<div class="label" style="left:${r.x}px;top:${top}px;background:${color}">${text}</div>`);
+          const text = labelOf(node);
+          const at = place(r.x, r.y >= 18 ? r.y - 18 : r.y + r.height, text);
+          parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${color}">${escapeHtml(text)}</div>`);
         }
       });
     };
+    // Locked blocks are always marked in select mode (T2.4), under hover/selection.
+    if (this.mode === "select" && this.index) {
+      for (const node of this.index.nodes) {
+        if (node.kind === "locked" && node.key !== this.selected) box(node, COLORS.locked, 1, true, true);
+      }
+    }
     const hovered = this.node(this.hovered);
     const highlighted = this.node(this.highlighted);
     const selected = this.node(this.selected);
@@ -222,9 +241,12 @@ export class Overlay {
   }
 }
 
+/** Canvas label: element name and ID; locked blocks say what locks them. */
 export function labelOf(node: OverlayNode): string {
   const id = node.id ? ` #${node.id}` : "";
-  return node.kind === "locked" ? `🔒 ${node.name}${id}` : `${node.name}${id}`;
+  if (node.kind !== "locked") return `${node.name}${id}`;
+  const what: Record<string, string> = { map: ".map()", conditional: "conditional", expression: "{…}", fragment: "<>…</>", spread: "{...}" };
+  return `🔒 ${node.element ? node.name : (what[node.name] ?? node.name)}${id}`;
 }
 
 function escapeHtml(text: string): string {

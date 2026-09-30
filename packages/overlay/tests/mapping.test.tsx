@@ -148,3 +148,15 @@ describe("Overlay", () => {
     expect(sent.some((m) => m.type === "mapped")).toBe(false);
   });
 });
+
+describe("labels", () => {
+  it("say what locks a block", async () => {
+    const { labelOf } = await import("../src/overlay.js");
+    const n = (over: Partial<OverlayNode>): OverlayNode => ({ ...nodes[0], ...over }) as OverlayNode;
+    expect(labelOf(n({ kind: "locked", name: "map", element: false, id: null }))).toBe("🔒 .map()");
+    expect(labelOf(n({ kind: "locked", name: "conditional", element: false, id: null }))).toBe("🔒 conditional");
+    expect(labelOf(n({ kind: "locked", name: "expression", element: false, id: null }))).toBe("🔒 {…}");
+    expect(labelOf(n({ kind: "locked", name: "OrdersTable", element: true, id: "ui_ordt1" }))).toBe("🔒 OrdersTable #ui_ordt1");
+    expect(labelOf(n({ kind: "palette", name: "Button", id: "ui_b1234" }))).toBe("Button #ui_b1234");
+  });
+});
