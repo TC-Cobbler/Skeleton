@@ -83,8 +83,10 @@ export async function dragToCanvas(page: Page, source: Locator, target: Locator,
  * (same file version), so the next drag or click lands where it's aimed.
  */
 export async function placeFromPalette(page: Page, paletteId: string, target: Locator, aim: Aim): Promise<string> {
-  const selected = () => page.evaluate(() => document.querySelector('[data-testid="selection-id"]')?.textContent ?? "");
-  const before = await selected();
+  // The placed element is the one selected that wasn't in the layers tree before. "The
+  // selection changed" isn't enough: after an edit it can briefly show the previous
+  // edit's element, which let a drop return before it had landed (KI-1).
+  const existing = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="layer-ui_"]')].map((row) => row.getAttribute("data-testid")?.slice(6) ?? ""));
   const item = page.getByRole("region", { name: "Palette" }).getByTestId(`palette-${paletteId}`);
   await dragToCanvas(page, item, target, aim);
   const handle = await page.waitForFunction(
@@ -93,9 +95,9 @@ export async function placeFromPalette(page: Page, paletteId: string, target: Lo
       const row = document.querySelector(`[data-testid="layer-${id}"]`);
       const error = document.querySelector('[data-testid="edit-error"]')?.textContent;
       if (error) return `error: ${error}`;
-      return /^ui_[a-z0-9]{5}$/.test(id) && id !== previous && row !== null && !row.classList.contains("is-offscreen") ? id : false;
+      return /^ui_[a-z0-9]{5}$/.test(id) && !previous.includes(id) && row !== null && !row.classList.contains("is-offscreen") ? id : false;
     },
-    before,
+    existing,
     { timeout: 15_000 },
   );
   const id = (await handle.jsonValue()) as string;
