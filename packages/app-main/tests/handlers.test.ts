@@ -56,6 +56,13 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         forget: async () => [],
       },
       chooseFolder: async () => "/chosen",
+      git: {
+        status: async () => ({ head: "h", clean: true, changed: [] }),
+        commit: async (_root, message) => ({ hash: "c0ffee", subject: message, time: 1 }),
+        log: async () => [],
+        diff: async (_root, from, to) => ({ from, to, files: [] }),
+        revert: async (_root, commit) => ({ hash: "abc", subject: `skeleton: revert to ${commit}`, time: 1 }),
+      },
       ...overrides,
     },
     (error) => errors.push(error),
@@ -301,5 +308,34 @@ describe("project picker channels", () => {
     expect((await dispatch("dialog:chooseFolder", { title: "Pick", defaultPath: "rel" })).ok).toBe(false);
     expect((await dispatch("dialog:chooseFolder", null)).ok).toBe(false);
     expect((await dispatch("project:list", {})).ok).toBe(false);
+  });
+});
+
+describe("git channels", () => {
+  it("validates requests", async () => {
+    const { dispatch } = setup();
+    const bad: [string, unknown][] = [
+      ["git:commit", { projectRoot: "/p", message: "  " }],
+      ["git:log", { projectRoot: "/p", limit: 0 }],
+      ["git:diff", { projectRoot: "/p", from: "main; rm -rf /", to: null }],
+      ["git:diff", { projectRoot: "/p", from: "abc1", to: "--output=/tmp/x" }],
+      ["git:revert", { projectRoot: "/p", commit: "HEAD~1" }],
+      ["git:status", { projectRoot: "p" }],
+    ];
+    for (const [channel, request] of bad) {
+      expect((await dispatch(channel, request)).ok, `${channel} ${JSON.stringify(request)}`).toBe(false);
+    }
+  });
+
+  it("passes valid requests through", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("git:diff", { projectRoot: "/p", from: "abc1", to: null })).resolves.toEqual({
+      ok: true,
+      value: { from: "abc1", to: null, files: [] },
+    });
+    await expect(dispatch("git:commit", { projectRoot: "/p", message: "skeleton: handoff #1" })).resolves.toMatchObject({
+      ok: true,
+      value: { subject: "skeleton: handoff #1" },
+    });
   });
 });

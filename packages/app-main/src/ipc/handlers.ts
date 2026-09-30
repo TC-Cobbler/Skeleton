@@ -4,11 +4,16 @@
 import path from "node:path";
 import { buildTree } from "@skeleton/core";
 import { projectNameError } from "@skeleton/templates";
+import type { GitService } from "../git/service.js";
 import {
   isChannel,
   type AppInfo,
   type Channel,
   type ChooseFolderRequest,
+  type GitCommitRequest,
+  type GitDiffRequest,
+  type GitLogRequest,
+  type GitRevertRequest,
   type DevServerStatus,
   type ProjectInfo,
   type ProjectList,
@@ -43,6 +48,16 @@ export interface HandlerDeps {
     forget: (projectRoot: string) => Promise<RecentProject[]>;
   };
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
+  git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
+}
+
+const REV = /^([0-9a-f]{4,40}|HEAD)$/i;
+
+function revOf(value: unknown, field: string): string {
+  if (typeof value !== "string" || !REV.test(value)) {
+    throw new HandlerError("bad-request", `${field} must be a commit hash`);
+  }
+  return value;
 }
 
 function projectRootOf(raw: unknown): string {
@@ -130,6 +145,32 @@ const validators: Validators = {
     }
     return defaultPath === undefined ? { title } : { title, defaultPath };
   },
+  "git:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "git:commit": (raw): GitCommitRequest => {
+    const projectRoot = projectRootOf(raw);
+    const { message } = raw as Record<string, unknown>;
+    if (typeof message !== "string" || message.trim() === "" || message.length > 10_000) {
+      throw new HandlerError("bad-request", "message must be a non-empty string");
+    }
+    return { projectRoot, message };
+  },
+  "git:log": (raw): GitLogRequest => {
+    const projectRoot = projectRootOf(raw);
+    const { limit } = raw as Record<string, unknown>;
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 1000) {
+      throw new HandlerError("bad-request", "limit must be an integer from 1 to 1000");
+    }
+    return { projectRoot, limit };
+  },
+  "git:diff": (raw): GitDiffRequest => {
+    const projectRoot = projectRootOf(raw);
+    const { from, to } = raw as Record<string, unknown>;
+    return { projectRoot, from: revOf(from, "from"), to: to === null ? null : revOf(to, "to") };
+  },
+  "git:revert": (raw): GitRevertRequest => {
+    const projectRoot = projectRootOf(raw);
+    return { projectRoot, commit: revOf((raw as Record<string, unknown>)["commit"], "commit") };
+  },
   "devserver:start": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "devserver:stop": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "devserver:status": (raw): DevServerStatusRequest => {
@@ -189,6 +230,11 @@ function createHandlers(deps: HandlerDeps): Handlers {
     },
     "project:forget": async ({ projectRoot }) => deps.projects.forget(projectRoot),
     "dialog:chooseFolder": async (request) => deps.chooseFolder(request),
+    "git:status": async ({ projectRoot }) => deps.git.status(projectRoot),
+    "git:commit": async ({ projectRoot, message }) => deps.git.commit(projectRoot, message),
+    "git:log": async ({ projectRoot, limit }) => deps.git.log(projectRoot, limit),
+    "git:diff": async ({ projectRoot, from, to }) => deps.git.diff(projectRoot, from, to),
+    "git:revert": async ({ projectRoot, commit }) => deps.git.revert(projectRoot, commit),
     "devserver:start": async ({ projectRoot }) => deps.devServer.start(projectRoot),
     "devserver:stop": async ({ projectRoot }) => deps.devServer.stop(projectRoot),
     "devserver:status": async ({ projectRoot, sinceSeq }) => deps.devServer.status(projectRoot, sinceSeq),

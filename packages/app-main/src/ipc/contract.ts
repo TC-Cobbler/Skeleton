@@ -95,6 +95,55 @@ export interface DevServerStatusRequest extends ProjectRootRequest {
   sinceSeq: number;
 }
 
+export interface GitStatus {
+  head: string;
+  clean: boolean;
+  /** Paths with uncommitted changes (tracked or not, excluding ignored). */
+  changed: string[];
+}
+
+export interface GitCommit {
+  hash: string;
+  subject: string;
+  /** Commit time, ms since the epoch. */
+  time: number;
+}
+
+export interface GitFileDiff {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+  /** Unified diff for this file. */
+  patch: string;
+}
+
+export interface GitDiff {
+  from: string;
+  /** Null when diffing against the working tree. */
+  to: string | null;
+  files: GitFileDiff[];
+}
+
+export interface GitCommitRequest extends ProjectRootRequest {
+  message: string;
+}
+
+export interface GitLogRequest extends ProjectRootRequest {
+  limit: number;
+}
+
+export interface GitDiffRequest extends ProjectRootRequest {
+  from: string;
+  /** Null for the working tree. */
+  to: string | null;
+}
+
+export interface GitRevertRequest extends ProjectRootRequest {
+  /** The commit whose state the project should return to. */
+  commit: string;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
@@ -108,6 +157,13 @@ export interface IpcContract {
   "project:forget": { request: ProjectRootRequest; response: RecentProject[] };
   /** Native folder picker; null when cancelled. */
   "dialog:chooseFolder": { request: ChooseFolderRequest; response: string | null };
+  "git:status": { request: ProjectRootRequest; response: GitStatus };
+  /** Stages everything and commits; null when there was nothing to commit. */
+  "git:commit": { request: GitCommitRequest; response: GitCommit | null };
+  "git:log": { request: GitLogRequest; response: GitCommit[] };
+  "git:diff": { request: GitDiffRequest; response: GitDiff };
+  /** Restores the project to a commit's state as a new commit. */
+  "git:revert": { request: GitRevertRequest; response: GitCommit };
 }
 
 export type Channel = keyof IpcContract;
@@ -125,6 +181,11 @@ export const CHANNELS = [
   "project:open",
   "project:forget",
   "dialog:chooseFolder",
+  "git:status",
+  "git:commit",
+  "git:log",
+  "git:diff",
+  "git:revert",
 ] as const satisfies readonly Channel[];
 
 // Compile-time check that CHANNELS lists every channel in IpcContract.

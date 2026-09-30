@@ -8,6 +8,7 @@ import { app, BrowserWindow, dialog, shell } from "electron";
 import { createDispatch } from "./ipc/handlers.js";
 import { registerIpc } from "./ipc/register.js";
 import { DevServerManager } from "./devserver/manager.js";
+import { GitService } from "./git/service.js";
 import { readProjectInfo, RecentProjects } from "./project/recent.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
@@ -107,6 +108,7 @@ const dispatch = createDispatch(
       const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
       return result.canceled ? null : (result.filePaths[0] ?? null);
     },
+    git: new GitService(),
   },
   log,
 );

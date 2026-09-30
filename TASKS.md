@@ -74,7 +74,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
   - `git init` plus an initial commit
 - [x] **T1.3** Dev server manager: spawn Vite per project, detect its port, restart only on dependency change, surface logs and errors in a panel.
 - [x] **T1.4** Project picker: new / open recent.
-- [ ] **T1.5** Git service: commit with message, diff between commits, revert to commit.
+- [x] **T1.5** Git service: commit with message, diff between commits, revert to commit.
 
 **Gate 1:** New project to running app on screen in under 30 s (PRD F1).
 
