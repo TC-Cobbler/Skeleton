@@ -12,7 +12,7 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 3: composition.** Gates 0, 1 and 2 passed (see `docs/spike-log.md`, TASKS.md). Build the palette, drag and drop onto stacks (`insert`), move and reorder (`move`), delete (`remove`), the properties panel, page ops, the post-edit pipeline and undo/redo. Every canvas edit is a core edit op run in main. No gizmos, token editing or violations panel until Gate 3 passes (Phase 4+). If a task seems to need them, stop and ask.
+**Phase 3: composition: done.** Gates 0–3 passed (see `docs/spike-log.md`, TASKS.md). The canvas edits code through the palette, drag and drop (`insert`), moves (`move`), delete (`remove`), the properties panel (`setProp`, `setText`, `setClass`), page ops, the post-edit pipeline (Prettier on the node, typecheck, rollback) and undo/redo; see `docs/decisions/007`–`009`. Phase 4 (tokens + gizmos) is next: don't start it until asked. No handoff, notes or take-back until Phase 5.
 
 ---
 

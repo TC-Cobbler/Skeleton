@@ -542,3 +542,13 @@ describe("edit history (T3.8)", () => {
     await expect(dispatch("edit:undo", { projectRoot: "relative" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
   });
 });
+
+describe("opening a project", () => {
+  it("tells main to get ready to edit it", async () => {
+    const opened: string[] = [];
+    const { dispatch } = setup({ opened: (root) => opened.push(root) });
+    await dispatch("project:open", { projectRoot: fixtureRoot });
+    await dispatch("project:create", { parentDir: "/tmp", name: "Fresh" });
+    expect(opened).toEqual([fixtureRoot, "/tmp/stub"]);
+  });
+});

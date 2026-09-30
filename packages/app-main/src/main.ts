@@ -62,6 +62,15 @@ const renderer = rendererLocation();
 const devServers = new DevServerManager();
 const watcher = new ProjectWatcher();
 const checkers = new Map<string, WorkerChecker>();
+/** One typecheck worker per project; it warms up as soon as it's created (T3.7). */
+const checkerFor = (root: string): WorkerChecker => {
+  let checker = checkers.get(root);
+  if (!checker) {
+    checker = new WorkerChecker(root);
+    checkers.set(root, checker);
+  }
+  return checker;
+};
 const editor = new Editor(
   {
     readFile: (p) => readFile(p, "utf8"),
@@ -70,15 +79,7 @@ const editor = new Editor(
     listSources: (root) => listSources(root, readdir),
   },
   {
-    // One typecheck worker per project, started on its first edit (T3.7).
-    checker: (root) => {
-      let checker = checkers.get(root);
-      if (!checker) {
-        checker = new WorkerChecker(root);
-        checkers.set(root, checker);
-      }
-      return checker;
-    },
+    checker: checkerFor,
   },
 );
 // Lazily: app paths are only valid once Electron has initialised.
@@ -136,6 +137,8 @@ const dispatch = createDispatch(
     git: new GitService(),
     changes: (root) => watcher.changes(root),
     editor,
+    // Warm the typechecker up while the dev server starts, so the first edit doesn't wait for it.
+    opened: (root) => void checkerFor(root),
   },
   log,
 );

@@ -58,6 +58,8 @@ export interface HandlerDeps {
   changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
   editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history">;
+  /** A project was opened or created: get ready to edit it (starts the typechecker warming up). */
+  opened?: (projectRoot: string) => void;
 }
 
 const REV = /^([0-9a-f]{4,40}|HEAD)$/i;
@@ -416,6 +418,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
     "project:create": async (request) => {
       const created = await deps.createProject(request);
       await deps.projects.touch({ projectRoot: created.projectRoot, name: request.name });
+      deps.opened?.(created.projectRoot);
       return created;
     },
     "project:list": async () => deps.projects.list(),
@@ -423,6 +426,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
       const info = await deps.projects.info(projectRoot);
       if (!info) throw new HandlerError("not-found", `${projectRoot} isn't a Skeleton project (no skeleton/config.json)`);
       await deps.projects.touch(info);
+      deps.opened?.(projectRoot);
       return info;
     },
     "project:forget": async ({ projectRoot }) => deps.projects.forget(projectRoot),

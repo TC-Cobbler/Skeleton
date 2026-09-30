@@ -121,6 +121,18 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 **Gate 3:** PRD flow F2 passes, with each drop producing one minimal diff and the code valid.
 
+**Gate 3: passed** (2026-09-30) on a newly created project, with the real mouse (`packages/app-main/e2e/gate3.test.ts`). Each drop is one `insert`, checked on its own:
+
+| Drop | Diff | New IDs | Drag to placed, checked and mapped |
+|---|---|---|---|
+| Stack onto the page | +1 −0, 1 hunk | 1 | ~1.5–2 s (the first edit) |
+| Card into the Stack | +12 −1, 2 hunks: the Card, its import, and the empty Stack's tag opened (`/>` → `>`) | 6 | ~1 s |
+| Button inside the Card | +2 −0, 2 hunks: the Button and its import | 1 | ~1 s |
+
+- **Minimal:** the only existing line a drop may change is the parent's own tag, and only by opening it. Every other line survives in order.
+- **IDs:** every new element has a well-formed `data-ui-id`, unique project-wide, and every existing ID survives.
+- **Valid code:** the page parses, and the project's own `tsc -b` passes after every drop. At the end, `pnpm build` (`tsc -b && vite build`) passes.
+
 ---
 
 ## Phase 4 — Tokens + gizmos
