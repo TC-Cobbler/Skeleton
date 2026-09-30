@@ -1,7 +1,6 @@
 // Gate 1 (PRD F1): new project → running app on screen in under 30 s, measured from
-// clicking "Create project" to the new app's home page rendering its heading.
-// Until the canvas (T2.1) exists, the app renders in a second Electron window
-// pointed at the project's dev server.
+// clicking "Create project" to the new app's home page rendering its heading on
+// Skeleton's canvas.
 //
 // GATE1_COLD=1 uses an empty pnpm store, so every package is downloaded.
 
@@ -53,13 +52,11 @@ describe(`Gate 1 (${cold ? "cold" : "warm"} pnpm store)`, () => {
     const serving = Date.now();
     const url = (await page.getByTestId("devserver-url").textContent()) ?? "";
 
-    const preview = app.waitForEvent("window");
-    await app.evaluate(({ BrowserWindow }, target) => {
-      const win = new BrowserWindow({ width: 1024, height: 700, show: true });
-      void win.loadURL(target);
-    }, url);
-    const shown = await preview;
-    await shown.getByRole("heading", { name: "Gate One" }).waitFor({ timeout: 60_000 });
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    await page
+      .frameLocator('[data-testid="canvas-frame"]')
+      .getByRole("heading", { name: "Gate One" })
+      .waitFor({ timeout: 60_000 });
     const onScreen = Date.now();
 
     const total = onScreen - started;

@@ -144,3 +144,49 @@ button.quiet {
   color: var(--muted);
   font-size: 12px;
 }
+.project {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas: "sidebar canvas" "bottom bottom";
+  gap: 12px;
+  height: calc(100vh - 120px);
+  margin-top: 12px;
+}
+.sidebar {
+  grid-area: sidebar;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+}
+.sidebar section {
+  margin-top: 0;
+}
+.canvas {
+  grid-area: canvas;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: repeating-conic-gradient(var(--border) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+}
+.canvas iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+.canvas-empty {
+  align-items: center;
+  background: none;
+}
+.bottom {
+  grid-area: bottom;
+}
+.bottom section {
+  margin-top: 0;
+}
+.bottom .log {
+  max-height: 140px;
+}

@@ -12,7 +12,7 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 1: shell + scaffold.** Gate 0 passed (see `docs/spike-log.md`). Build the Electron shell, scaffolder, dev server manager, project picker and git service. No canvas, overlay or editing UI until Gate 1 passes (Phase 2+). If a task seems to need them, stop and ask.
+**Phase 2: canvas (read-only).** Gates 0 and 1 passed (see `docs/spike-log.md`, TASKS.md). Build the embedded preview, overlay, layers tree, locked-block rendering, page list, file watching, preview widths and light/dark toggle. Nothing on the canvas edits code yet: no drag and drop, properties panel or gizmos until Gate 2 passes (Phase 3+). If a task seems to need them, stop and ask.
 
 ---
 

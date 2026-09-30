@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { AppInfo, PageTree, ProjectInfo, UiNode } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { Canvas } from "./Canvas.js";
 import { DevServerPanel } from "./DevServerPanel.js";
+import { useDevServer } from "./useDevServer.js";
 import { ProjectPicker } from "./ProjectPicker.js";
 
 // Phase 1 shell: pick or create a project, then its dev server and page tree.
@@ -49,14 +51,26 @@ export function App() {
       )}
       {error && <p className="error">{error}</p>}
       {project ? (
-        <>
-          <DevServerPanel projectRoot={project.projectRoot} autoStart />
-          <PageTreeProbe projectRoot={project.projectRoot} />
-        </>
+        <ProjectView project={project} />
       ) : (
         <ProjectPicker onOpen={setProject} />
       )}
     </main>
+  );
+}
+
+function ProjectView({ project }: { project: ProjectInfo }) {
+  const server = useDevServer(project.projectRoot, true);
+  return (
+    <div className="project">
+      <aside className="sidebar">
+        <PageTreeProbe projectRoot={project.projectRoot} />
+      </aside>
+      <Canvas status={server.status} />
+      <footer className="bottom">
+        <DevServerPanel server={server} />
+      </footer>
+    </div>
   );
 }
 

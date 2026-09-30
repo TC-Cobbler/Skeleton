@@ -60,6 +60,15 @@ describe("new project → running dev server (PRD F1)", () => {
     expect(await (await fetch(url)).text()).toContain("<title>E2E App</title>");
   }, 180_000);
 
+  it("shows the running app on the canvas (T2.1)", async () => {
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    await canvas.getByRole("heading", { name: "E2E App" }).waitFor({ timeout: 30_000 });
+    expect(await page.getByTestId("canvas-frame").getAttribute("src")).toBe(url);
+    // The embedded app has no bridge into main.
+    const frame = page.frames().find((f) => f.url().startsWith(url));
+    expect(await frame?.evaluate(() => typeof (window as unknown as { skeleton?: unknown }).skeleton)).toBe("undefined");
+  }, 60_000);
+
   it("closing the project stops its server and lists it as recent", async () => {
     await page.getByRole("button", { name: "Close project" }).click();
     await page.getByRole("heading", { name: "New project" }).waitFor();
