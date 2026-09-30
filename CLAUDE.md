@@ -12,7 +12,7 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 2: canvas (read-only).** Gates 0 and 1 passed (see `docs/spike-log.md`, TASKS.md). Build the embedded preview, overlay, layers tree, locked-block rendering, page list, file watching, preview widths and light/dark toggle. Nothing on the canvas edits code yet: no drag and drop, properties panel or gizmos until Gate 2 passes (Phase 3+). If a task seems to need them, stop and ask.
+**Phase 3: composition.** Gates 0, 1 and 2 passed (see `docs/spike-log.md`, TASKS.md). Build the palette, drag and drop onto stacks (`insert`), move and reorder (`move`), delete (`remove`), the properties panel, page ops, the post-edit pipeline and undo/redo. Every canvas edit is a core edit op run in main. No gizmos, token editing or violations panel until Gate 3 passes (Phase 4+). If a task seems to need them, stop and ask.
 
 ---
 

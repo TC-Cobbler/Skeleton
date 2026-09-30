@@ -360,3 +360,28 @@ describe("project:pages", () => {
     expect(result).toMatchObject({ ok: true, value: { pages: [], error: "src/router.tsx not found" } });
   });
 });
+
+describe("palette:list", () => {
+  it("marks entries the project can't place, naming what's missing", async () => {
+    const { dispatch } = setup();
+    const result = await dispatch("palette:list", { projectRoot: fixtureRoot });
+    if (!result.ok) throw new Error(result.error.message);
+    const palette = result.value as import("../src/ipc/contract.js").Palette;
+    const byId = new Map(palette.items.map((i) => [i.id, i]));
+    expect(byId.get("button")).toMatchObject({ available: true, missing: [] });
+    expect(byId.get("stack-vertical")).toMatchObject({ available: true, missing: [] });
+    expect(byId.get("card")).toMatchObject({ available: true, missing: [] });
+    // The base fixture's layout index exports only Stack, and it has no Select.
+    expect(byId.get("grid")).toMatchObject({ available: false, missing: ["Grid (src/components/layout/index.ts)"] });
+    expect(byId.get("select")?.available).toBe(false);
+    expect(byId.get("select")?.missing).toContain("Select (src/components/ui/select.tsx)");
+    expect(byId.get("toast")).toMatchObject({ available: false, template: null, missing: [] });
+    expect(palette.groups.map((g) => g.id)).toEqual(["layout", "inputs", "display", "overlay", "navigation"]);
+    expect(palette.elements["Button"]?.props.map((p) => p.name)).toEqual(["variant", "size", "type", "disabled"]);
+  });
+
+  it("rejects a relative project root", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("palette:list", { projectRoot: "fixtures/base" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+  });
+});

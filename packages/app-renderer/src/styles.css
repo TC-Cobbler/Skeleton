@@ -343,3 +343,40 @@ button.quiet {
   border-color: #2563eb;
   color: #fff;
 }
+.palette h3 {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.palette ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.palette-item {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+.palette-item:hover {
+  background: color-mix(in srgb, #3b82f6 12%, transparent);
+}
+.palette-item.is-disabled {
+  opacity: 0.5;
+  cursor: help;
+}
+.palette-item.is-disabled:hover {
+  background: none;
+}
+.palette + .layers {
+  margin-top: 16px;
+}

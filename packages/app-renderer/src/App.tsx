@@ -7,6 +7,7 @@ import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
 import { PagesPanel, usePages } from "./PagesPanel.js";
+import { PalettePanel, usePalette } from "./PalettePanel.js";
 import { useDevServer } from "./useDevServer.js";
 import { ViewSource } from "./ViewSource.js";
 import { usePageTree } from "./usePageTree.js";
@@ -100,6 +101,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const server = useDevServer(project.projectRoot, true);
   const [revision, setRevision] = useState(0);
   const pages = usePages(project.projectRoot, revision);
+  const palette = usePalette(project.projectRoot, revision);
   const [pathname, setPathname] = useState("/");
   const [navigate, setNavigate] = useState<{ path: string } | null>(null);
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
@@ -193,6 +195,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           }}
         />
         {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
+        <PalettePanel palette={palette.palette} error={palette.error} />
         <LayersPanel
           nodes={page.nodes}
           selected={selected}

@@ -3,8 +3,24 @@
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
 import type { PageTree, RouteInfo } from "@skeleton/core";
+import type { ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
 export type { PageTree, UiNode, NodeKind, RouteInfo } from "@skeleton/core";
+export type { ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
+
+export interface PaletteEntry extends PaletteItem {
+  /** The entry can be placed: it has a template and the project exports every component it uses. */
+  available: boolean;
+  /** Components the template uses that the project lacks, e.g. "Grid (src/components/layout/index.ts)". */
+  missing: string[];
+}
+
+export interface Palette {
+  groups: { id: PaletteGroup; label: string }[];
+  items: PaletteEntry[];
+  /** Prop schema per element name (for the properties panel). */
+  elements: Record<string, ElementSchema>;
+}
 
 export interface PageEntry extends RouteInfo {
   /** The page file exists on disk (false for missing or unresolvable files). */
@@ -174,6 +190,8 @@ export interface IpcContract {
   "page:tree": { request: PageTreeRequest; response: PageTree };
   /** The page file's source text (for "view source" on locked blocks). */
   "page:source": { request: PageTreeRequest; response: string };
+  /** The curated components and primitives, checked against the project's files (T3.1). */
+  "palette:list": { request: ProjectRootRequest; response: Palette };
   /** Pages from the project's router (T2.5). */
   "project:pages": { request: ProjectRootRequest; response: PageList };
   /** File-change revision for re-parsing (T2.6); starts watching on first call. */
@@ -204,6 +222,7 @@ export const CHANNELS = [
   "app:info",
   "page:tree",
   "page:source",
+  "palette:list",
   "project:pages",
   "project:changes",
   "project:create",

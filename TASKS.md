@@ -106,7 +106,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 3 — Composition
 
-- [ ] **T3.1** Palette panel listing the curated components and primitives, each with a typed prop schema and default JSX template.
+- [x] **T3.1** Palette panel listing the curated components and primitives, each with a typed prop schema and default JSX template.
 - [ ] **T3.2** Drag from palette onto a stack. The drop indicator is computed from the stack direction and child rects, and the drop calls `insert`.
 - [ ] **T3.3** Reorder and move within and across stacks (`move`), locked blocks included.
 - [ ] **T3.4** Delete (`remove`) with confirmation if the node contains locked blocks.

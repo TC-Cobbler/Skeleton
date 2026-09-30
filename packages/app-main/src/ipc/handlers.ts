@@ -2,8 +2,8 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree, readRoutes } from "@skeleton/core";
-import { projectNameError } from "@skeleton/templates";
+import { buildTree, exportedNames, readRoutes } from "@skeleton/core";
+import { ELEMENTS, PALETTE, PALETTE_GROUPS, moduleFile, projectNameError, templateImports } from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
 import {
   isChannel,
@@ -148,6 +148,7 @@ const validators: Validators = {
     }
     return defaultPath === undefined ? { title } : { title, defaultPath };
   },
+  "palette:list": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:changes": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
@@ -217,8 +218,52 @@ function createHandlers(deps: HandlerDeps): Handlers {
       throw err;
     }
   };
+  const exists = (projectRoot: string, file: string): Promise<boolean> =>
+    deps.readFile(resolveInside(projectRoot, file)).then(
+      () => true,
+      (err: unknown) => {
+        if (isNodeError(err) && err.code === "ENOENT") return false;
+        throw err;
+      },
+    );
   return {
     "app:info": async () => deps.appInfo(),
+    "palette:list": async ({ projectRoot }) => {
+      // A component is available when its module exists and exports it.
+      const exportsOf = new Map<string, Promise<string[]>>();
+      const moduleExports = (from: string): Promise<string[]> => {
+        let names = exportsOf.get(from);
+        if (!names) {
+          const file = moduleFile(from);
+          names = deps.readFile(resolveInside(projectRoot, file)).then(
+            (source) => {
+              try {
+                return exportedNames(source);
+              } catch (cause) {
+                throw new HandlerError("failed", `${file} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`);
+              }
+            },
+            (err: unknown) => {
+              if (isNodeError(err) && err.code === "ENOENT") return [];
+              throw err;
+            },
+          );
+          exportsOf.set(from, names);
+        }
+        return names;
+      };
+      const items = await Promise.all(
+        PALETTE.map(async (item) => {
+          const imports = item.template ? templateImports(item.template) : [];
+          const missing: string[] = [];
+          for (const { name, from } of imports) {
+            if (!(await moduleExports(from)).includes(name)) missing.push(`${name} (${moduleFile(from)})`);
+          }
+          return { ...item, available: item.template !== null && missing.length === 0, missing };
+        }),
+      );
+      return { groups: [...PALETTE_GROUPS], items, elements: { ...ELEMENTS } };
+    },
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
     "project:changes": async ({ projectRoot }) => deps.changes(projectRoot),
     "project:pages": async ({ projectRoot }) => {
@@ -239,14 +284,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
       const pages = await Promise.all(
         result.routes.map(async (route) => {
           if (!route.file) return { ...route, exists: false };
-          const exists = await deps.readFile(resolveInside(projectRoot, route.file)).then(
-            () => true,
-            (err: unknown) => {
-              if (isNodeError(err) && err.code === "ENOENT") return false;
-              throw err;
-            },
-          );
-          return { ...route, exists };
+          return { ...route, exists: await exists(projectRoot, route.file) };
         }),
       );
       return { routerFile, pages, error: result.error };
