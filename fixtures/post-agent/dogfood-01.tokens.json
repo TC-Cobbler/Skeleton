@@ -1,0 +1,6 @@
+{
+  "--radius": "0.5rem",
+  "--primary": "oklch(0.5 0.2 290)",
+  "--primary.dark": "oklch(0.72 0.16 290)",
+  "--secondary": "oklch(0.95 0.03 290)"
+}

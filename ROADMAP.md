@@ -28,6 +28,23 @@ The roadmap is organised by milestone, not by date. A milestone ships when its g
 
 ---
 
+## v1.0.x — Dogfood fixes
+
+**Thesis:** Phase 6 passed its gate: no loop lost code, IDs or tokens. What it did turn up is friction in composing, mostly placing things where you mean (see `docs/dogfood-log.md`, F-1 to F-6). These are fixes to v1's own features, not new scope, so they come before v1.1.
+
+**Next (hit in most loops):**
+- **Drop beside a container, not only into it (F-1, F-4).** Today a drop goes into the nearest container under the pointer. So a Card aimed at the edge of another Card nests inside it, and a Grid aimed below a toolbar lands inside the toolbar. Proposal: near a container's edge (for example, the outer 8 px in its parent's flow direction), offer "before/after this" instead of "into this", and draw the insertion line in the parent. The overlay's `dropAt` owns this. It must keep `insert`'s minimal diff and never target a locked parent.
+- **Reorder without seeing both ends (F-2).** On long pages, the element's grip and its destination aren't on screen together. Options: move from the Layers tree (drag a row onto another), or move up/down buttons in the Selection panel. Both would call the same `move` op.
+
+**Soon:**
+- **Compose inside overlays (F-6).** A closed Dialog or Sheet shows nothing on the canvas, so nothing can be dropped into it. Proposal: an "open in canvas" toggle on a selected Dialog or Sheet that renders its content for editing. The alternative is dropping onto its Layers row.
+- **No text selection in Skeleton's chrome (F-3).** `user-select: none` on panels and headings, with an exception for the dev-server log and code views.
+
+**Later:**
+- **Lighter templates (F-5).** Cards arrive as "Card title / Card description / Card content". Consider editing text on the canvas (double-click) so each one is a single action.
+
+---
+
 ## v1.1 — Fill the system out
 
 **Thesis:** With the loop proven, make the design system complete and the tool responsive-capable.

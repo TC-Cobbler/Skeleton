@@ -127,6 +127,55 @@ A loop is clean when all four checks pass and Skeleton needed no workaround outs
 | Build | passes |
 | Agent logic (Skeleton's loop 5 edits) | unchanged. The only agent-authored lines touched are the two I targeted, from the Layers tree, inside the closed dialog: a form-field Stack's opening tag (`gap-2` → `gap-1`) and a Label's text ("Hours played" → "Hours"). |
 
+### Loop 5: details sheet, orphan tray, edits inside the dialog (clean)
+
+**Skeleton edits (UI):**
+- Discarded the orphaned loop 1 note from the Notes tray.
+- From the Layers tree, inside the closed dialog: the agent's form-field Stack `gap-2` → `gap-1`, and its Label "Hours played" → "Hours".
+- Dropped a Separator under the title.
+- Set the `--secondary` token.
+
+**Notes:**
+- Build on the card template (inside the agent's `.map`): a details sheet with a status select.
+- Question on the Stats grid: should Dropped games count?
+
+**Agent pass:**
+- A `useGameDetails()` hook and `setGameStatus` with localStorage.
+- Cards are clickable (mouse and Enter/Space) and open a Sheet. 16 new elements, all ID'd and listed.
+- Answered the Question without changing code, as asked.
+
+**Take back:** 2 of 2 tasks done. Build passes. 0 breaches, 0 repairs. 16 elements added, 7 new locked blocks.
+
+**Closing session:** Skeleton edits on the agent's pass 5 code: the sheet body Stack `gap-4` → `gap-6`, and its Label "Hours played" → "Hours". Both are inside the agent's conditional and fragment. They were committed by a sixth hand off with no tasks, then taken straight back (an empty pass), so the project ends with the user.
+
+| Check | Result |
+|---|---|
+| IDs | 84/84 survive, 0 duplicates, all well-formed (16 new) |
+| Tokens | 4/4 intact; the agent didn't touch `globals.css` |
+| Build | passes |
+| Agent logic (closing edits) | unchanged. The only agent-authored lines touched are the Stack's opening tag and the Label text, both targeted in the UI. |
+
+## Result: Gate 6 passed
+
+**5 consecutive clean loops, with no failures and no resets.**
+
+**Whole run** (scaffold to the final take back, 13 commits):
+- **IDs:** 101 committed over the project's life, 100 at the end. The one missing, `ui_27ttm`, is the placeholder button deleted in Skeleton in loop 4 (its note went through the orphan tray). No duplicates or malformed IDs at any take back.
+- **Tokens:** 5 token edits across 4 tokens (one set twice), all intact at the end. The agent never edited `globals.css`, and never hard-coded a colour: in loop 2 it used the existing tokens and offered to ask for new ones.
+- **Agent-authored logic:**
+  - Across the five post-pass edit sessions, Skeleton changed 6 agent-authored lines, every one targeted in the UI: 3 opening tags (class changes) and 3 texts. Prettier reflowed one of those tags, and only that tag.
+  - Moves of agent code (the Grid with its `.map`, the controlled Select) re-indented it and changed nothing else.
+- **Contract:** 0 breaches and 0 auto-repairs in 5 passes. The agent kept every ID, listed its new ones in `HANDOFF.md`, ticked every task (13 of 13), answered both Questions without writing code, and put its logic in `src/hooks`.
+
+**Caveat:** the "user" here was a script driving the real UI, not a person. The gate proves that the loop keeps its integrity under real feature work. A person will find friction a script doesn't. F-1 to F-6 are only what showed up when the script had to aim like a person.
+
+**Artefacts:**
+- `fixtures/post-agent/dogfood-01/`: the final project (buildable).
+- `dogfood-01.bundle`: its full history.
+- `dogfood-01.tokens.json`: the token ledger.
+- `packages/app-main/e2e/dogfood-verify.mjs`: the checks.
+- `packages/app-main/e2e/dogfood.test.ts`: the user's side, step by step.
+
 ## Friction (for T6.4)
 
 - **F-1: A drop meant for "below the toolbar" went inside it.** Aiming at the bottom edge of a horizontal Stack still counts as inside it (the nearest container under the pointer). Dropping *after* a container that's the last child means finding its parent's padding. In loop 1 the Grid ended up in the toolbar, next to the search box, and had to be moved out in loop 2.

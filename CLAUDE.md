@@ -12,14 +12,11 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 5: handoff loop: done.** Gates 0–5 passed (see `docs/spike-log.md`, TASKS.md). On top of Phase 4's tokens and gizmos (`docs/decisions/010`), the loop now closes:
+**Phase 6: dogfood: done. Gate 6 passed, so v1's gate is met.** Gates 0–6 passed (see `docs/spike-log.md`, `docs/dogfood-log.md`, TASKS.md).
 
-- intent notes pinned to elements, shown as canvas pins, with filters and an orphan tray
-- Hand off: validate, write `HANDOFF.md`, commit, lock
-- Take back: commit the pass, read ticks and replies, analyse, auto-repair IDs
-- a pass summary with per-file diffs, and Revert pass
-
-The loop's state is read from git commit subjects, never stored. See `docs/decisions/011`. Phase 6 (dogfood) is next: don't start it until asked.
+- The whole loop works in the app: compose, tokens and gizmos (`docs/decisions/007`–`010`), then notes, Hand off, Take back and review (`docs/decisions/011`).
+- Its state is read from git commit subjects, never stored.
+- The dogfood found no integrity failures. Its composing friction is triaged in ROADMAP.md under **v1.0.x — Dogfood fixes**. That is the next work, but don't start it (or v1.1) until asked.
 
 ---
 

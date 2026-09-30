@@ -425,6 +425,19 @@ const steps: Record<string, () => Promise<void>> = {
   async takeback5() {
     await takeBack();
   },
+
+  // Closing session: Skeleton edits on the agent's pass 5 code, committed by a last
+  // hand off (no tasks), then taken straight back so the project ends with the user.
+  async after5() {
+    await setProp("ui_n720r", "Gap", "gap-6");
+    await setText("ui_zdt2m", "Hours");
+    await shot("composed");
+    await handOff();
+  },
+
+  async takeback6() {
+    await takeBack();
+  },
 };
 
 it.skipIf(!STEP)(`dogfood step ${STEP}`, async () => {
