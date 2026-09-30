@@ -46,8 +46,38 @@ A loop is clean when all four checks pass and Skeleton needed no workaround outs
 | Build | passes |
 | Agent logic (Skeleton's loop 2 edits) | unchanged: the Grid with the agent's `.map` was moved twice, byte-for-byte except indentation; the column change touched only its opening tag |
 
+### Loop 2: status filter, empty state, badge colours (clean)
+
+**Skeleton edits (UI):**
+- Set the Grid to 4 columns.
+- Grip-moved the Grid, which now holds the agent's `.map`, out of the toolbar; then moved the toolbar up, giving title, toolbar, grid.
+- Dropped a Select into the toolbar and set its two items ("All statuses" / all, "Playing" / playing).
+- Set the `--primary` token (light).
+
+**Notes:**
+- Behaviour on the Select: filter by status, add the other statuses.
+- Build on the grid: an empty state.
+- Behaviour on the Badge: colour by status with tokens.
+
+**Agent pass:**
+- Status state in `useGames()`, combined with the title filter.
+- Added 3 SelectItems with new IDs. It changed my `value="playing"` to `"Playing"` to match its type; the ID is kept.
+- An empty state (Stack and 2 paragraphs, new IDs) in a conditional inside the grid.
+- Badge variants mapped to existing tokens. It asked before adding new hues.
+
+**Take back:** 3 of 3 tasks done. Build passes. 0 breaches, 0 repairs. 6 elements added, 2 new locked blocks (a conditional and a `.map` of options).
+
+| Check | Result |
+|---|---|
+| IDs | 20/20 survive, 0 duplicates, all well-formed (6 new) |
+| Tokens | 2/2 intact; the agent didn't touch `globals.css` |
+| Build | passes |
+| Agent logic (Skeleton's loop 3 edits) | unchanged. The only agent-authored lines touched are the two I targeted in the UI: the empty-state Stack's opening tag (`py-8` → `py-12`; Prettier reflowed that tag only) and its title text. The conditional around it is byte-identical. |
+
 ## Friction (for T6.4)
 
 - **F-1: A drop meant for "below the toolbar" went inside it.** Aiming at the bottom edge of a horizontal Stack still counts as inside it (the nearest container under the pointer). Dropping *after* a container that's the last child means finding its parent's padding. In loop 1 the Grid ended up in the toolbar, next to the search box, and had to be moved out in loop 2.
 - **F-2: Long pages make reordering hard.** With 8 cards in 2 columns, the title and the toolbar couldn't be seen together with the Grid's grip. A move near the frame's top edge autoscrolls (as designed), which shifted the drop to the wrong side of the title. Workaround: make the grid shorter first (4 columns).
 - **F-3: Dragging in Skeleton's chrome selects its UI text.** A drag that starts outside the canvas selects headings, buttons and the dev-server log.
+- **F-4: A Card dropped "next to" a Card goes inside it.** Card accepts children, so aiming at the right edge of card 1 put card 2 inside card 1 (between its header and content). Card 3 then went inside card 2. Placing sibling cards in a grid means aiming at the grid's empty columns or gaps. Recovery: delete the nested cards (immediate, since there's no agent code in them) and drop again. Same root cause as F-1: a drop always goes into the nearest container under the pointer. Near a container's edge there's no way to say "beside this".
+- **F-5 (minor): Stat cards come with template text.** Every Card arrives with "Card title / Card description / Card content", which then needs three text edits per card.

@@ -176,7 +176,7 @@ async function addPage(name: string): Promise<string> {
 }
 
 async function goToPage(label: RegExp, f: string) {
-  await page.getByRole("region", { name: "Pages" }).getByRole("button", { name: label }).click();
+  await page.getByRole("region", { name: "Pages" }).getByRole("option", { name: label }).click();
   file = f;
   await waitForCanvas(page, sourceVersion(read(f)), "canvas-desktop").catch(() => undefined);
   await page.waitForTimeout(800);
@@ -301,6 +301,57 @@ const steps: Record<string, () => Promise<void>> = {
   async takeback2() {
     await takeBack();
   },
+
+  async loop3() {
+    await shot("start");
+    // Adjust the agent's empty state (inside its conditional: edited in place).
+    // (Resumable: a step that already landed is skipped.)
+    if (!read().includes('className="col-span-full items-center gap-2 py-12"')) await setProp("ui_e7k2q", "Padding Y", "py-12");
+    if (!read().includes("Nothing here yet")) await setText("ui_p4w9n", "Nothing here yet");
+    if (!read("src/styles/globals.css").includes("oklch(0.72 0.16 290)")) await token("--primary", "oklch(0.72 0.16 290)", true);
+
+    // A Stats page: three stat cards.
+    const f = existsSync(path.join(ROOT, "src/pages/StatsPage.tsx")) ? "src/pages/StatsPage.tsx" : await addPage("Stats");
+    await goToPage(/Stats/, f);
+    const home = await tree();
+    const title = ((home[0] as N).children[0] as N).children[0] as N;
+    const grid = read().includes("<Grid") ? "ui_7sj6n" : await place("grid", at(title.id as string), { fx: 0.5, fy: 0.9 });
+    if (!read().includes("grid-cols-3")) await setProp(grid, "Columns", "grid-cols-3");
+    const first = read().includes("<Card") ? "ui_gysjq" : await place("card", at(grid), { fx: 0.5, fy: 0.5 });
+    // Aiming at a card's edge puts the next card inside it (F-4): undo that, then aim at the
+    // grid's empty columns instead.
+    if (read().includes("ui_cjmuo")) {
+      await select("ui_cjmuo");
+      await edit("delete the nested cards", () => page.getByTestId("selection").getByRole("button", { name: "Delete" }).click());
+    }
+    const second = await place("card", at(grid), { fx: 0.5, fy: 0.5 });
+    const third = await place("card", at(grid), { fx: 0.85, fy: 0.5 });
+    const cards = [first, second, third];
+    const labels = [
+      ["Games", "In your library"],
+      ["Hours played", "Across all games"],
+      ["Completed", "Finished games"],
+    ];
+    for (const [i, card] of cards.entries()) {
+      const t = (await find((n) => n.name === "CardTitle", card)).id as string;
+      if (!read().includes(`data-ui-id="${t}">${labels[i]![0]}<`)) await setText(t, labels[i]![0]!);
+      const d = (await find((n) => n.name === "CardDescription", card)).id as string;
+      if (!read().includes(`data-ui-id="${d}">${labels[i]![1]}<`)) await setText(d, labels[i]![1]!);
+      const c = (await find((n) => n.name === "p", card)).id as string;
+      if (!read().includes(`data-ui-id="${c}">0<`)) await setText(c, "0");
+    }
+    const flat = read("src/pages/StatsPage.tsx");
+    if ((flat.match(/<Card /g) ?? []).length !== 3 || /<Card[^>]*>\s*<CardHeader[\s\S]*?<Card /.test(flat.split("</Card>")[0] ?? "")) throw new Error("stats cards aren't three siblings");
+    await shot("composed");
+
+    await note(grid, "build", "Compute these stats from the library data: number of games, total hours played, number completed (replace the 0s)");
+    await note(title.id as string, "build", "Add navigation between Library (/) and Stats (/stats), shown at the top of both pages");
+    await handOff();
+  },
+
+  async takeback3() {
+    await takeBack();
+  },
 };
 
 it.skipIf(!STEP)(`dogfood step ${STEP}`, async () => {
@@ -310,5 +361,3 @@ it.skipIf(!STEP)(`dogfood step ${STEP}`, async () => {
 }, 900_000);
 
 // Silence unused-helper checks until later loops use them.
-void addPage;
-void goToPage;
