@@ -1,15 +1,15 @@
 # Known issues
 
-## KI-1: "lost" clicks and drops on a scaled canvas frame
+## KI-1: "lost" clicks and drops on a scaled canvas frame (resolved)
 
 **Seen:** 2026-09-30, Phase 2 (Gate 2 runs), then in Phase 3–5 e2e tests.
 
-**Status:** re-diagnosed 2026-09-30. Input to the scaled frame is **not** being lost. What was reported as lost input is two e2e-test problems and one small renderer bug, below. The original Phase 2 report ("the overlay receives no pointer event") didn't reproduce: 240 canvas clicks and 210 palette drops lost none.
+**Status:** resolved 2026-09-30. Input to the scaled canvas frame was never being lost for a user. Every symptom came from how the e2e tests aimed, waited or sized the window. One small renderer bug turned up on the way and is fixed. The sections below say what each symptom was.
 
 **How it was checked:**
 - **Real vs synthetic input.** The e2e helpers were switched to real X server mouse events (`xdotool` under Xvfb), which take the same path as a physical mouse, and compared with Playwright's CDP input in alternating runs. Both failed the compose reproducer at the same rate (1 run in 10 each), so the input type doesn't matter.
 - **Where clicks land.** In Gate 2, the pointer arrives in the frame exactly where it was aimed (to within 0.1 px, at zoom 0.73).
-- **Screen size and frame reloads:** ruled out.
+- **Ruled out:** frame reloads, iframe resizes and screen size.
 
 ### 1. Palette drops "lost" in `compose.test.ts` (fixed)
 
@@ -26,19 +26,28 @@ The reproducer went from failing about 1 run in 3 to 20 of 20 passing.
 
 **User-facing part:** the one-frame flash of the wrong element (or an empty panel) after every edit. It's fixed by the same change.
 
-### 2. Gate 2 "canvas click not delivered" (open, test-only)
+### 2. Gate 2 "canvas click not delivered" (fixed)
 
-Gate 2 still reports 4–7 such elements per fixture: the same IDs every run, all of them selected from the tree. Every one of those clicks is delivered, and the overlay selects something. The gate aimed at a point where its own hit test and the overlay's disagree:
-- **Disabled buttons.** shadcn's disabled Button has `pointer-events: none`, so `elementFromPoint` skips it and the gate thinks the point belongs to the parent (e.g. the pagination row, or the filter bar). The overlay deliberately descends into children by box (`deepestAt`) and selects the disabled button that's visibly there (`Previous`, `Clear`).
-- **Child corners.** The gate's 4 px margin is checked as a cross, not a square. A point a fraction of a pixel diagonally off a child's corner passes it, and there the browser (layout units) and `deepestAt` (float rects) round differently. An example is the CardTitle inside a CardHeader.
+Gate 2 retried a missed click, then selected the element from the tree, and blamed KI-1. It fell back for 4–7 elements per fixture in every run. There were four causes, all in the test:
 
-The message still says "(KI-1)", which is now wrong.
+- **Disabled buttons.** shadcn's disabled Button has `pointer-events: none`, so `elementFromPoint` skips it. The gate thought the point belonged to the parent (the pagination row, the filter bar). The overlay deliberately descends into children by box (`deepestAt`) and selects the disabled button that's visibly there. Clicking a disabled button on the canvas selects it, as it should.
+- **Child corners.** The gate checked its 4 px margin as a cross, not a square. A point a fraction of a pixel diagonally off a child's corner passed. There, the browser (layout units) and `deepestAt` (float rects) round differently.
+- **The selection's handles.** Gate 2 selects elements in document order, so a parent is selected just before its children. The parent's gizmo handles are drawn a moment after the selection: a 10 px radius dot inside its top-left corner, and padding handles on its edges. They often sit over its first child. If the gate aimed before the handles were drawn, the click grabbed a handle and the parent stayed selected. This is by design: a visible handle takes the press.
+- **Viewport emulation.** Gate 2 used `page.setViewportSize(1600×1000)` (CDP emulation), while the real window was 1280×800 (773 px of content). CDP input at a point beyond the real window reaches the page, but not reliably a cross-process iframe: there's no real surface there to route it through. This was the only case where the frame got no event at all.
+  - Beyond the edge: 2 of 6 clicks lost.
+  - Inside the real window: 0 of 127 lost.
+  - A user can't click there.
 
-**Still to do:** the gate should aim only where both rules agree, with a square margin. A first attempt, which mirrored `deepestAt` in the gate, failed outright: clicking a disabled `Previous` button selected its row, and three other points resolved differently too. So the overlay still resolves some points differently from `deepestAt`. That needs understanding before the gate changes, and it may be a user-facing selection bug for disabled buttons.
+**Fix:**
+- The gate aims where the overlay's rule says the element is, with no overlay layer on top and a square margin.
+- It waits for the overlay to settle before aiming.
+- It sizes the real window with `setContentSize`.
+- Its retry and tree fallback are removed: one missed click now fails the gate, naming what was selected instead.
+
+Result: 5 of 5 runs, 350 canvas clicks, none missed. The elements selected from the tree are only those with no point of their own.
 
 ### 3. Other reports under KI-1 (not re-checked)
 
 - **A different palette entry is occasionally placed** than the one aimed at (Gate 4 setups). This may be the same helper race as (1): the next drag started while the previous edit was still in flight.
-- **A gizmo press can be lost** (`dragGizmo` retries it).
-
+- **A gizmo press can be lost** (`dragGizmo` retries it). The handle race in (2) is a likely cause.
 Neither was reproduced in this investigation.
