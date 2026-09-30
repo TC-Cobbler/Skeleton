@@ -1,0 +1,29 @@
+{
+  "name": "@skeleton/app-main",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "exports": {
+    "./ipc": {
+      "source": "./src/ipc/contract.ts",
+      "types": "./dist/ipc/contract.d.ts",
+      "default": "./dist/ipc/contract.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx scripts/dev.ts",
+    "start": "pnpm --filter @skeleton/app-renderer build && tsc -b && electron .",
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @skeleton/app-renderer build && tsc -b && vitest run -c vitest.e2e.config.ts"
+  },
+  "dependencies": {
+    "@skeleton/core": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^44.5.0",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.15"
+  }
+}

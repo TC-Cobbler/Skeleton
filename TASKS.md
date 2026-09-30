@@ -64,7 +64,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 1 — Shell + scaffold
 
-- [ ] **T1.1** Electron app skeleton (React renderer, main process for fs/git/child processes). Set up IPC boundaries: the main process owns the filesystem, git and AST; the renderer owns the UI.
+- [x] **T1.1** Electron app skeleton (React renderer, main process for fs/git/child processes). Set up IPC boundaries: the main process owns the filesystem, git and AST; the renderer owns the UI.
 - [ ] **T1.2** Project scaffolder, turning the fixture into a template. It generates:
   - the stack, the curated shadcn set (about 20) and the layout primitives
   - React Router with a home page

@@ -1,0 +1,158 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "vitest";
+import type { IpcError } from "../src/ipc/contract.js";
+import {
+  createDispatch,
+  resolveInside,
+  type HandlerDeps,
+} from "../src/ipc/handlers.js";
+
+const fixtureRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../fixtures/base",
+);
+
+const appInfo = {
+  appVersion: "0.0.0",
+  electron: "1",
+  chrome: "2",
+  node: "3",
+  platform: "linux",
+};
+
+function setup(overrides: Partial<HandlerDeps> = {}) {
+  const errors: IpcError[] = [];
+  const dispatch = createDispatch(
+    {
+      appInfo: () => appInfo,
+      readFile: (p) => readFile(p, "utf8"),
+      ...overrides,
+    },
+    (error) => errors.push(error),
+  );
+  return { dispatch, errors };
+}
+
+describe("dispatch", () => {
+  it("answers app:info", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("app:info", null)).resolves.toEqual({
+      ok: true,
+      value: appInfo,
+    });
+  });
+
+  it("parses a page file through core", async () => {
+    const { dispatch } = setup();
+    const result = await dispatch("page:tree", {
+      projectRoot: fixtureRoot,
+      file: "src/pages/HomePage.tsx",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const tree = result.value as {
+      roots: { id: string | null }[];
+      rootError: string | null;
+    };
+    expect(tree.rootError).toBeNull();
+    expect(tree.roots.length).toBeGreaterThan(0);
+    // The result crosses IPC by structured clone, so it must be plain data.
+    expect(structuredClone(tree)).toEqual(tree);
+  });
+
+  it("refuses an unknown channel and reports it", async () => {
+    const { dispatch, errors } = setup();
+    const result = await dispatch("fs:writeFile", { path: "/etc/passwd" });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "bad-request",
+        channel: "fs:writeFile",
+        message: "unknown channel",
+      },
+    });
+    expect(errors).toHaveLength(1);
+  });
+
+  it.each([
+    ["a missing request", undefined, "expects { projectRoot, file }"],
+    [
+      "a relative root",
+      { projectRoot: "fixtures/base", file: "src/pages/HomePage.tsx" },
+      "projectRoot must be an absolute path",
+    ],
+    [
+      "an absolute file",
+      { projectRoot: fixtureRoot, file: "/etc/hosts.tsx" },
+      "file must be a path relative to projectRoot",
+    ],
+    [
+      "a non-page file",
+      { projectRoot: fixtureRoot, file: "package.json" },
+      "file must be a .tsx or .jsx page, got package.json",
+    ],
+    [
+      "a path escaping the root",
+      { projectRoot: fixtureRoot, file: "../../packages/x.tsx" },
+      "../../packages/x.tsx is outside the project root",
+    ],
+  ])("refuses %s", async (_label, request, message) => {
+    const { dispatch } = setup();
+    await expect(dispatch("page:tree", request)).resolves.toEqual({
+      ok: false,
+      error: { code: "bad-request", channel: "page:tree", message },
+    });
+  });
+
+  it("answers not-found for a missing page without reading outside the root", async () => {
+    const readFileSpy = vi.fn(async (p: string) => readFile(p, "utf8"));
+    const { dispatch } = setup({ readFile: readFileSpy });
+    const result = await dispatch("page:tree", {
+      projectRoot: fixtureRoot,
+      file: "src/pages/Nope.tsx",
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "not-found",
+        channel: "page:tree",
+        message: "no such page: src/pages/Nope.tsx",
+      },
+    });
+    expect(readFileSpy).toHaveBeenCalledWith(
+      path.join(fixtureRoot, "src/pages/Nope.tsx"),
+    );
+  });
+
+  it("reports a parse failure naming the channel", async () => {
+    const { dispatch, errors } = setup({
+      readFile: async () => "export default function P() { return <div> }",
+    });
+    const result = await dispatch("page:tree", {
+      projectRoot: fixtureRoot,
+      file: "src/pages/Broken.tsx",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("failed");
+    expect(result.error.channel).toBe("page:tree");
+    expect(errors).toEqual([result.error]);
+  });
+});
+
+describe("resolveInside", () => {
+  it("resolves a nested path", () => {
+    expect(resolveInside("/p", "src/a.tsx")).toBe(path.resolve("/p/src/a.tsx"));
+  });
+
+  it.each(["..", "../p2/a.tsx", "src/../../a.tsx", "."])(
+    "refuses %s",
+    (file) => {
+      expect(() => resolveInside("/p", file)).toThrow(
+        /outside the project root/,
+      );
+    },
+  );
+});

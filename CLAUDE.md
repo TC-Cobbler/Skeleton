@@ -12,7 +12,7 @@ Read these before starting any task:
 
 ## Current phase
 
-**Phase 0: round-trip spike (headless, no UI).** Don't build Electron, canvas or any UI until Gate 0 passes. If a task seems to need UI, stop and ask.
+**Phase 1: shell + scaffold.** Gate 0 passed (see `docs/spike-log.md`). Build the Electron shell, scaffolder, dev server manager, project picker and git service. No canvas, overlay or editing UI until Gate 1 passes (Phase 2+). If a task seems to need them, stop and ask.
 
 ---
 
@@ -104,4 +104,8 @@ pnpm test            # all packages (Vitest projects)
 pnpm test:core       # core fixtures only
 pnpm typecheck       # tsc -b across the workspace
 pnpm spike <cmd>     # Phase 0 CLI (pnpm spike help)
+pnpm dev             # Electron app against the renderer's Vite dev server
+pnpm test:e2e        # launches the built Electron app (needs a display: xvfb-run on Linux)
 ```
+
+Running Electron as root (containers, CI) needs `--no-sandbox`, e.g. `pnpm dev --no-sandbox`.
