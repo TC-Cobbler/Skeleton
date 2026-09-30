@@ -21,10 +21,25 @@ export interface PageTreeRequest {
   file: string;
 }
 
+export interface ProjectCreateRequest {
+  /** Absolute path of the folder to create the project in. */
+  parentDir: string;
+  /** Human project name, e.g. "Gaming Library"; the folder is its slug. */
+  name: string;
+}
+
+export interface ProjectCreateResponse {
+  projectRoot: string;
+  /** Hash of the initial `skeleton: scaffold` commit. */
+  commit: string;
+  timings: { write: number; install: number; git: number };
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
   "page:tree": { request: PageTreeRequest; response: PageTree };
+  "project:create": { request: ProjectCreateRequest; response: ProjectCreateResponse };
 }
 
 export type Channel = keyof IpcContract;
@@ -34,6 +49,7 @@ export type ResponseOf<C extends Channel> = IpcContract[C]["response"];
 export const CHANNELS = [
   "app:info",
   "page:tree",
+  "project:create",
 ] as const satisfies readonly Channel[];
 
 // Compile-time check that CHANNELS lists every channel in IpcContract.

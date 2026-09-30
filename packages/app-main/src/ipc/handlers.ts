@@ -3,6 +3,7 @@
 
 import path from "node:path";
 import { buildTree } from "@skeleton/core";
+import { projectNameError } from "@skeleton/templates";
 import {
   isChannel,
   type AppInfo,
@@ -11,6 +12,8 @@ import {
   type IpcErrorCode,
   type IpcResult,
   type PageTreeRequest,
+  type ProjectCreateRequest,
+  type ProjectCreateResponse,
   type RequestOf,
   type ResponseOf,
 } from "./contract.js";
@@ -18,6 +21,8 @@ import {
 export interface HandlerDeps {
   appInfo: () => AppInfo;
   readFile: (absolutePath: string) => Promise<string>;
+  /** Creates a project on disk (scaffold, install, initial commit). */
+  createProject: (request: ProjectCreateRequest) => Promise<ProjectCreateResponse>;
 }
 
 /** Thrown inside a handler to answer with a specific error code. */
@@ -68,6 +73,19 @@ const validators: Validators = {
     }
     return { projectRoot, file };
   },
+  "project:create": (raw): ProjectCreateRequest => {
+    if (typeof raw !== "object" || raw === null) {
+      throw new HandlerError("bad-request", "expects { parentDir, name }");
+    }
+    const { parentDir, name } = raw as Record<string, unknown>;
+    if (typeof parentDir !== "string" || !path.isAbsolute(parentDir)) {
+      throw new HandlerError("bad-request", "parentDir must be an absolute path");
+    }
+    if (typeof name !== "string") throw new HandlerError("bad-request", "name must be a string");
+    const nameError = projectNameError(name);
+    if (nameError) throw new HandlerError("bad-request", nameError);
+    return { parentDir, name };
+  },
 };
 
 /** Resolves `file` inside `root`, refusing anything that escapes it. */
@@ -103,6 +121,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
       }
       return buildTree(source);
     },
+    "project:create": async (request) => deps.createProject(request),
   };
 }
 

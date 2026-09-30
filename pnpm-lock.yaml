@@ -29,6 +29,9 @@ importers:
       '@skeleton/core':
         specifier: workspace:*
         version: link:../core
+      '@skeleton/templates':
+        specifier: workspace:*
+        version: link:../templates
     devDependencies:
       electron:
         specifier: ^44.5.0
@@ -94,6 +97,12 @@ importers:
       recast:
         specifier: ^0.24.0
         version: 0.24.0
+
+  packages/templates:
+    dependencies:
+      '@skeleton/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

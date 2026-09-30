@@ -19,7 +19,8 @@
     "test:e2e": "pnpm --filter @skeleton/app-renderer build && tsc -b && vitest run -c vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@skeleton/core": "workspace:*"
+    "@skeleton/core": "workspace:*",
+    "@skeleton/templates": "workspace:*"
   },
   "devDependencies": {
     "electron": "^44.5.0",

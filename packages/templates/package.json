@@ -1,0 +1,24 @@
+{
+  "name": "@skeleton/templates",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "project"],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "vendor": "tsx scripts/vendor-shadcn.ts"
+  },
+  "dependencies": {
+    "@skeleton/core": "workspace:*"
+  }
+}

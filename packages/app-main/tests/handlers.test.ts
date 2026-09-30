@@ -28,6 +28,11 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
     {
       appInfo: () => appInfo,
       readFile: (p) => readFile(p, "utf8"),
+      createProject: async (req) => ({
+        projectRoot: path.join(req.parentDir, "stub"),
+        commit: "abc123",
+        timings: { write: 1, install: 2, git: 3 },
+      }),
       ...overrides,
     },
     (error) => errors.push(error),
@@ -155,4 +160,46 @@ describe("resolveInside", () => {
       );
     },
   );
+});
+
+describe("project:create", () => {
+  it("validates the request before touching disk", async () => {
+    const createProject = vi.fn();
+    const { dispatch, errors } = setup({ createProject });
+    const bad = [
+      null,
+      { parentDir: "relative/dir", name: "App" },
+      { parentDir: "/tmp", name: 42 },
+      { parentDir: "/tmp", name: "<script>" },
+      { parentDir: "/tmp", name: " App" },
+    ];
+    for (const request of bad) {
+      const result = await dispatch("project:create", request);
+      expect(result.ok, JSON.stringify(request)).toBe(false);
+    }
+    expect(createProject).not.toHaveBeenCalled();
+    expect(errors.every((e) => e.code === "bad-request" && e.channel === "project:create")).toBe(true);
+  });
+
+  it("delegates a valid request to the scaffolder", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("project:create", { parentDir: "/tmp", name: "Gaming Library" })).resolves.toEqual({
+      ok: true,
+      value: { projectRoot: "/tmp/stub", commit: "abc123", timings: { write: 1, install: 2, git: 3 } },
+    });
+  });
+
+  it("reports scaffolder failures as failed, naming the channel", async () => {
+    const { dispatch, errors } = setup({
+      createProject: async () => {
+        throw new Error("scaffold failed at install: offline");
+      },
+    });
+    const result = await dispatch("project:create", { parentDir: "/tmp", name: "App" });
+    expect(result).toEqual({
+      ok: false,
+      error: { code: "failed", channel: "project:create", message: "scaffold failed at install: offline" },
+    });
+    expect(errors).toHaveLength(1);
+  });
 });

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, shell } from "electron";
 import { createDispatch } from "./ipc/handlers.js";
 import { registerIpc } from "./ipc/register.js";
+import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -67,6 +68,8 @@ const dispatch = createDispatch(
       platform: process.platform,
     }),
     readFile: (absolutePath) => readFile(absolutePath, "utf8"),
+    createProject: (request) =>
+      scaffoldProject(request, { skeletonVersion: app.getVersion() }),
   },
   log,
 );
