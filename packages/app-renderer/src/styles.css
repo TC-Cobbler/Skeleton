@@ -629,3 +629,39 @@ button.danger {
   height: 28px;
   padding: 0;
 }
+.violations ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.violation {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.violation.is-kept {
+  opacity: 0.6;
+}
+.violation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.violation-value {
+  display: block;
+  margin: 2px 0;
+  word-break: break-all;
+}
+.violation-actions {
+  gap: 4px;
+  margin-top: 4px;
+}
+.violation-actions button,
+.violation form button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.violation form input {
+  min-width: 0;
+  padding: 2px 4px;
+}

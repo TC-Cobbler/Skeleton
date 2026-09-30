@@ -153,10 +153,10 @@ If this can't be reached, stop and rethink the architecture before touching UI.
   - Alt → instance override (arbitrary class)
 
   A hover label shows the scope before the drag starts.
-- [ ] **T4.6** Violations panel:
+- [x] **T4.6** Violations panel:
   - list every violation with element, property, value and nearest token
   - actions: snap to token / promote to component token / keep (acknowledged, stored in `/skeleton/config.json`)
-- [ ] **T4.7** Colour edits target the mode currently shown (light/dark).
+- [x] **T4.7** Colour edits target the mode currently shown (light/dark).
 
 **Gate 4:** PRD flow F3 passes in all three scopes, in both light and dark mode.
 

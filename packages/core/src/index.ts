@@ -67,6 +67,17 @@ export {
   type TokenWrite,
 } from "./theme.js";
 export { tokenUsage, utilitiesFor, type TokenUsage } from "./utilities.js";
+export { parseColour, colourDistance, type Oklab } from "./colour.js";
+export {
+  describeViolations,
+  promoteViolation,
+  readPalette,
+  TOKEN_NAME,
+  type DesignContext,
+  type PromoteKind,
+  type ViolationDetail,
+  type ViolationProperty,
+} from "./fixes.js";
 export { findViolations, type Violation, type ViolationKind } from "./violations.js";
 export {
   analyseTakeBack,

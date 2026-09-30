@@ -1,6 +1,6 @@
 // Phase 4 (tokens and gizmos) on a freshly scaffolded project. Gate 4 lives in gate4.test.ts.
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -267,6 +267,58 @@ describe("colour chip and picker (T4.3, T4.7)", () => {
     await panel().getByLabel("Pick colour").fill("#ff0000");
     await expect.poll(() => classNameOf(id), { timeout: 10_000 }).toBe("bg-[#ff0000]");
     expect(css()).toBe(cssBefore);
+  });
+});
+
+describe("violations panel (T4.6)", () => {
+  const panel = () => page.getByRole("region", { name: "Violations" });
+  const rows = () => panel().getByTestId("violation");
+  const row = (value: string) => rows().filter({ has: page.locator("code.violation-value", { hasText: value }) });
+  const config = () => JSON.parse(readFileSync(path.join(projectRoot, "skeleton/config.json"), "utf8")) as { acknowledgedViolations: unknown[] };
+
+  it("lists the overrides made with Alt, with element, property and nearest token", async () => {
+    await page.getByRole("tab", { name: /^Violations/ }).click();
+    await expect.poll(() => rows().count(), { timeout: 10_000 }).toBe(2);
+    expect(await page.getByRole("tab", { name: /^Violations/ }).textContent()).toBe("Violations (2)");
+    const radius = row("rounded-[");
+    expect(await radius.textContent()).toMatch(/Button #ui_[a-z0-9]{5}radius/);
+    expect(await radius.textContent()).toMatch(/nearest: rounded-\S+ \(--radius-/);
+    expect(await row("bg-[#ff0000]").textContent()).toMatch(/nearest: bg-\S+ \(--/);
+  });
+
+  it("snaps an override to the nearest token", async () => {
+    const nearest = (await row("rounded-[").locator(".muted code").first().textContent()) as string;
+    await row("rounded-[").getByRole("button", { name: "Snap" }).click();
+    await expect.poll(() => homeFile(), { timeout: 10_000 }).toContain(`className="${nearest}"`);
+    await expect.poll(() => rows().count()).toBe(1);
+  });
+
+  it("promotes an override to a new token", async () => {
+    await row("bg-[#ff0000]").getByRole("button", { name: "Promote" }).click();
+    await row("bg-[#ff0000]").getByLabel("Token name").fill("brand");
+    await row("bg-[#ff0000]").getByRole("button", { name: "Create" }).click();
+    await expect.poll(() => token("--brand", "light"), { timeout: 10_000 }).toBe("#ff0000");
+    expect(token("--brand", "dark")).toBe("#ff0000");
+    expect(token("--color-brand")).toBe("var(--brand)");
+    await expect.poll(() => homeFile()).toContain('className="bg-brand"');
+    await expect.poll(() => rows().count()).toBe(0);
+    expect(await panel().textContent()).toContain("No overrides");
+  });
+
+  it("keeps an override in agent code, in skeleton/config.json", async () => {
+    // The agent adds an inline style (a contract breach Skeleton can't fix for it).
+    const source = homeFile();
+    writeFileSync(path.join(projectRoot, "src/pages/HomePage.tsx"), source.replace("</Stack>", '  <p data-ui-id="ui_agnt1" style={{ color: "red" }}>agent</p>\n      </Stack>'));
+    await expect.poll(() => rows().count(), { timeout: 10_000 }).toBe(1);
+    expect(await rows().first().textContent()).toContain("In agent code");
+    expect(await rows().first().getByRole("button", { name: "Snap" }).count()).toBe(0);
+    await rows().first().getByRole("button", { name: "Keep" }).click();
+    await expect.poll(() => config().acknowledgedViolations, { timeout: 10_000 }).toEqual([
+      { file: "src/pages/HomePage.tsx", id: "ui_agnt1", value: 'style={{ color: "red" }}' },
+    ]);
+    await expect.poll(() => rows().count()).toBe(0);
+    await panel().getByLabel(/Show kept/).check();
+    expect(await rows().count()).toBe(1);
   });
 });
 

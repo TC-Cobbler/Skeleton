@@ -68,7 +68,7 @@ export function findViolations(source: string, file: string): Violation[] {
 }
 
 /** `max-md:hover:p-[3px]` → `p-[3px]`; `[&_tr]:border-b` → `border-b`. Colons inside brackets don't split. */
-function stripVariants(token: string): string {
+export function stripVariants(token: string): string {
   let depth = 0;
   let lastColon = -1;
   for (let i = 0; i < token.length; i++) {

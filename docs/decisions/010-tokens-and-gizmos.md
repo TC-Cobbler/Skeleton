@@ -1,6 +1,6 @@
 # 010: Tokens and gizmos
 
-**Status:** accepted · 2026-09-30 · T4.1–T4.5 (applies to all of Phase 4)
+**Status:** accepted · 2026-09-30 · T4.1–T4.7 (applies to all of Phase 4)
 
 ## Context
 
@@ -50,6 +50,19 @@ Phase 4 edits the design system from the canvas: a token panel, a map of what ea
 - Instance and step edits target the element through a temporary `data-skeleton-gizmo` attribute.
 - **On release** the overlay posts `gizmo-commit`, and the renderer writes it through `tokens:write` or `page:edit`. The preview stays until Vite's next update (the written value is then on the page), so nothing flickers back. It goes at once if the write fails, and after a timeout at the latest.
 - The colour picker previews the same way (`preview`), and writes when the native picker closes (`change`, not React's `onChange`).
+
+**Violations (T4.6) are described in core, fixed through the editor.**
+
+- `describeViolations` gives each violation from `findViolations` its element, its property, the nearest token and what it can be promoted to.
+  - **Element:** the innermost page element containing it.
+  - **Nearest token:** lengths go through `calc.ts` with rem counted as 16px. Colours are compared in OKLab (`colour.ts`) against the light colour tokens. Tailwind palette colours such as `bg-red-500` get their values from the project's own `node_modules/tailwindcss/theme.css`.
+- **Only a class in the literal `className` of an editable, ID'd element can be fixed.** Anything else (agent code, inline `style`) can only be kept. Scaffold code (`src/components/ui`, `layout`) is exempt, as on take-back.
+- **Snap** is a `page:edit` `setClass`, keeping variants (`hover:bg-[#f00]` → `hover:bg-destructive`).
+- **Promote** creates `--radius-x`, `--text-x`, `--spacing-x`, or a colour (`--x` light and dark, plus `--color-x`) through the token writer. It then swaps the class, as one undoable step across `globals.css` and the page. Border widths and inline styles can't be promoted: v1 has no named-width namespace.
+- **Keep** appends `{ file, id, value }` to `acknowledgedViolations` in `skeleton/config.json` (undoable). The list marks kept items rather than dropping them.
+- Fixes re-find the violation by file, offset and text first, and refuse if the list was stale.
+
+**Colour edits follow the mode on screen (T4.7).** The picker and the token panel write `.dark` while the canvas shows dark, and `:root` otherwise. The preview is `:root{--x:…!important}`, which wins over `.dark` in dark mode too.
 
 ## Consequences
 

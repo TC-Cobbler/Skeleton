@@ -23,17 +23,20 @@ export class CalcError extends Error {
  * Throws CalcError when it isn't arithmetic over lengths and numbers, or mixes
  * units that can't be combined without layout (`1rem - 4px`).
  */
-export function evaluate(value: string, lookup: TokenLookup, seen: ReadonlySet<string> = new Set()): Quantity {
-  const parser = new Parser(tokenize(value), lookup, seen);
+export function evaluate(value: string, lookup: TokenLookup, seen: ReadonlySet<string> = new Set(), rootPx: number | null = null): Quantity {
+  const parser = new Parser(tokenize(value, rootPx), lookup, seen, rootPx);
   const result = parser.expression();
   parser.end();
   return result;
 }
 
-/** `evaluate`, or null when the value isn't a single quantity. */
-export function tryEvaluate(value: string, lookup: TokenLookup): Quantity | null {
+/**
+ * `evaluate`, or null when the value isn't a single quantity. With `rootPx`, rem
+ * lengths count as that many px, so `calc(var(--radius) - 4px)` comes to px.
+ */
+export function tryEvaluate(value: string, lookup: TokenLookup, rootPx: number | null = null): Quantity | null {
   try {
-    return evaluate(value, lookup);
+    return evaluate(value, lookup, new Set(), rootPx);
   } catch (error) {
     if (error instanceof CalcError) return null;
     throw error;
@@ -79,7 +82,7 @@ type Tok =
   | { t: "var"; name: string }
   | { t: "calc" };
 
-function tokenize(input: string): Tok[] {
+function tokenize(input: string, rootPx: number | null): Tok[] {
   const out: Tok[] = [];
   let i = 0;
   while (i < input.length) {
@@ -91,7 +94,9 @@ function tokenize(input: string): Tok[] {
     }
     const num = /^(\d*\.\d+|\d+)(e[+-]?\d+)?([a-z]+|%)?/i.exec(rest);
     if (num) {
-      out.push({ t: "num", value: Number(num[1] + (num[2] ?? "")), unit: (num[3] ?? "").toLowerCase() });
+      const unit = (num[3] ?? "").toLowerCase();
+      const n = Number(num[1] + (num[2] ?? ""));
+      out.push(rootPx !== null && unit === "rem" ? { t: "num", value: n * rootPx, unit: "px" } : { t: "num", value: n, unit });
       i += num[0].length;
       continue;
     }
@@ -122,6 +127,7 @@ class Parser {
     private readonly toks: Tok[],
     private readonly lookup: TokenLookup,
     private readonly seen: ReadonlySet<string>,
+    private readonly rootPx: number | null,
   ) {}
 
   end(): void {
@@ -177,7 +183,7 @@ class Parser {
         if (this.seen.has(tok.name)) throw new CalcError(`${tok.name} refers to itself`);
         const raw = this.lookup(tok.name);
         if (raw === null) throw new CalcError(`${tok.name} is not defined`);
-        return evaluate(raw, this.lookup, new Set([...this.seen, tok.name]));
+        return evaluate(raw, this.lookup, new Set([...this.seen, tok.name]), this.rootPx);
       }
       case "close":
         throw new CalcError("unexpected )");

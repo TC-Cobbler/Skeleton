@@ -17,6 +17,7 @@ import {
 } from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
 import { EditRefused, EditRolledBack, type Editor } from "../project/editor.js";
+import { listViolations } from "../project/violations.js";
 import {
   isChannel,
   type AppInfo,
@@ -46,6 +47,9 @@ import {
   type ProjectCreateResponse,
   type TokenSheet,
   type TokenWriteRequest,
+  type ViolationKeepRequest,
+  type ViolationPromoteRequest,
+  type ViolationRef,
   type RequestOf,
   type ResponseOf,
 } from "./contract.js";
@@ -70,7 +74,9 @@ export interface HandlerDeps {
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
   changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
-  editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history" | "tokens">;
+  editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history" | "tokens" | "promote" | "keep">;
+  /** Project-relative .tsx/.jsx files under src/. */
+  listSources: (projectRoot: string) => Promise<string[]>;
   /** A project was opened or created: get ready to edit it (starts the typechecker warming up). */
   opened?: (projectRoot: string) => void;
 }
@@ -180,6 +186,16 @@ const validators: Validators = {
   "project:page": (raw): PageOpRequest => ({ projectRoot: projectRootOf(raw), page: pageIntentOf((raw as Record<string, unknown>)["page"]) }),
   "palette:list": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "tokens:read": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "violations:list": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "violations:promote": (raw): ViolationPromoteRequest => {
+    const projectRoot = projectRootOf(raw);
+    const { violation, name } = raw as Record<string, unknown>;
+    if (typeof name !== "string" || !/^[a-z][a-z0-9-]{0,30}$/.test(name)) {
+      throw new HandlerError("bad-request", "name must be lowercase letters, digits and dashes, starting with a letter");
+    }
+    return { projectRoot, violation: violationRefOf(violation), name };
+  },
+  "violations:keep": (raw): ViolationKeepRequest => ({ projectRoot: projectRootOf(raw), violation: violationRefOf((raw as Record<string, unknown>)["violation"]) }),
   "tokens:write": (raw): TokenWriteRequest => {
     const projectRoot = projectRootOf(raw);
     const writes = (raw as Record<string, unknown>)["writes"];
@@ -259,6 +275,17 @@ function pageIntentOf(raw: unknown): PageIntent {
     default:
       throw new HandlerError("bad-request", `unknown page op ${JSON.stringify(p["op"])}`);
   }
+}
+
+function violationRefOf(raw: unknown): ViolationRef {
+  if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "violation must be an object");
+  const { file, offset, value } = raw as Record<string, unknown>;
+  if (typeof file !== "string" || file === "" || path.isAbsolute(file) || !PAGE_EXTENSIONS.has(path.extname(file))) {
+    throw new HandlerError("bad-request", "violation.file must be a .tsx or .jsx path relative to projectRoot");
+  }
+  if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0) throw new HandlerError("bad-request", "violation.offset must be a non-negative integer");
+  if (typeof value !== "string" || value === "" || value.length > 10_000) throw new HandlerError("bad-request", "violation.value must be the violating text");
+  return { file, offset, value };
 }
 
 /** A token value: one line of CSS, nothing that could end the declaration or open a comment. */
@@ -431,6 +458,17 @@ function createHandlers(deps: HandlerDeps): Handlers {
     "tokens:write": async ({ projectRoot, writes }) => {
       const { css } = await editing(() => deps.editor.tokens(projectRoot, writes));
       return { sheet: sheetOf(css), history: await deps.editor.history(projectRoot) };
+    },
+    "violations:list": async ({ projectRoot }) => listViolations({ readFile: deps.readFile, listSources: deps.listSources }, projectRoot),
+    "violations:promote": async ({ projectRoot, violation, name }) => {
+      resolveInside(projectRoot, violation.file);
+      const { utility } = await editing(() => deps.editor.promote(projectRoot, violation, name));
+      return { utility, history: await deps.editor.history(projectRoot) };
+    },
+    "violations:keep": async ({ projectRoot, violation }) => {
+      resolveInside(projectRoot, violation.file);
+      await editing(() => deps.editor.keep(projectRoot, violation));
+      return { utility: null, history: await deps.editor.history(projectRoot) };
     },
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
     "page:edit": async ({ projectRoot, file, edit }) => {

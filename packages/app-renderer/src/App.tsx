@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite, UiNode } from "@skeleton/app-main/ipc";
+import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite, UiNode, ViolationItem } from "@skeleton/app-main/ipc";
 import type { DropTarget, GizmoCommit } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
@@ -21,6 +21,7 @@ import { usePageTree } from "./usePageTree.js";
 import { useProjectRevision } from "./useProjectRevision.js";
 import { ProjectPicker } from "./ProjectPicker.js";
 import { TokensPanel, useTokens } from "./TokensPanel.js";
+import { useViolations, ViolationsPanel } from "./ViolationsPanel.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
@@ -128,6 +129,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const pages = usePages(project.projectRoot, revision);
   const palette = usePalette(project.projectRoot, revision);
   const tokens = useTokens(project.projectRoot, revision);
+  const violations = useViolations(project.projectRoot, revision);
   const [pathname, setPathname] = useState("/");
   const [navigate, setNavigate] = useState<{ path: string } | null>(null);
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
@@ -211,7 +213,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     },
     [project.projectRoot, setTokenSheet, setEditError],
   );
-  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens">("element");
+  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens" | "violations">("element");
   // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
   const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
   const [tokenHover, setTokenHover] = useState<string | null>(null);
@@ -261,6 +263,43 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     if (commit.kind === "token") writeTokens([{ name: commit.name, value: commit.value, mode: null }], done);
     else setClassFor(key, commit.remove, commit.add);
   };
+  // Violations (T4.6): snap is a setClass in the violation's file; promote and keep go to main.
+  const fixViolation = (task: Promise<unknown>, channel: string) => {
+    task.then(
+      () => {
+        page.reload();
+        setRevision((r) => r + 1);
+      },
+      (err: unknown) => {
+        page.reload();
+        setRevision((r) => r + 1);
+        setEditError(err instanceof Error ? err.message.replace(new RegExp(`^${channel}: `), "") : String(err));
+      },
+    );
+  };
+  const ref = (v: ViolationItem) => ({ file: v.file, offset: v.offset, value: v.value });
+  const violationActions = {
+    onSelect: (v: ViolationItem) => {
+      const id = v.element?.id;
+      if (v.file !== file) {
+        const target = pages.list?.pages.find((p) => p.file === v.file && !p.dynamic);
+        if (target) {
+          setPathname(target.path);
+          setNavigate({ path: target.path });
+        }
+      }
+      if (id) selectId(id);
+    },
+    onSnap: (v: ViolationItem) => {
+      if (!v.element?.id || !v.nearest) return;
+      const intent: EditIntent = { op: "setClass", id: v.element.id, add: [v.nearest.utility], remove: [v.value] };
+      fixViolation(call("page:edit", { projectRoot: project.projectRoot, file: v.file, edit: intent }), "page:edit");
+    },
+    onPromote: (v: ViolationItem, name: string) =>
+      fixViolation(call("violations:promote", { projectRoot: project.projectRoot, violation: ref(v), name }), "violations:promote"),
+    onKeep: (v: ViolationItem) => fixViolation(call("violations:keep", { projectRoot: project.projectRoot, violation: ref(v) }), "violations:keep"),
+  };
+  const activeViolations = violations.report?.items.filter((v) => !v.kept).length ?? 0;
   const moveNode = (key: string, target: DropTarget) => {
     const moved = page.nodes.find((n) => n.key === key)?.node;
     const parentKey = parentKeyOf(key);
@@ -466,12 +505,13 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       </aside>
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="segmented tabs" role="tablist" aria-label="Inspector">
-          {(["element", "tokens"] as const).map((tab) => (
+          {(["element", "tokens", "violations"] as const).map((tab) => (
             <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
-              {tab === "element" ? "Element" : "Tokens"}
+              {tab === "element" ? "Element" : tab === "tokens" ? "Tokens" : `Violations${activeViolations > 0 ? ` (${activeViolations})` : ""}`}
             </button>
           ))}
         </div>
+        {inspectorTab === "violations" && <ViolationsPanel report={violations.report} error={violations.error} {...violationActions} />}
         {inspectorTab === "tokens" && (
           <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={tokenCounts} onWrite={writeTokens} onHover={setTokenHover} />
         )}

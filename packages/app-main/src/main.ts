@@ -137,6 +137,7 @@ const dispatch = createDispatch(
     git: new GitService(),
     changes: (root) => watcher.changes(root),
     editor,
+    listSources: (root) => listSources(root, readdir),
     // Warm the typechecker up while the dev server starts, so the first edit doesn't wait for it.
     opened: (root) => void checkerFor(root),
   },

@@ -4,6 +4,7 @@ import { buildIdIndex, buildTree, findNodeById, parseModule, readRoutes } from "
 import { loadTemplate, renderProject } from "@skeleton/templates";
 import type { Checker, Diagnostic } from "../src/project/checker.js";
 import { Editor, EditRefused, EditRolledBack, listSources, type EditorIO } from "../src/project/editor.js";
+import { listViolations } from "../src/project/violations.js";
 
 const ROOT = "/projects/demo";
 
@@ -509,6 +510,68 @@ describe("Editor: tokens (T4.1)", () => {
     p.writes.length = 0;
     await expect(editor.tokens(ROOT, [{ name: "--nope", value: "1px", mode: null }])).rejects.toThrow(EditRefused);
     expect(p.writes).toEqual([]);
+  });
+});
+
+describe("Editor: violations (T4.6)", () => {
+  const CSS = path.join(ROOT, "src/styles/globals.css");
+  const CONFIG = path.join(ROOT, "skeleton/config.json");
+  async function withViolations() {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const h1 = /<h1 data-ui-id="(ui_[a-z0-9]{5})"/.exec(p.home())?.[1] as string;
+    await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "setClass", id: h1, add: ["rounded-[14px]", "text-[17px]"], remove: [] });
+    const list = async () => (await listViolations(p.io, ROOT)).items;
+    return { p, editor, h1, list };
+  }
+
+  it("lists violations with their element, property and nearest token", async () => {
+    const { h1, list } = await withViolations();
+    const items = await list();
+    expect(items.map((v) => [v.value, v.element?.id, v.property, v.nearest?.utility, v.editable, v.kept])).toEqual([
+      ["rounded-[14px]", h1, "radius", "rounded-xl", true, false],
+      ["text-[17px]", h1, "font-size", "text-base", true, false],
+    ]);
+  });
+
+  it("promotes an override to a new token and uses it, as one undoable step", async () => {
+    const { p, editor, h1, list } = await withViolations();
+    const [radius] = await list();
+    const cssBefore = p.files.get(CSS) as string;
+    const pageBefore = p.home();
+    expect(await editor.promote(ROOT, { file: "src/pages/HomePage.tsx", offset: radius!.offset, value: "rounded-[14px]" }, "hero")).toEqual({ utility: "rounded-hero" });
+    expect((p.files.get(CSS) as string).split("\n").filter((l) => !cssBefore.split("\n").includes(l))).toEqual(["  --radius-hero: 0.875rem;"]);
+    expect(findNodeById(buildTree(p.home()).roots, h1)?.props["className"]).toBe("text-3xl font-semibold rounded-hero text-[17px]");
+    expect((await list()).map((v) => v.value)).toEqual(["text-[17px]"]);
+    expect(await editor.history(ROOT)).toMatchObject({ undo: "Promote rounded-[14px] to a token" });
+    await editor.undo(ROOT);
+    expect(p.files.get(CSS)).toBe(cssBefore);
+    expect(p.home()).toBe(pageBefore);
+  });
+
+  it("refuses a stale reference or a taken name, writing nothing", async () => {
+    const { p, editor, list } = await withViolations();
+    const [radius] = await list();
+    p.writes.length = 0;
+    await expect(editor.promote(ROOT, { file: "src/pages/HomePage.tsx", offset: radius!.offset + 1, value: "rounded-[14px]" }, "hero")).rejects.toThrow(/out of date/);
+    await expect(editor.promote(ROOT, { file: "src/pages/HomePage.tsx", offset: radius!.offset, value: "rounded-[14px]" }, "card")).rejects.toThrow(/already exists/);
+    expect(p.writes).toEqual([]);
+  });
+
+  it("keeps a violation in skeleton/config.json, once", async () => {
+    const { p, editor, h1, list } = await withViolations();
+    const [, text] = await list();
+    const ref = { file: "src/pages/HomePage.tsx", offset: text!.offset, value: "text-[17px]" };
+    await editor.keep(ROOT, ref);
+    await editor.keep(ROOT, ref);
+    const config = JSON.parse(p.files.get(CONFIG) as string) as { name: string; acknowledgedViolations: unknown[] };
+    expect(config.name).toBe("Demo");
+    expect(config.acknowledgedViolations).toEqual([{ file: "src/pages/HomePage.tsx", id: h1, value: "text-[17px]" }]);
+    expect((await list()).map((v) => [v.value, v.kept])).toEqual([
+      ["rounded-[14px]", false],
+      ["text-[17px]", true],
+    ]);
+    expect(await editor.history(ROOT)).toMatchObject({ undo: "Keep text-[17px]" });
   });
 });
 

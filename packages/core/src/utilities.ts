@@ -14,10 +14,10 @@ export interface TokenUsage {
   selectors: string[];
 }
 
-const COLOUR_PREFIXES =
+export const COLOUR_PREFIXES =
   "bg|text|border|border-[xytrblse]|ring|ring-offset|outline|fill|stroke|from|via|to|decoration|divide|placeholder|caret|accent|shadow|inset-shadow|inset-ring";
-const RADIUS_SIDES = "t|r|b|l|s|e|tl|tr|br|bl|ss|se|es|ee";
-const SPACING_PREFIXES =
+export const RADIUS_SIDES = "t|r|b|l|s|e|tl|tr|br|bl|ss|se|es|ee";
+export const SPACING_PREFIXES =
   "p|px|py|pt|pr|pb|pl|ps|pe|m|mx|my|mt|mr|mb|ml|ms|me|gap|gap-x|gap-y|space-x|space-y|w|h|size|min-w|min-h|max-w|max-h|inset|inset-x|inset-y|top|right|bottom|left|start|end|translate-x|translate-y|indent|basis|scroll-m|scroll-p";
 /** Utilities that set a border width without naming one: they read `--default-border-width`. */
 const BORDER_WIDTH = "(border|border-[xytrblse]|divide-x|divide-y)";
