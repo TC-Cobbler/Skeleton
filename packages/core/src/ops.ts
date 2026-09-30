@@ -357,6 +357,49 @@ export function setClass(source: string, id: string, add: string[], removeClasse
   });
 }
 
+const MAX_TEXT = 10_000;
+
+/**
+ * Set the text content of an editable element whose children are only text (or string
+ * literals like `{" "}`). Replaces just the text between the tags, keeping it inline or
+ * on its own line as it was. Text that JSX would change or reject (`{ } < > &`, edge
+ * whitespace, newlines) is written as a string expression: `{"a {b}"}`.
+ */
+export function setText(source: string, id: string, text: string, options: OpOptions = {}): EditResult {
+  const op = "setText";
+  return runOp(op, id, source, options, (ctx) => {
+    if (text.length > MAX_TEXT) throw new EditOpError(op, id, `text is too long (${text.length} > ${MAX_TEXT} characters)`);
+    const el = ctx.element(ctx.editable(id));
+    if (el.openingElement.selfClosing || !el.closingElement) {
+      throw new EditOpError(op, id, `<${nameOf(el)}> is self-closing and has no text content`);
+    }
+    for (const child of el.children) {
+      if (t.isJSXText(child)) continue;
+      if (t.isJSXExpressionContainer(child)) {
+        if (t.isStringLiteral(child.expression)) continue;
+        if (t.isJSXEmptyExpression(child.expression)) {
+          throw new EditOpError(op, id, "its content has a comment; edit it in code so the comment isn't lost");
+        }
+        throw new EditOpError(op, id, "its text includes an expression (agent logic) and is protected");
+      }
+      throw new EditOpError(op, id, `<${nameOf(el)}> has child elements; edit their text instead`);
+    }
+    const from = el.openingElement.end;
+    const to = el.closingElement.start;
+    if (from == null || to == null) throw new EditOpError(op, id, `<${nameOf(el)}> has no source position`);
+    const current = ctx.source.slice(from, to);
+    // Text on its own line keeps that layout: newline + indent, text, newline + closing indent.
+    const own = /^[ \t]*\n([ \t]*)[\s\S]*\n([ \t]*)$/.exec(current);
+    const value = /[{}<>&\n]|^\s|\s$/.test(text) ? `{${JSON.stringify(text)}}` : text;
+    const next = own && text !== "" ? `\n${own[1]}${value}\n${own[2]}` : value;
+    return {
+      removedIds: [],
+      addedIds: [],
+      apply: () => (next === current ? ctx.source : ctx.source.slice(0, from) + next + ctx.source.slice(to)),
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Op runner: parse, plan, apply, print, then verify the result before returning.
 

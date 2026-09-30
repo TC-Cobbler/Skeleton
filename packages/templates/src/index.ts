@@ -92,6 +92,8 @@ export function renderProject(template: ProjectFiles, vars: ProjectVars): Projec
 
 export {
   ELEMENTS,
+  GRID_CLASSES,
+  STACK_CLASSES,
   PALETTE,
   PALETTE_GROUPS,
   PLAIN_ELEMENTS,
@@ -99,6 +101,7 @@ export {
   templateComponents,
   templateFiles,
   templateImports,
+  type ClassGroup,
   type ElementSchema,
   type PaletteGroup,
   type PaletteItem,

@@ -3,7 +3,7 @@
 
 import path from "node:path";
 import { buildTree, exportedNames, readRoutes, sourceVersion } from "@skeleton/core";
-import { ELEMENTS, PALETTE, PALETTE_GROUPS, moduleFile, projectNameError, templateImports } from "@skeleton/templates";
+import { ELEMENTS, GRID_CLASSES, PALETTE, PALETTE_GROUPS, STACK_CLASSES, moduleFile, projectNameError, templateImports } from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
 import { EditRefused, type Editor } from "../project/editor.js";
 import {
@@ -206,6 +206,13 @@ function idOf(obj: Record<string, unknown>, label: string, key: string): string 
   return v;
 }
 
+function classesOf(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || value.length > 20 || !value.every((c) => typeof c === "string" && /^\S{1,100}$/.test(c))) {
+    throw new HandlerError("bad-request", `edit.${label} must be a list of class names`);
+  }
+  return value as string[];
+}
+
 function nodeRefOf(ref: unknown): NodeRef {
   if (typeof ref !== "object" || ref === null) throw new HandlerError("bad-request", "edit.ref must be an object");
   const r = ref as Record<string, unknown>;
@@ -239,6 +246,23 @@ function editIntentOf(raw: unknown): EditIntent {
       if (typeof e["allowLocked"] !== "boolean") throw new HandlerError("bad-request", "edit.allowLocked must be a boolean");
       return { op: "remove", ref: nodeRefOf(e["ref"]), allowLocked: e["allowLocked"] };
     }
+    case "setProp": {
+      const key = e["key"];
+      const value = e["value"];
+      if (typeof key !== "string" || !/^[A-Za-z][\w-]{0,63}$/.test(key)) throw new HandlerError("bad-request", "edit.key must be a prop name");
+      const literal = value === null || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value));
+      if (!literal && !(typeof value === "string" && value.length <= 10_000)) {
+        throw new HandlerError("bad-request", "edit.value must be a string, finite number, boolean or null");
+      }
+      return { op: "setProp", id: id("id"), key, value: value as string | number | boolean | null };
+    }
+    case "setText": {
+      const text = e["text"];
+      if (typeof text !== "string" || text.length > 10_000) throw new HandlerError("bad-request", "edit.text must be a string of at most 10,000 characters");
+      return { op: "setText", id: id("id"), text };
+    }
+    case "setClass":
+      return { op: "setClass", id: id("id"), add: classesOf(e["add"], "add"), remove: classesOf(e["remove"], "remove") };
     default:
       throw new HandlerError("bad-request", `unknown edit op ${JSON.stringify(e["op"])}`);
   }
@@ -317,7 +341,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
           return { ...item, available: item.template !== null && missing.length === 0, missing };
         }),
       );
-      return { groups: [...PALETTE_GROUPS], items, elements: { ...ELEMENTS } };
+      return { groups: [...PALETTE_GROUPS], items, elements: { ...ELEMENTS }, layout: { stack: [...STACK_CLASSES], grid: [...GRID_CLASSES] } };
     },
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
     "page:edit": async ({ projectRoot, file, edit }) => {

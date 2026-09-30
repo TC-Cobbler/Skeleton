@@ -426,6 +426,28 @@ describe("page:edit", () => {
     ]);
   });
 
+  it("passes valid property edits to the editor", async () => {
+    const edits: unknown[] = [];
+    const { dispatch } = setup({
+      editor: {
+        apply: async (_root, file, edit) => {
+          edits.push(edit);
+          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0 };
+        },
+      },
+    });
+    const valid = [
+      { op: "setProp", id: "ui_abcde", key: "variant", value: "outline" },
+      { op: "setProp", id: "ui_abcde", key: "disabled", value: true },
+      { op: "setProp", id: "ui_abcde", key: "rows", value: 3 },
+      { op: "setProp", id: "ui_abcde", key: "variant", value: null },
+      { op: "setText", id: "ui_abcde", text: "Hello {world}" },
+      { op: "setClass", id: "ui_abcde", add: ["gap-6"], remove: ["gap-4"] },
+    ];
+    for (const edit of valid) await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: true });
+    expect(edits).toEqual(valid);
+  });
+
   it("rejects malformed intents before any edit", async () => {
     const { dispatch } = setup();
     for (const edit of [
@@ -443,6 +465,14 @@ describe("page:edit", () => {
       { op: "remove", ref: { id: "ui_abcde" } },
       { op: "remove", ref: { id: "ui_abcde" }, allowLocked: "yes" },
       { op: "remove", ref: "ui_abcde", allowLocked: false },
+      { op: "setProp", id: "ui_abcde", key: "on click", value: "x" },
+      { op: "setProp", id: "ui_abcde", key: "variant", value: { x: 1 } },
+      { op: "setProp", id: "ui_abcde", key: "rows", value: Number.NaN },
+      { op: "setText", id: "ui_abcde", text: 5 },
+      { op: "setText", id: "ui_abcde", text: "x".repeat(10_001) },
+      { op: "setClass", id: "ui_abcde", add: ["gap-4 p-2"], remove: [] },
+      { op: "setClass", id: "ui_abcde", add: "gap-4", remove: [] },
+      { op: "setClass", id: "ui_abcde", add: [], remove: [1] },
     ]) {
       await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
     }

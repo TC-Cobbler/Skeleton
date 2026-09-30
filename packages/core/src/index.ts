@@ -33,6 +33,7 @@ export {
   remove,
   setProp,
   setClass,
+  setText,
   type EditResult,
   type ImportSpec,
   type InsertOptions,

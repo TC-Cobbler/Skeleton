@@ -1,6 +1,6 @@
 # 008: Editing from the canvas
 
-**Status:** accepted · 2026-09-30 · T3.2–T3.4 (applies to all of Phase 3)
+**Status:** accepted · 2026-09-30 · T3.2–T3.5 (applies to all of Phase 3)
 
 ## Context
 
@@ -49,6 +49,13 @@ A drag on a `.map` row therefore moves the whole block, verbatim.
 - **What can be deleted:** the same nodes a move can address, per `refFor`: never a root, never an element a locked block wraps.
 - **Confirmation:** if the subtree holds locked blocks or protected props, an inline confirmation lists exactly that code (`agentLogicIn`), and confirming sends `allowLocked: true`. Layout Skeleton placed goes straight away.
 - **After deleting:** the parent is selected.
+
+**Properties are one op per change (T3.5).** The inspector column shows the selected element's properties.
+
+- **Schema props** use `setProp` with a typed control: a select for enums, a checkbox for booleans, and inputs for strings and numbers that commit on blur or Enter. For enums, booleans and numbers, choosing the component's default removes the attribute. A required string prop is never removed. Protected props are shown read-only.
+- **Text content** uses a new core op, `setText`. It replaces only the text between the tags, keeping it inline or on its own line, and writes text JSX would alter (`{ } < > &`, edge whitespace, newlines) as a string expression. It refuses child elements, dynamic text and comments.
+- **Stack and Grid properties** are Tailwind class groups (`STACK_CLASSES`, `GRID_CLASSES` in `palette.ts`), changed with `setClass`, which swaps the group's base class for another. An unlisted or arbitrary current value is shown as "(custom)". Responsive variants never match a group, so they're kept as they are.
+- **Current values** come from core's tree, which now lists each element's literal props (`UiNode.props`).
 
 **The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
 

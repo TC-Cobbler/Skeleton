@@ -17,6 +17,8 @@ Main serves both over `palette:list`, marking any entry the project can't place:
 
 **Templates carry no IDs.** They're minted project-wide when an entry is placed (T3.2), then Prettier formats the template before `insert`.
 
+**What a schema `default` means:** for enums, booleans and numbers it's what the component does when the prop is absent, so choosing it removes the attribute (e.g. Button `type` defaults to `submit`, as HTML does). For strings, `null` means optional; a string is a required prop's starting value and is never removed.
+
 **Only literal props are in a schema:** enum, boolean, string and number. Classes (Stack gap, Grid columns) are layout properties, marked by `layout: "stack" | "grid"`; T3.5 edits them with `setClass`.
 
 **`ELEMENTS` has exactly the elements the templates use.** A test enforces this, so every schema is covered by the typecheck test below. Agent-written palette parts outside that set (e.g. `CardFooter`) are still classified `palette` by the parser and are editable; they just get no prop controls.

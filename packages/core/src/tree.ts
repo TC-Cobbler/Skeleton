@@ -28,6 +28,11 @@ export interface UiNode {
    * `data-ui-id`). The element stays editable; these props are never touched.
    */
   protectedProps: string[];
+  /**
+   * The element's literal props, as written: strings, numbers, booleans (a bare
+   * `disabled` is `true`) and `null`. `data-ui-id` and logic-bearing props are left out.
+   */
+  props: Record<string, string | number | boolean | null>;
   /** Direct text content (whitespace-collapsed), null when there is none. */
   text: string | null;
   /**
@@ -136,6 +141,7 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
         element: true,
         lockReason,
         protectedProps,
+        props: literalProps(node, protectedProps),
         text: kind === "locked" ? null : directText(node),
         children: [],
         containedIds: kind === "locked" ? idsWithin(node, true) : [],
@@ -154,6 +160,7 @@ export function buildIndexedTree(ast: t.File, catalogue: Catalogue = DEFAULT_CAT
       element: false,
       lockReason: reason,
       protectedProps: [],
+      props: {},
       text: null,
       children: [],
       containedIds: idsWithin(node, false),
@@ -335,6 +342,27 @@ function isLiteralAttrValue(value: t.JSXAttribute["value"]): boolean {
     (t.isTemplateLiteral(e) && e.expressions.length === 0) ||
     (t.isUnaryExpression(e) && e.operator === "-" && t.isNumericLiteral(e.argument))
   );
+}
+
+/** Literal attribute values, keyed by name, skipping `data-ui-id`, spreads and protected props. */
+function literalProps(el: t.JSXElement, protectedProps: string[]): Record<string, string | number | boolean | null> {
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const attr of el.openingElement.attributes) {
+    if (!t.isJSXAttribute(attr)) continue;
+    const name = t.isJSXIdentifier(attr.name) ? attr.name.name : `${attr.name.namespace.name}:${attr.name.name.name}`;
+    if (name === UI_ID_ATTR || protectedProps.includes(name)) continue;
+    const value = attr.value;
+    if (value === null || value === undefined) out[name] = true;
+    else if (t.isStringLiteral(value)) out[name] = value.value;
+    else if (t.isJSXExpressionContainer(value)) {
+      const e = value.expression;
+      if (t.isStringLiteral(e) || t.isNumericLiteral(e) || t.isBooleanLiteral(e)) out[name] = e.value;
+      else if (t.isNullLiteral(e)) out[name] = null;
+      else if (t.isTemplateLiteral(e) && e.expressions.length === 0) out[name] = e.quasis[0]?.value.cooked ?? "";
+      else if (t.isUnaryExpression(e) && e.operator === "-" && t.isNumericLiteral(e.argument)) out[name] = -e.argument.value;
+    }
+  }
+  return out;
 }
 
 /** Literal `data-ui-id` value of an element, or null. */

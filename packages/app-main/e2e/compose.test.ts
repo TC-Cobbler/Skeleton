@@ -291,3 +291,77 @@ describe("delete (T3.4)", () => {
     expect(childNames(stackId())).toEqual(["h1", "Card", "Button", "Stack"]);
   });
 });
+
+describe("properties panel (T3.5)", () => {
+  const props = () => page.getByTestId("properties");
+  const layer = (id: string) => page.getByTestId(`layer-${id}`);
+  const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
+  const lineOf = (id: string) => homeFile().split("\n").find((l) => l.includes(`data-ui-id="${id}"`)) ?? "";
+  async function change(action: () => Promise<unknown>): Promise<string> {
+    const before = homeFile();
+    await action();
+    const after = await edited(before);
+    // Every property edit is one changed line.
+    const removed = before.split("\n").filter((l) => !after.split("\n").includes(l));
+    const added = after.split("\n").filter((l) => !before.split("\n").includes(l));
+    expect([removed.length, added.length]).toEqual([1, 1]);
+    return after;
+  }
+
+  it("sets a schema prop, and choosing the default removes it", async () => {
+    const button = idOf(stackId(), "Button");
+    await layer(button).click();
+    await change(() => props().getByLabel("variant").selectOption("outline"));
+    expect(lineOf(button)).toContain(`variant="outline"`);
+    await change(() => props().getByLabel("size").selectOption("lg"));
+    await change(() => props().getByLabel("disabled").click());
+    expect(lineOf(button)).toMatch(/variant="outline" size="lg" disabled=\{true\}/);
+    await change(() => props().getByLabel("variant").selectOption("default"));
+    expect(lineOf(button)).not.toContain("variant=");
+    await canvasFrame(page).locator(`button[data-ui-id="${button}"][disabled]`).waitFor();
+  });
+
+  it("edits text content, escaping what JSX would change", async () => {
+    const button = idOf(stackId(), "Button");
+    await layer(button).click();
+    const text = props().getByLabel("Text");
+    await change(async () => {
+      await text.fill("Save & close");
+      await text.press("Enter");
+    });
+    expect(lineOf(button)).toContain(`>{"Save & close"}</Button>`);
+    await canvasFrame(page).getByRole("button", { name: "Save & close" }).waitFor();
+  });
+
+  it("edits Stack layout as classes, one group at a time", async () => {
+    const row = idOf(stackId(), "Stack");
+    await layer(row).click();
+    expect(await props().getByLabel("direction").inputValue()).toBe("horizontal");
+    expect(await props().getByLabel("Gap").inputValue()).toBe("gap-4");
+    await change(() => props().getByLabel("Gap").selectOption("gap-8"));
+    await change(() => props().getByLabel("Justify").selectOption("justify-between"));
+    await change(() => props().getByLabel("Align").selectOption("items-center"));
+    // A swap stays in place; a new group's class goes at the end.
+    expect(lineOf(row)).toContain(`className="gap-8 p-4 justify-between items-center"`);
+    await change(() => props().getByLabel("Justify").selectOption(""));
+    expect(lineOf(row)).toContain(`className="gap-8 p-4 items-center"`);
+    await change(() => props().getByLabel("direction").selectOption("vertical"));
+    expect(lineOf(row)).not.toContain("direction=");
+    // The canvas shows it: a column now, with the new gap.
+    const style = await canvasFrame(page).locator(`[data-ui-id="${row}"]`).evaluate((e) => [getComputedStyle(e).flexDirection, getComputedStyle(e).rowGap]);
+    expect(style).toEqual(["column", "32px"]);
+  });
+
+  it("keeps editing literal props on an element with agent logic", async () => {
+    const before = homeFile();
+    const button = idOf(stackId(), "Button");
+    const source = before.replace(`<Button data-ui-id="${button}"`, `<Button data-ui-id="${button}" onClick={() => alert("hi")}`);
+    const tmp = path.join(projectRoot, "src/pages/.HomePage.tsx.test.tmp");
+    writeFileSync(tmp, source);
+    renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
+    await waitForCanvas(page, sourceVersion(source));
+    await layer(button).click();
+    expect(await props().getByLabel("variant").count()).toBe(1);
+    expect(await page.getByTestId("selection").textContent()).toContain("onClick");
+  });
+});

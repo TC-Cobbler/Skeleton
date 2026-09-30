@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildTree, fillMissingIds, insert, parseJsxExpression, walkTree, type UiNode } from "@skeleton/core";
 import {
   ELEMENTS,
+  GRID_CLASSES,
+  STACK_CLASSES,
   PALETTE,
   PALETTE_GROUPS,
   PLAIN_ELEMENTS,
@@ -123,5 +125,25 @@ describe("palette catalogue (T3.1)", () => {
         expect(n.protectedProps, `${item.id}: <${n.name}>`).toEqual([]);
       }
     }
+  });
+});
+
+describe("layout class groups (T3.5)", () => {
+  it("recognise their own options and only base classes of their kind", () => {
+    for (const group of [...STACK_CLASSES, ...GRID_CLASSES]) {
+      const re = new RegExp(group.pattern);
+      for (const o of group.options) if (o.class) expect(re.test(o.class), `${group.id}: ${o.class}`).toBe(true);
+      expect(group.options[0]?.class, group.id).toBeNull();
+    }
+    const gap = new RegExp(STACK_CLASSES.find((g) => g.id === "gap")?.pattern ?? "");
+    expect(["gap-7", "gap-[13px]", "gap-px"].every((c) => gap.test(c))).toBe(true);
+    expect(["md:gap-4", "gap-x-4", "grid-cols-2", "p-4"].some((c) => gap.test(c))).toBe(false);
+    const p = new RegExp(STACK_CLASSES.find((g) => g.id === "padding")?.pattern ?? "");
+    expect(["px-4", "py-2", "pt-1"].some((c) => p.test(c))).toBe(false);
+  });
+
+  it("apply to the schemas that say so", () => {
+    expect(ELEMENTS["Stack"]?.layout).toBe("stack");
+    expect(ELEMENTS["Grid"]?.layout).toBe("grid");
   });
 });

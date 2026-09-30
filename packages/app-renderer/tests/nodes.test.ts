@@ -10,6 +10,7 @@ const n = (over: Partial<UiNode>): UiNode => ({
   element: true,
   lockReason: null,
   protectedProps: [],
+  props: {},
   text: null,
   children: [],
   containedIds: [],

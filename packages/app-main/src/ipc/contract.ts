@@ -3,10 +3,10 @@
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
 import type { PageTree, RouteInfo } from "@skeleton/core";
-import type { ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
+import type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
 export type { PageTree, UiNode, NodeKind, RouteInfo } from "@skeleton/core";
-export type { ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
+export type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
 /** A page's parsed tree plus the version of the text it was parsed from (core's sourceVersion). */
 export interface PageView extends PageTree {
@@ -25,6 +25,8 @@ export interface Palette {
   items: PaletteEntry[];
   /** Prop schema per element name (for the properties panel). */
   elements: Record<string, ElementSchema>;
+  /** Layout properties edited as classes, for schemas with `layout` (T3.5). */
+  layout: { stack: ClassGroup[]; grid: ClassGroup[] };
 }
 
 export interface PageEntry extends RouteInfo {
@@ -202,7 +204,13 @@ export type EditIntent =
    * Remove a node and everything under it (T3.4). `allowLocked` is the user's
    * confirmation that agent logic inside it (locked blocks, protected props) goes too.
    */
-  | { op: "remove"; ref: NodeRef; allowLocked: boolean };
+  | { op: "remove"; ref: NodeRef; allowLocked: boolean }
+  /** Set (or with null, remove) a literal prop (T3.5). */
+  | { op: "setProp"; id: string; key: string; value: string | number | boolean | null }
+  /** Replace an element's text content (T3.5). */
+  | { op: "setText"; id: string; text: string }
+  /** Add and remove Tailwind classes on a literal className (T3.5 layout properties). */
+  | { op: "setClass"; id: string; add: string[]; remove: string[] };
 
 export interface PageEditRequest extends PageTreeRequest {
   edit: EditIntent;

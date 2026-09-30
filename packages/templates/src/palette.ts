@@ -4,7 +4,13 @@
 // `project/src/components`; tests typecheck every template and every prop value
 // against them in a real scaffolded project.
 
-/** A literal prop the properties panel can set (T3.5). Only literal values: see ADR 002. */
+/**
+ * A literal prop the properties panel can set (T3.5). Only literal values: see ADR 002.
+ *
+ * `default` for enums, booleans and numbers is what the component does when the prop is
+ * absent: choosing it removes the attribute. For strings, `null` means optional (clearing
+ * it removes the attribute) and a string means required (a starting value, never removed).
+ */
 export type PropSchema =
   | { name: string; type: "enum"; options: readonly string[]; default: string }
   | { name: string; type: "boolean"; default: boolean }
@@ -81,7 +87,8 @@ const ELEMENT_LIST: readonly ElementSchema[] = [
   el("Button", UI("button"), "text", [
     { name: "variant", type: "enum", options: VARIANTS, default: "default" },
     { name: "size", type: "enum", options: ["default", "xs", "sm", "lg", "icon", "icon-xs", "icon-sm", "icon-lg"], default: "default" },
-    { name: "type", type: "enum", options: ["button", "submit", "reset"], default: "button" },
+    // A <button> without a type submits its form: "submit" is the absent value.
+    { name: "type", type: "enum", options: ["button", "submit", "reset"], default: "submit" },
     disabled,
   ]),
   el("Input", UI("input"), "none", [
@@ -459,6 +466,90 @@ export const PALETTE: readonly PaletteItem[] = [
   </SidebarInset>
 </SidebarProvider>`,
   },
+];
+
+/**
+ * A layout property edited as Tailwind classes (T3.5): picking an option swaps the
+ * group's current class for the chosen one with `setClass`. `pattern` recognises any
+ * base class in the group (so an unlisted or arbitrary value is shown, and replaced).
+ * Responsive variants (`md:gap-4`) never match, so they're left alone (PRD §10.6).
+ */
+export interface ClassGroup {
+  id: string;
+  label: string;
+  /** Regex source matching a base class in this group. */
+  pattern: string;
+  /** `class: null` is "not set" (the component's default). */
+  options: readonly { class: string | null; label: string }[];
+}
+
+const SPACING = ["0", "0.5", "1", "1.5", "2", "2.5", "3", "4", "5", "6", "8", "10", "12", "16", "20", "24"];
+const spacing = (prefix: string) => [
+  { class: null, label: "—" },
+  ...SPACING.map((n) => ({ class: `${prefix}-${n}`, label: n })),
+];
+const esc = (prefix: string) => prefix.replace(/-/g, "\\-");
+const scalePattern = (prefix: string) => `^${esc(prefix)}-(\\d+(\\.\\d+)?|px|\\[[^\\]]+\\])$`;
+
+const GAP: ClassGroup = { id: "gap", label: "Gap", pattern: scalePattern("gap"), options: spacing("gap") };
+const PADDING: ClassGroup[] = [
+  { id: "padding", label: "Padding", pattern: scalePattern("p"), options: spacing("p") },
+  { id: "padding-x", label: "Padding X", pattern: scalePattern("px"), options: spacing("px") },
+  { id: "padding-y", label: "Padding Y", pattern: scalePattern("py"), options: spacing("py") },
+];
+
+/** Stack properties besides `direction` (a prop): gap, padding, align, justify, wrap (PRD §9.2). */
+export const STACK_CLASSES: readonly ClassGroup[] = [
+  GAP,
+  ...PADDING,
+  {
+    id: "align",
+    label: "Align",
+    pattern: "^items-(start|center|end|stretch|baseline)$",
+    options: [
+      { class: null, label: "—" },
+      { class: "items-start", label: "Start" },
+      { class: "items-center", label: "Center" },
+      { class: "items-end", label: "End" },
+      { class: "items-stretch", label: "Stretch" },
+      { class: "items-baseline", label: "Baseline" },
+    ],
+  },
+  {
+    id: "justify",
+    label: "Justify",
+    pattern: "^justify-(start|center|end|between|around|evenly|stretch|normal)$",
+    options: [
+      { class: null, label: "—" },
+      { class: "justify-start", label: "Start" },
+      { class: "justify-center", label: "Center" },
+      { class: "justify-end", label: "End" },
+      { class: "justify-between", label: "Space between" },
+      { class: "justify-around", label: "Space around" },
+      { class: "justify-evenly", label: "Space evenly" },
+    ],
+  },
+  {
+    id: "wrap",
+    label: "Wrap",
+    pattern: "^flex-(wrap|nowrap|wrap-reverse)$",
+    options: [
+      { class: null, label: "No wrap" },
+      { class: "flex-wrap", label: "Wrap" },
+    ],
+  },
+];
+
+/** Grid properties: column count and gap (PRD §9.2). */
+export const GRID_CLASSES: readonly ClassGroup[] = [
+  {
+    id: "columns",
+    label: "Columns",
+    pattern: "^grid-cols-(\\d+|none|subgrid|\\[[^\\]]+\\])$",
+    options: [{ class: null, label: "—" }, ...Array.from({ length: 12 }, (_, i) => ({ class: `grid-cols-${i + 1}`, label: String(i + 1) }))],
+  },
+  GAP,
+  ...PADDING,
 ];
 
 /** Project file a palette import source lives in, e.g. "@/components/ui/card" → "src/components/ui/card.tsx". */

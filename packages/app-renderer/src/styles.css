@@ -159,9 +159,9 @@ button.quiet {
 }
 .project {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 260px 1fr 260px;
   grid-template-rows: 1fr auto;
-  grid-template-areas: "sidebar canvas" "bottom bottom";
+  grid-template-areas: "sidebar canvas inspector" "bottom bottom bottom";
   gap: 12px;
   flex: 1;
   min-height: 0;
@@ -418,4 +418,46 @@ button.quiet {
 button.danger {
   border-color: var(--error);
   color: var(--error);
+}
+.inspector-panel {
+  grid-area: inspector;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+.inspector-panel section {
+  margin-top: 0;
+}
+.inspector-panel section + section {
+  margin-top: 20px;
+}
+.properties h3 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.prop-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.prop-label {
+  color: var(--muted);
+}
+.prop-value select,
+.prop-value input:not([type="checkbox"]) {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
 }

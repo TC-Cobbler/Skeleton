@@ -194,6 +194,32 @@ describe("Editor: remove (T3.4)", () => {
   });
 });
 
+describe("Editor: properties (T3.5)", () => {
+  it("sets props, text and classes, one line each", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const placed = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "button" });
+    const id = placed.select as string;
+    const run = async (edit: Parameters<Editor["apply"]>[2]) => {
+      const r = await editor.apply(ROOT, "src/pages/HomePage.tsx", edit);
+      expect(r.select).toBe(id);
+      expect([r.linesAdded, r.linesRemoved]).toEqual([1, 1]);
+    };
+    await run({ op: "setProp", id, key: "variant", value: "outline" });
+    await run({ op: "setText", id, text: "Save" });
+    await run({ op: "setClass", id, add: ["w-full"], remove: [] });
+    await run({ op: "setProp", id, key: "variant", value: null });
+    expect(p.home()).toContain(`<Button data-ui-id="${id}" className="w-full">Save</Button>`);
+  });
+
+  it("refuses protected props with the op's message", async () => {
+    const p = memoryProject();
+    await expect(new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "setProp", id: p.stackId, key: "onClick", value: "x" })).rejects.toThrow(
+      /setProp\(.+\): prop "onClick" cannot be set/,
+    );
+  });
+});
+
 describe("listSources", () => {
   it("walks src/ for .tsx and .jsx, skipping node_modules, dist and dotfiles", async () => {
     const tree: Record<string, { name: string; dir: boolean }[]> = {

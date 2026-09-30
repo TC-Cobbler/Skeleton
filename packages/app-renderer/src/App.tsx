@@ -6,6 +6,7 @@ import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas, type PreviewLayout } from "./Canvas.js";
 import { useCanvasDrag } from "./canvas/drag.js";
 import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
+import { PropertiesPanel } from "./PropertiesPanel.js";
 import { SelectionPanel } from "./SelectionPanel.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
@@ -263,17 +264,6 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         )}
         {fsRevision.error && <p className="error">{fsRevision.error}</p>}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
-        <SelectionPanel
-          projectRoot={project.projectRoot}
-          file={file}
-          node={selectedNode?.node ?? null}
-          hovered={hovered !== null}
-          cannotDelete={selected ? deletion(selected).reason : null}
-          confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
-          onDelete={() => selected && requestDelete(selected)}
-          onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
-          onCancel={() => setConfirmDelete(null)}
-        />
         <PagesPanel
           list={pages.list}
           error={pages.error}
@@ -297,6 +287,27 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           onSelect={setSelected}
           onHover={setTreeHover}
         />
+      </aside>
+      <aside className="inspector-panel" aria-label="Inspector">
+        <SelectionPanel
+          projectRoot={project.projectRoot}
+          file={file}
+          node={selectedNode?.node ?? null}
+          hovered={hovered !== null}
+          cannotDelete={selected ? deletion(selected).reason : null}
+          confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
+          onDelete={() => selected && requestDelete(selected)}
+          onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+        {selectedNode && (
+          <PropertiesPanel
+            node={selectedNode.node}
+            schema={palette.palette?.elements[selectedNode.node.name] ?? null}
+            layout={palette.palette?.layout ?? null}
+            onEdit={(intent) => edit(intent)}
+          />
+        )}
       </aside>
       <Canvas
         status={server.status}
