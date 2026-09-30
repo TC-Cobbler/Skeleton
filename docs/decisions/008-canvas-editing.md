@@ -1,6 +1,6 @@
 # 008: Editing from the canvas
 
-**Status:** accepted · 2026-09-30 · T3.2–T3.5 (applies to all of Phase 3)
+**Status:** accepted · 2026-09-30 · T3.2–T3.6 (applies to all of Phase 3)
 
 ## Context
 
@@ -56,6 +56,23 @@ A drag on a `.map` row therefore moves the whole block, verbatim.
 - **Text content** uses a new core op, `setText`. It replaces only the text between the tags, keeping it inline or on its own line, and writes text JSX would alter (`{ } < > &`, edge whitespace, newlines) as a string expression. It refuses child elements, dynamic text and comments.
 - **Stack and Grid properties** are Tailwind class groups (`STACK_CLASSES`, `GRID_CLASSES` in `palette.ts`), changed with `setClass`, which swaps the group's base class for another. An unlisted or arbitrary current value is shown as "(custom)". Responsive variants never match a group, so they're kept as they are.
 - **Current values** come from core's tree, which now lists each element's literal props (`UiNode.props`).
+
+**Page ops touch the router and a page file together (T3.6).** A second channel, `project:page` (`addPage`, `renamePage`, `deletePage`), runs in the same per-project queue as page edits.
+
+- **Router edits** are new core ops in `routes.ts`, text splices that keep the rest of the router byte-identical:
+  - `addRoute`: next to the home page's route, inside its layout route if it has one, with the router's own import style and quotes
+  - `removeRoute`: also removes the import once nothing uses it
+  - `setRoutePath`
+  - `renameRouteComponent`
+- **New pages** come from `renderPage` in the templates package, the same shape as the scaffolded home page. IDs are minted against the project's.
+- **Renaming a page's name** renames its component (`renameDefaultComponent`) and its file, and updates the router's import. It refuses if the page's code uses its own name.
+- **Refusals:** renaming or deleting a page that other files import, and deleting the last page.
+- **Applying changes:** every op is a list of file changes (create, update or delete), applied in order and rolled back if one fails. Deleting always asks first.
+
+**Navigating after a page op needs a grace period.** Changing the router makes Vite fully reload the *old* document. That reload can cancel Skeleton's navigation, or land after it and take the canvas back to the old path, often a 404 by then.
+
+- After Skeleton navigates the canvas, for 3 s any document that loads at a different path is sent on by the overlay (`navigate`, `location.replace`). Re-setting the iframe's `src` to the value it already has doesn't navigate.
+- In-app navigation uses pushState and loads no document, so it's never overridden.
 
 **The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
 

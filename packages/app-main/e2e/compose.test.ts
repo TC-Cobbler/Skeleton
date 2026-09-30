@@ -365,3 +365,63 @@ describe("properties panel (T3.5)", () => {
     expect(await page.getByTestId("selection").textContent()).toContain("onClick");
   });
 });
+
+describe("page ops (T3.6)", () => {
+  const pages = () => page.getByRole("region", { name: "Pages" });
+  const file = (rel: string) => readFileSync(path.join(projectRoot, rel), "utf8");
+  const exists = (rel: string) => {
+    try {
+      file(rel);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it("adds a page: file, route, and the canvas shows it", async () => {
+    await pages().getByRole("button", { name: "Add page" }).click();
+    const form = pages().getByRole("form", { name: "Add page" });
+    await form.getByLabel("Name").fill("Order history");
+    expect(await form.getByLabel("Path").inputValue()).toBe("/order-history");
+    await form.getByRole("button", { name: "Add" }).click();
+    await canvasFrame(page).getByRole("heading", { name: "Order history" }).waitFor();
+    expect(file("src/router.tsx")).toContain(`{ path: "/order-history", element: <OrderHistoryPage /> },`);
+    expect(file("src/pages/OrderHistoryPage.tsx")).toContain("export default function OrderHistoryPage() {");
+    await expect.poll(() => pages().getByRole("option", { selected: true }).textContent()).toContain("/order-history");
+  });
+
+  it("renames the path, then the name (component and file)", async () => {
+    await pages().getByRole("button", { name: "Rename" }).click();
+    let form = pages().getByRole("form", { name: "Rename page" });
+    await form.getByLabel("Path").fill("/orders");
+    await form.getByRole("button", { name: "Rename" }).click();
+    await expect.poll(() => pages().getByRole("option", { selected: true }).textContent()).toContain("/orders");
+    expect(file("src/router.tsx")).toContain(`{ path: "/orders", element: <OrderHistoryPage /> },`);
+
+    await pages().getByRole("button", { name: "Rename" }).click();
+    form = pages().getByRole("form", { name: "Rename page" });
+    expect(await form.getByLabel("Name").inputValue()).toBe("Order History");
+    await form.getByLabel("Name").fill("Orders");
+    await form.getByRole("button", { name: "Rename" }).click();
+    // The new file is written before the old one is deleted: wait for both.
+    await expect.poll(() => [exists("src/pages/OrdersPage.tsx"), exists("src/pages/OrderHistoryPage.tsx")]).toEqual([true, false]);
+    expect(file("src/router.tsx")).toContain(`import OrdersPage from "./pages/OrdersPage";`);
+    expect(file("src/router.tsx")).toContain(`{ path: "/orders", element: <OrdersPage /> },`);
+    // The page's own content is untouched: same heading, same IDs.
+    await canvasFrame(page).getByRole("heading", { name: "Order history" }).waitFor();
+  });
+
+  it("deletes a page after confirming, and shows another one", async () => {
+    const router = file("src/router.tsx");
+    await pages().getByRole("button", { name: "Delete" }).click();
+    await pages().getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+    expect(file("src/router.tsx")).toBe(router);
+    await pages().getByRole("button", { name: "Delete" }).click();
+    await pages().getByRole("alertdialog").getByRole("button", { name: "Delete page" }).click();
+    await expect.poll(() => exists("src/pages/OrdersPage.tsx")).toBe(false);
+    expect(file("src/router.tsx")).not.toContain("OrdersPage");
+    await canvasFrame(page).getByRole("heading", { name: "Compose" }).waitFor();
+    // The last page can't be deleted.
+    expect(await pages().getByRole("button", { name: "Delete" }).isDisabled()).toBe(true);
+  });
+});

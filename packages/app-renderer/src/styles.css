@@ -461,3 +461,29 @@ button.danger {
   color: inherit;
   font: inherit;
 }
+.page-actions {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.page-actions button,
+.page-form button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.page-form {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  font-size: 13px;
+}
+.page-form label {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.page-form input {
+  padding: 3px 6px;
+  color: var(--fg);
+}

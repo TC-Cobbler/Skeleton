@@ -147,6 +147,9 @@ export class Overlay {
         this.dragTo(msg.x, msg.y, msg.moving);
         this.reportDrop();
         break;
+      case "navigate":
+        this.options.win.location.replace(msg.path);
+        return;
       case "drag-end":
         // Also cancels a move drag: Escape reaches the host's window, not this frame.
         this.hostDragging = false;

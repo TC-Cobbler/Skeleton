@@ -107,3 +107,4 @@ export {
   type PaletteItem,
   type PropSchema,
 } from "./palette.js";
+export { componentFor, pageNameError, pathFor, renderPage } from "./page.js";

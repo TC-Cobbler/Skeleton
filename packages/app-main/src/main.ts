@@ -1,7 +1,7 @@
 // Electron main process. Owns the filesystem, git, child processes and all AST work
 // (through @skeleton/core). The renderer reaches it only through ipc/contract.ts.
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, shell } from "electron";
@@ -63,6 +63,7 @@ const watcher = new ProjectWatcher();
 const editor = new Editor({
   readFile: (p) => readFile(p, "utf8"),
   writeFile: writeFileAtomic,
+  deleteFile: (p) => unlink(p),
   listSources: (root) => listSources(root, readdir),
 });
 // Lazily: app paths are only valid once Electron has initialised.

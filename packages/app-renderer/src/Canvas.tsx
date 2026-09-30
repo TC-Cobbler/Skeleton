@@ -14,6 +14,9 @@ export type PreviewLayout = PreviewWidth | "side-by-side";
 
 export const WIDTHS: Record<PreviewWidth, number> = { desktop: 1280, tablet: 768, mobile: 390 };
 
+/** How long after Skeleton navigates the canvas it corrects a stray document load (see "ready"). */
+const NAVIGATION_GRACE_MS = 3000;
+
 export interface CanvasEvents {
   onHover?: (key: string | null) => void;
   onSelect?: (key: string | null) => void;
@@ -169,7 +172,20 @@ function CanvasFrame(props: FrameProps) {
       const msg: OverlayMessage = event.data;
       const p = latest.current;
       switch (msg.type) {
-        case "ready":
+        case "ready": {
+          // A page op changes the router, and Vite reloads the *old* document. That reload
+          // can cancel Skeleton's navigation, or land after it and take the frame back.
+          // So for a few seconds after a navigation, a document that loads somewhere else
+          // is sent where Skeleton wanted it. (In-app navigation doesn't load a document,
+          // so it's never overridden.) Re-setting `src` to its current value wouldn't
+          // navigate, so the app is asked.
+          const want = pending.current;
+          if (want && Date.now() > want.until) pending.current = null;
+          else if (want && msg.pathname !== want.path && want.tries < 5) {
+            want.tries++;
+            frame.current?.contentWindow?.postMessage({ source: "skeleton-host", type: "navigate", path: want.path } satisfies HostMessage, origin);
+            break;
+          }
           ready.current = true;
           sendTree();
           post({ source: "skeleton-host", type: "mode", mode: p.mode });
@@ -177,6 +193,7 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "select", key: p.selected });
           p.onLocation?.(msg.pathname);
           break;
+        }
         case "hover":
           p.onHover?.(msg.key);
           break;
@@ -242,9 +259,12 @@ function CanvasFrame(props: FrameProps) {
     post({ source: "skeleton-host", type: "drag", x, y, moving: drag.moving });
   }, [props.drag]);
 
+  const pending = useRef<{ path: string; tries: number; until: number } | null>(null);
   useEffect(() => {
     const target = props.navigate ? new URL(props.navigate.path, origin).href : null;
-    if (!target || !frame.current || frame.current.src === target) return;
+    if (!target || !props.navigate || !frame.current) return;
+    pending.current = { path: props.navigate.path, tries: 0, until: Date.now() + NAVIGATION_GRACE_MS };
+    if (frame.current.src === target) return;
     ready.current = false;
     frame.current.src = target;
   }, [props.navigate]);

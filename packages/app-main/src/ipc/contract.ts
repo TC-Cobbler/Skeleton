@@ -212,6 +212,24 @@ export type EditIntent =
   /** Add and remove Tailwind classes on a literal className (T3.5 layout properties). */
   | { op: "setClass"; id: string; add: string[]; remove: string[] };
 
+/** A page operation (T3.6): writes the router and the page file. */
+export type PageIntent =
+  | { op: "addPage"; name: string; path: string }
+  /** Change the page's path and/or name (its component and file follow the name). */
+  | { op: "renamePage"; path: string; name: string | null; newPath: string | null }
+  | { op: "deletePage"; path: string };
+
+export interface PageOpRequest extends ProjectRootRequest {
+  page: PageIntent;
+}
+
+export interface PageOpResult {
+  /** The page to show afterwards (the new or renamed page; after a delete, another one). */
+  path: string | null;
+  /** Project-relative files created, changed or deleted. */
+  files: string[];
+}
+
 export interface PageEditRequest extends PageTreeRequest {
   edit: EditIntent;
 }
@@ -234,6 +252,8 @@ export interface IpcContract {
   "page:source": { request: PageTreeRequest; response: string };
   /** Apply one canvas edit to a page file (a core edit op) and write it. */
   "page:edit": { request: PageEditRequest; response: PageEditResult };
+  /** Add, rename or delete a page: its route and its file (T3.6). */
+  "project:page": { request: PageOpRequest; response: PageOpResult };
   /** The curated components and primitives, checked against the project's files (T3.1). */
   "palette:list": { request: ProjectRootRequest; response: Palette };
   /** Pages from the project's router (T2.5). */
@@ -267,6 +287,7 @@ export const CHANNELS = [
   "page:tree",
   "page:source",
   "page:edit",
+  "project:page",
   "palette:list",
   "project:pages",
   "project:changes",

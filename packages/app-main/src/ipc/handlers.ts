@@ -28,6 +28,8 @@ import {
   type EditIntent,
   type NodeRef,
   type PageEditRequest,
+  type PageIntent,
+  type PageOpRequest,
   type PageTreeRequest,
   type ProjectCreateRequest,
   type ProjectCreateResponse,
@@ -55,7 +57,7 @@ export interface HandlerDeps {
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
   changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
-  editor: Pick<Editor, "apply">;
+  editor: Pick<Editor, "apply" | "page">;
 }
 
 const REV = /^([0-9a-f]{4,40}|HEAD)$/i;
@@ -157,6 +159,7 @@ const validators: Validators = {
     }
     return defaultPath === undefined ? { title } : { title, defaultPath };
   },
+  "project:page": (raw): PageOpRequest => ({ projectRoot: projectRootOf(raw), page: pageIntentOf((raw as Record<string, unknown>)["page"]) }),
   "palette:list": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:changes": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
@@ -204,6 +207,31 @@ function idOf(obj: Record<string, unknown>, label: string, key: string): string 
   const v = obj[key];
   if (typeof v !== "string" || !UI_ID.test(v)) throw new HandlerError("bad-request", `edit.${label} must be a data-ui-id`);
   return v;
+}
+
+function pageIntentOf(raw: unknown): PageIntent {
+  if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "page must be an object");
+  const p = raw as Record<string, unknown>;
+  const str = (key: string, max = 200): string => {
+    const v = p[key];
+    if (typeof v !== "string" || v === "" || v.length > max) throw new HandlerError("bad-request", `page.${key} must be a non-empty string`);
+    return v;
+  };
+  const optional = (key: string): string | null => (p[key] === null || p[key] === undefined ? null : str(key));
+  switch (p["op"]) {
+    case "addPage":
+      return { op: "addPage", name: str("name"), path: str("path") };
+    case "renamePage": {
+      const name = optional("name");
+      const newPath = optional("newPath");
+      if (name === null && newPath === null) throw new HandlerError("bad-request", "renamePage needs a new name or a new path");
+      return { op: "renamePage", path: str("path"), name, newPath };
+    }
+    case "deletePage":
+      return { op: "deletePage", path: str("path") };
+    default:
+      throw new HandlerError("bad-request", `unknown page op ${JSON.stringify(p["op"])}`);
+  }
 }
 
 function classesOf(value: unknown, label: string): string[] {
@@ -307,6 +335,14 @@ function createHandlers(deps: HandlerDeps): Handlers {
     );
   return {
     "app:info": async () => deps.appInfo(),
+    "project:page": async ({ projectRoot, page }) => {
+      try {
+        return await deps.editor.page(projectRoot, page);
+      } catch (cause) {
+        if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
+        throw cause;
+      }
+    },
     "palette:list": async ({ projectRoot }) => {
       // A component is available when its module exists and exports it.
       const exportsOf = new Map<string, Promise<string[]>>();

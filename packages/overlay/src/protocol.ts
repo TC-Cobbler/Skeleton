@@ -46,7 +46,9 @@ export type HostMessage =
    */
   | { source: "skeleton-host"; type: "drag"; x: number; y: number; moving: string | null }
   /** The drag left this frame, ended or was cancelled; also cancels a move drag in the frame (Escape). */
-  | { source: "skeleton-host"; type: "drag-end" };
+  | { source: "skeleton-host"; type: "drag-end" }
+  /** Load `path` (a same-origin path), replacing the current history entry. */
+  | { source: "skeleton-host"; type: "navigate"; path: string };
 
 export interface NodeBox {
   key: string;
@@ -125,6 +127,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return Number.isFinite(v["x"]) && Number.isFinite(v["y"]) && (v["moving"] === null || typeof v["moving"] === "string");
     case "drag-end":
       return true;
+    case "navigate":
+      return typeof v["path"] === "string" && v["path"].startsWith("/") && !v["path"].startsWith("//");
     default:
       return false;
   }

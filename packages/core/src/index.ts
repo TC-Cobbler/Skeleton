@@ -55,6 +55,16 @@ export {
   type TakeBackReport,
   type TokenChange,
 } from "./analyse.js";
-export { readRoutes, type RouteInfo, type RoutesResult } from "./routes.js";
+export {
+  readRoutes,
+  addRoute,
+  removeRoute,
+  setRoutePath,
+  renameRouteComponent,
+  renameDefaultComponent,
+  importedFiles,
+  type RouteInfo,
+  type RoutesResult,
+} from "./routes.js";
 export { exportedNames } from "./exports.js";
 export { sourceVersion } from "./version.js";

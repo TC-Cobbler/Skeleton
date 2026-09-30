@@ -313,6 +313,13 @@ describe("Overlay", () => {
     expect(sent.filter((m) => m.type === "key")).toHaveLength(2);
   });
 
+  it("only accepts same-origin paths to navigate to", async () => {
+    const { isHostMessage } = await import("../src/protocol.js");
+    expect(isHostMessage({ source: "skeleton-host", type: "navigate", path: "/orders" })).toBe(true);
+    expect(isHostMessage({ source: "skeleton-host", type: "navigate", path: "//evil.example" })).toBe(false);
+    expect(isHostMessage({ source: "skeleton-host", type: "navigate", path: "https://evil.example" })).toBe(false);
+  });
+
   it("toggles .dark on the previewed document", () => {
     const { send } = setup();
     send({ source: "skeleton-host", type: "theme", dark: true });

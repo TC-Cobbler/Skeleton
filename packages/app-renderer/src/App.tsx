@@ -272,6 +272,20 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             setPathname(p.path);
             setNavigate({ path: p.path });
           }}
+          onPageOp={async (op) => {
+            setEditError(null);
+            try {
+              const result = await call("project:page", { projectRoot: project.projectRoot, page: op });
+              setRevision((r) => r + 1);
+              if (result.path) {
+                setPathname(result.path);
+                setNavigate({ path: result.path });
+              }
+            } catch (err) {
+              setEditError(err instanceof Error ? err.message : String(err));
+              throw err;
+            }
+          }}
         />
         {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
         <PalettePanel

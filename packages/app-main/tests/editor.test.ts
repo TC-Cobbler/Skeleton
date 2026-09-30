@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildIdIndex, buildTree, findNodeById, parseModule } from "@skeleton/core";
+import { buildIdIndex, buildTree, findNodeById, parseModule, readRoutes } from "@skeleton/core";
 import { loadTemplate, renderProject } from "@skeleton/templates";
 import { Editor, EditRefused, listSources, type EditorIO } from "../src/project/editor.js";
 
@@ -14,6 +14,7 @@ function memoryProject() {
   }
   files.set(path.join(ROOT, "src/pages/Other.tsx"), `export default function Other() {\n  return <div data-ui-id="ui_other" />;\n}\n`);
   const writes: string[] = [];
+  const failWrites = new Set<string>();
   const io: EditorIO = {
     readFile: async (p) => {
       const content = files.get(p);
@@ -21,15 +22,20 @@ function memoryProject() {
       return content;
     },
     writeFile: async (p, content) => {
+      if (failWrites.has(p)) throw new Error(`disk full: ${p}`);
       writes.push(p);
       files.set(p, content);
+    },
+    deleteFile: async (p) => {
+      if (!files.delete(p)) throw Object.assign(new Error(`ENOENT: ${p}`), { code: "ENOENT" });
+      writes.push(`rm ${p}`);
     },
     listSources: async () =>
       [...files.keys()].filter((p) => p.startsWith(`${ROOT}/src/`) && /\.(tsx|jsx)$/.test(p)).map((p) => path.relative(ROOT, p)),
   };
   const home = () => files.get(path.join(ROOT, "src/pages/HomePage.tsx")) as string;
   const stackId = /<Stack data-ui-id="(ui_[a-z0-9]{5})"/.exec(home())?.[1] as string;
-  return { files, io, writes, home, stackId };
+  return { files, io, writes, home, stackId, failWrites };
 }
 
 describe("Editor: insert (T3.2)", () => {
@@ -217,6 +223,75 @@ describe("Editor: properties (T3.5)", () => {
     await expect(new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "setProp", id: p.stackId, key: "onClick", value: "x" })).rejects.toThrow(
       /setProp\(.+\): prop "onClick" cannot be set/,
     );
+  });
+});
+
+describe("Editor: pages (T3.6)", () => {
+  const abs = (rel: string) => path.join(ROOT, rel);
+  const routes = (p: ReturnType<typeof memoryProject>) => readRoutes(p.files.get(abs("src/router.tsx")) as string).routes.map((r) => [r.path, r.file]);
+
+  it("adds a page: a new page file and one route", async () => {
+    const p = memoryProject();
+    const result = await new Editor(p.io).page(ROOT, { op: "addPage", name: "Order history", path: "/orders" });
+    expect(result).toEqual({ path: "/orders", files: ["src/pages/OrderHistoryPage.tsx", "src/router.tsx"] });
+    expect(routes(p)).toEqual([
+      ["/", "src/pages/HomePage.tsx"],
+      ["/orders", "src/pages/OrderHistoryPage.tsx"],
+    ]);
+    const page = p.files.get(abs("src/pages/OrderHistoryPage.tsx")) as string;
+    expect(page).toContain("export default function OrderHistoryPage() {");
+    const index = buildIdIndex(Object.fromEntries([...p.files].filter(([f]) => f.endsWith(".tsx"))));
+    expect(index.duplicates).toEqual([]);
+  });
+
+  it("renames a page's path, and its name, component and file", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await editor.page(ROOT, { op: "addPage", name: "Orders", path: "/orders" });
+    await editor.page(ROOT, { op: "renamePage", path: "/orders", name: null, newPath: "/sales" });
+    expect(routes(p)).toContainEqual(["/sales", "src/pages/OrdersPage.tsx"]);
+    const ids = (f: string) => [...buildIdIndex({ f: p.files.get(abs(f)) as string }).ids.keys()];
+    const before = ids("src/pages/OrdersPage.tsx");
+    const r = await editor.page(ROOT, { op: "renamePage", path: "/sales", name: "Sales", newPath: null });
+    expect(r.path).toBe("/sales");
+    expect(routes(p)).toContainEqual(["/sales", "src/pages/SalesPage.tsx"]);
+    expect(p.files.has(abs("src/pages/OrdersPage.tsx"))).toBe(false);
+    expect(p.files.get(abs("src/pages/SalesPage.tsx"))).toContain("export default function SalesPage() {");
+    expect(ids("src/pages/SalesPage.tsx")).toEqual(before);
+  });
+
+  it("deletes a page's route and file, but never the last page or one other code imports", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await expect(editor.page(ROOT, { op: "deletePage", path: "/" })).rejects.toThrow(/only page/);
+    await editor.page(ROOT, { op: "addPage", name: "Orders", path: "/orders" });
+    p.files.set(abs("src/pages/Other.tsx"), `import OrdersPage from "./OrdersPage";\nexport default function Other() {\n  return <OrdersPage />;\n}\n`);
+    await expect(editor.page(ROOT, { op: "deletePage", path: "/orders" })).rejects.toThrow(/imported by src\/pages\/Other.tsx/);
+    await expect(editor.page(ROOT, { op: "renamePage", path: "/orders", name: "Sales", newPath: null })).rejects.toThrow(/imported by/);
+    p.files.delete(abs("src/pages/Other.tsx"));
+    const r = await editor.page(ROOT, { op: "deletePage", path: "/orders" });
+    expect(r.path).toBe("/");
+    expect(routes(p)).toEqual([["/", "src/pages/HomePage.tsx"]]);
+    expect(p.files.has(abs("src/pages/OrdersPage.tsx"))).toBe(false);
+  });
+
+  it("refuses bad names, taken paths and existing files, writing nothing", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await expect(editor.page(ROOT, { op: "addPage", name: "2 Orders", path: "/orders" })).rejects.toThrow(EditRefused);
+    await expect(editor.page(ROOT, { op: "addPage", name: "Orders", path: "/" })).rejects.toThrow(/already a route for \//);
+    await expect(editor.page(ROOT, { op: "addPage", name: "Orders", path: "/Orders" })).rejects.toThrow(/isn't a page path/);
+    await expect(editor.page(ROOT, { op: "addPage", name: "Home", path: "/home" })).rejects.toThrow(/HomePage is already used/);
+    expect(p.writes).toEqual([]);
+  });
+
+  it("rolls back a page op when a write fails, so it never half-happens", async () => {
+    const p = memoryProject();
+    const router = p.files.get(abs("src/router.tsx"));
+    p.failWrites.add(abs("src/router.tsx"));
+    await expect(new Editor(p.io).page(ROOT, { op: "addPage", name: "Orders", path: "/orders" })).rejects.toThrow(/disk full/);
+    expect(p.files.has(abs("src/pages/OrdersPage.tsx"))).toBe(false);
+    expect(p.files.get(abs("src/router.tsx"))).toBe(router);
   });
 });
 

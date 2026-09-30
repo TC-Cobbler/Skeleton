@@ -71,6 +71,10 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
           if (edit.op === "insert" && edit.parentId === "ui_lockd") throw new EditRefused("insert(ui_lockd): ui_lockd is a locked block");
           return { file, select: "ui_new01", patch: "", linesAdded: 1, linesRemoved: 0 };
         },
+        page: async (_root, page) => {
+          if (page.op === "deletePage" && page.path === "/") throw new EditRefused("it's the only page; add another one first");
+          return { path: page.op === "deletePage" ? "/" : page.path, files: [] };
+        },
       },
       ...overrides,
     },
@@ -415,6 +419,7 @@ describe("page:edit", () => {
           edits.push(edit);
           return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0 };
         },
+        page: async () => ({ path: null, files: [] }),
       },
     });
     for (const ref of [{ id: "ui_abcde" }, { parentId: "ui_fghij", index: 2 }]) {
@@ -434,6 +439,7 @@ describe("page:edit", () => {
           edits.push(edit);
           return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0 };
         },
+        page: async () => ({ path: null, files: [] }),
       },
     });
     const valid = [
@@ -492,5 +498,26 @@ describe("page:edit", () => {
       ok: false,
       error: { code: "edit-refused", message: "insert(ui_lockd): ui_lockd is a locked block" },
     });
+  });
+});
+
+describe("project:page", () => {
+  const request = (page: unknown) => ({ projectRoot: fixtureRoot, page });
+
+  it("passes valid page ops to the editor, and refusals back as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("project:page", request({ op: "addPage", name: "Orders", path: "/orders" }))).resolves.toMatchObject({ ok: true, value: { path: "/orders" } });
+    await expect(dispatch("project:page", request({ op: "renamePage", path: "/orders", name: null, newPath: "/sales" }))).resolves.toMatchObject({ ok: true });
+    await expect(dispatch("project:page", request({ op: "deletePage", path: "/" }))).resolves.toMatchObject({
+      ok: false,
+      error: { code: "edit-refused", message: "it's the only page; add another one first" },
+    });
+  });
+
+  it("rejects malformed page ops", async () => {
+    const { dispatch } = setup();
+    for (const page of [null, { op: "wipe" }, { op: "addPage", name: "", path: "/x" }, { op: "renamePage", path: "/x", name: null, newPath: null }, { op: "deletePage" }]) {
+      await expect(dispatch("project:page", request(page)), JSON.stringify(page)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
   });
 });
