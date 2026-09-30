@@ -227,16 +227,34 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 6 — Dogfood (v1 ship gate)
 
-- [ ] **T6.1** Scaffold a real project in Skeleton, e.g. the gaming library app's UI.
-- [ ] **T6.2** Run 5 consecutive hand off / take back loops with real feature work.
-- [ ] **T6.3** After each loop, verify and log in `docs/dogfood-log.md`:
+- [x] **T6.1** Scaffold a real project in Skeleton, e.g. the gaming library app's UI.
+- [x] **T6.2** Run 5 consecutive hand off / take back loops with real feature work.
+- [x] **T6.3** After each loop, verify and log in `docs/dogfood-log.md`:
   - zero agent-authored logic altered (diff check)
   - 100% ID survival
   - token edits intact
   - build passes
-- [ ] **T6.4** Triage everything that felt slow or annoying into ROADMAP.md.
+- [x] **T6.4** Triage everything that felt slow or annoying into ROADMAP.md.
 
 **Gate 6 (= v1 done):** 5 consecutive clean loops. Any failure resets the count.
+
+**Gate 6: passed** (2026-09-30). There were 5 consecutive clean loops on a Game Library project scaffolded in Skeleton, with no failures and no resets. See `docs/dogfood-log.md`.
+
+- **The loops:**
+  - library grid and search
+  - status filter, empty state and badge colours
+  - Stats page and navigation
+  - Add game dialog with persistence
+  - details sheet
+- **The user's side:** every edit went through the real UI.
+- **The agent's side:** each pass was a fresh headless Claude Code run, prompted only with "Do the tasks in HANDOFF.md."
+- **Every loop:**
+  - IDs: all survived
+  - tokens: every edit intact, and the agent never touched `globals.css`
+  - build: passes
+  - agent logic: Skeleton's later edits changed no agent-authored line beyond re-indentation and the tags or text targeted in the UI
+- **Whole run:** 101 IDs over the project's life and 100 at the end. The one missing is a button deliberately deleted in Skeleton. No duplicates. 0 contract breaches, 0 auto-repairs.
+- **Caveat:** the "user" was scripted (`packages/app-main/e2e/dogfood.test.ts`), not a person. The gate proves the loop's integrity. A person using it will find more friction than F-1 to F-6, which are triaged in ROADMAP.md (v1.0.x).
 
 ---
 

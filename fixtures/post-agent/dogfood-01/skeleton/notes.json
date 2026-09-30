@@ -1,0 +1,189 @@
+{
+  "notes": [
+    {
+      "id": "n_fxo4ma",
+      "target": "ui_am9jy",
+      "type": "build",
+      "text": "Show my game library: one card per game from mock data (8 games with title, platform, hours played, status)",
+      "status": "resolved",
+      "created": "2026-09-30T21:49:48.168Z",
+      "handoff": 1
+    },
+    {
+      "id": "n_y1jdoy",
+      "target": "ui_wd9tf",
+      "type": "behaviour",
+      "text": "Filter the cards by game title as I type, case-insensitive",
+      "status": "resolved",
+      "created": "2026-09-30T21:49:48.875Z",
+      "handoff": 1
+    },
+    {
+      "id": "n_xn5lg8",
+      "target": "ui_aar14",
+      "type": "behaviour",
+      "text": "Filter the games by status; add the other statuses (Completed, Backlog, Dropped) as options; combine with the title filter",
+      "status": "resolved",
+      "created": "2026-09-30T21:57:47.242Z",
+      "handoff": 2
+    },
+    {
+      "id": "n_g26hiv",
+      "target": "ui_am9jy",
+      "type": "build",
+      "text": "Show an empty state in the grid when no game matches the filters",
+      "status": "resolved",
+      "created": "2026-09-30T21:57:47.923Z",
+      "handoff": 2
+    },
+    {
+      "id": "n_p0mqiu",
+      "target": "ui_zogii",
+      "type": "behaviour",
+      "text": "Colour the status badge by status, using theme tokens (ask for new tokens if you need them)",
+      "status": "resolved",
+      "created": "2026-09-30T21:57:48.634Z",
+      "handoff": 2
+    },
+    {
+      "id": "n_95lncr",
+      "target": "ui_7sj6n",
+      "type": "build",
+      "text": "Compute these stats from the library data: number of games, total hours played, number completed (replace the 0s)",
+      "status": "resolved",
+      "created": "2026-09-30T22:03:13.181Z",
+      "handoff": 3
+    },
+    {
+      "id": "n_n743r3",
+      "target": "ui_h7lrp",
+      "type": "build",
+      "text": "Add navigation between Library (/) and Stats (/stats), shown at the top of both pages",
+      "status": "resolved",
+      "created": "2026-09-30T22:03:13.683Z",
+      "handoff": 3
+    },
+    {
+      "id": "n_xucekq",
+      "target": "ui_yk6u6",
+      "type": "build",
+      "text": "Add-game form in this dialog: title (required), platform (select), status (select, default Backlog), hours played (number). Confirm adds the game, Cancel closes",
+      "status": "resolved",
+      "created": "2026-09-30T22:06:18.238Z",
+      "handoff": 4
+    },
+    {
+      "id": "n_ik0nsl",
+      "target": "ui_gqae1",
+      "type": "behaviour",
+      "text": "Confirm is disabled until the title is filled in; after adding, close the dialog and clear the form",
+      "status": "resolved",
+      "created": "2026-09-30T22:06:18.936Z",
+      "handoff": 4
+    },
+    {
+      "id": "n_qurbxk",
+      "target": "ui_am9jy",
+      "type": "behaviour",
+      "text": "Keep added games across reloads (localStorage); newest first",
+      "status": "resolved",
+      "created": "2026-09-30T22:06:19.487Z",
+      "handoff": 4
+    },
+    {
+      "id": "n_q1t4zc",
+      "target": "ui_uxdga",
+      "type": "build",
+      "text": "Clicking a game card opens a details sheet (title, platform, hours played) where I can change the game's status",
+      "status": "resolved",
+      "created": "2026-09-30T22:08:54.748Z",
+      "handoff": 5
+    },
+    {
+      "id": "n_dzjch4",
+      "target": "ui_7sj6n",
+      "type": "question",
+      "text": "Should the stats count Dropped games? Say what you'd suggest; don't change it yet",
+      "status": "resolved",
+      "created": "2026-09-30T22:09:51.708Z",
+      "handoff": 5
+    }
+  ],
+  "replies": [
+    {
+      "target": "ui_am9jy",
+      "text": "Renders one card per game from mock data (8 games) via useGames() in src/hooks/use-games.ts. The card (ui_uxdga) is the repeated template, so its child IDs repeat per card. Card shows title, platform, \"N hours played\" and status badge. No empty state yet (nothing matches the filter = blank grid); needs design.",
+      "pass": 1
+    },
+    {
+      "target": "ui_wd9tf",
+      "text": "Controlled input bound to useGames(); filters by title, case-insensitive substring, trimmed. Placeholder changed to \"Filter by title\".",
+      "pass": 1
+    },
+    {
+      "target": "ui_27ttm",
+      "text": "Suggested fields for Add game: **Title** (required, text); **Platform** (required, select: PC, PS5, Xbox, Switch, Other); **Status** (required, select: Playing, Completed, Backlog, Dropped; default Backlog); **Hours played** (optional number, default 0, hidden or disabled when Backlog). Later candidates: cover image URL, rating, date added. Suggest a Dialog with a form (shadcn `dialog` + `form` are already available). Not built.",
+      "pass": 1
+    },
+    {
+      "target": "ui_aar14",
+      "text": "Status filter wired via useGames() (status state, combined with title query). Added Completed, Backlog, Dropped options; existing \"playing\" value changed to \"Playing\" to match GameStatus. Select is controlled, defaulting to \"all\".",
+      "pass": 2
+    },
+    {
+      "target": "ui_am9jy",
+      "text": "Empty state renders inside the grid (col-span-full) when no game matches; needs design.",
+      "pass": 2
+    },
+    {
+      "target": "ui_zogii",
+      "text": "Badge uses existing variants mapped to tokens: Playing=default (primary), Completed=secondary, Backlog=outline, Dropped=destructive. No new tokens needed; say if you want distinct hues (e.g. success/warning).",
+      "pass": 2
+    },
+    {
+      "target": null,
+      "text": "New elements: ui_r6t1v (SelectItem Completed), ui_y5d0s (SelectItem Backlog), ui_c9b4x (SelectItem Dropped), ui_e7k2q (Stack, empty state), ui_p4w9n (p, empty title), ui_h3z8c (p, empty hint)",
+      "pass": 2
+    },
+    {
+      "target": "ui_7sj6n",
+      "text": "Stats computed via new useGameStats() in src/hooks/use-games.ts (games = 8, hours = 381, completed = 3 with current mock data). Covers the whole library, ignoring Library filters.",
+      "pass": 3
+    },
+    {
+      "target": "ui_h7lrp",
+      "text": "Nav added as a SiteNav component (src/components/SiteNav.tsx) at the top of both pages; active page is highlighted.",
+      "pass": 3
+    },
+    {
+      "target": "ui_yk6u6",
+      "text": "Form built (title, platform, status default Backlog, hours). State lives in useAddGameForm(); Confirm calls addGame() from useGames(). Cancel just closes.",
+      "pass": 4
+    },
+    {
+      "target": "ui_gqae1",
+      "text": "Disabled while title is blank; on confirm the game is added, dialog closes, form resets.",
+      "pass": 4
+    },
+    {
+      "target": "ui_am9jy",
+      "text": "Added games persist in localStorage (\"game-library:added-games\"), newest first, shown before the mock games. Stats page counts them too.",
+      "pass": 4
+    },
+    {
+      "target": null,
+      "text": "New elements (all inside the dialog, in a Stack form wrapper): title/platform/status/hours fields, each a Stack + Label + Input or Select. Platform options: PC, Switch, PS5, Xbox, Other.",
+      "pass": 4
+    },
+    {
+      "target": "ui_uxdga",
+      "text": "Cards are now clickable (mouse + Enter/Space) and open a right-side Sheet with title, platform, hours played and a Status select. Changes save immediately, persist in localStorage (`game-library:status-overrides`) and update the card badge and Stats. Logic lives in `useGameDetails()` and `setGameStatus` in `use-games.ts`; card got `cursor-pointer hover:bg-accent`. Sheet opens from the full library, so changing status while a filter is active won't close it. Hours are read-only.",
+      "pass": 5
+    },
+    {
+      "target": "ui_7sj6n",
+      "text": "Currently all three stats include Dropped games: Games counts them, Hours played includes their hours, Completed naturally excludes them. Suggestion: leave Hours played as is (the time was really spent), keep Games as the whole library, and don't change Completed. If \"Games\" should mean games you still care about, exclude Dropped there only, or relabel it \"In your library\" → \"Tracked\" and add a separate Dropped card. No code changed.",
+      "pass": 5
+    }
+  ]
+}
