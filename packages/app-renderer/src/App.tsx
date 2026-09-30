@@ -8,6 +8,7 @@ import { useCanvasDrag } from "./canvas/drag.js";
 import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
 import { PropertiesPanel } from "./PropertiesPanel.js";
 import { SelectionPanel } from "./SelectionPanel.js";
+import { Toasts, useToasts } from "./Toasts.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
@@ -128,23 +129,51 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     reloadPage();
     setRevision((r) => r + 1);
   }, [fsRevision.revision, reloadPage]);
-  const [selected, setSelected, selectId] = useSelection(page.nodes);
-  const [editError, setEditError] = useState<string | null>(null);
+  const [selected, setSelectedRaw, selectId] = useSelection(page.nodes);
+  // Bumped by every selection the user makes. An edit's response (which waits for the
+  // typecheck) only moves the selection if the user hasn't picked something since.
+  const selectionEpoch = useRef(0);
+  const setSelected = useCallback(
+    (key: string | null) => {
+      selectionEpoch.current++;
+      setSelectedRaw(key);
+    },
+    [setSelectedRaw],
+  );
+  const toasts = useToasts();
+  const pushToast = toasts.push;
+  const setEditError = useCallback((message: string | null) => message !== null && pushToast("error", message), [pushToast]);
+  // Say once per project when edits can't be typechecked (T3.7).
+  const warnedUnchecked = useRef(false);
+  const noteUnchecked = useCallback(
+    (reason: string | null) => {
+      if (reason === null || warnedUnchecked.current) return;
+      warnedUnchecked.current = true;
+      pushToast("warning", `Edits aren't being typechecked: ${reason}`);
+    },
+    [pushToast],
+  );
   const edit = useCallback(
     (intent: EditIntent, after?: () => void) => {
       if (!file) return;
-      setEditError(null);
+      const epoch = selectionEpoch.current;
       call("page:edit", { projectRoot: project.projectRoot, file, edit: intent }).then(
         (result) => {
           page.reload();
           setRevision((r) => r + 1);
+          noteUnchecked(result.unchecked);
+          if (selectionEpoch.current !== epoch) return;
           if (result.select) selectId(result.select);
           after?.();
         },
-        (err: unknown) => setEditError(err instanceof Error ? err.message : String(err)),
+        (err: unknown) => {
+          // A rolled-back edit did touch the file: re-read it either way.
+          page.reload();
+          setEditError(err instanceof Error ? err.message.replace(/^page:edit: /, "") : String(err));
+        },
       );
     },
-    [file, project.projectRoot, page.reload, selectId],
+    [file, project.projectRoot, page.reload, selectId, setEditError, noteUnchecked],
   );
   const moveNode = (key: string, target: DropTarget) => {
     const moved = page.nodes.find((n) => n.key === key)?.node;
@@ -179,7 +208,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       return;
     }
     const parent = page.nodes.find((n) => n.key === parentKeyOf(key))?.node;
-    edit({ op: "remove", ref, allowLocked }, () => (parent?.id ? selectId(parent.id) : setSelected(null)));
+    edit({ op: "remove", ref, allowLocked }, () => (parent?.id ? selectId(parent.id) : setSelectedRaw(null)));
   };
   const requestDelete = (key: string) => {
     const node = page.nodes.find((n) => n.key === key)?.node;
@@ -257,11 +286,6 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           </button>
         </div>
         {page.error && <p className="error">{page.error}</p>}
-        {editError && (
-          <p className="error" role="alert" data-testid="edit-error">
-            {editError}
-          </p>
-        )}
         {fsRevision.error && <p className="error">{fsRevision.error}</p>}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
         <PagesPanel
@@ -273,7 +297,6 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             setNavigate({ path: p.path });
           }}
           onPageOp={async (op) => {
-            setEditError(null);
             try {
               const result = await call("project:page", { projectRoot: project.projectRoot, page: op });
               setRevision((r) => r + 1);
@@ -282,7 +305,8 @@ function ProjectView({ project }: { project: ProjectInfo }) {
                 setNavigate({ path: result.path });
               }
             } catch (err) {
-              setEditError(err instanceof Error ? err.message : String(err));
+              setRevision((r) => r + 1);
+              setEditError(err instanceof Error ? err.message.replace(/^project:page: /, "") : String(err));
               throw err;
             }
           }}
@@ -343,11 +367,12 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         dark={dark}
         onMapped={(boxes, version) => setMapped({ version, keys: new Set(boxes.map((b) => b.key)) })}
         synced={synced}
-        drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, moving: null } : null}
+        drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, seq: canvasDrag.drag.seq, moving: null } : null}
         onDropTarget={canvasDrag.report}
         onMove={moveNode}
         onKey={(key) => onShortcut(key)}
       />
+      <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (
         <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>
           {canvasDrag.drag.source.label}

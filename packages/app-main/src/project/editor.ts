@@ -8,6 +8,8 @@ import { format, resolveConfig } from "prettier";
 import {
   addRoute,
   buildIdIndex,
+  diffSources,
+  parseModule,
   EditOpError,
   fillMissingIds,
   importedFiles,
@@ -27,6 +29,8 @@ import {
 } from "@skeleton/core";
 import { componentFor, pageNameError, PALETTE, renderPage, templateImports } from "@skeleton/templates";
 import type { EditIntent, PageEditResult, PageIntent, PageOpResult } from "../ipc/contract.js";
+import { introduced, type Checker, type Diagnostic } from "./checker.js";
+import { formatEdited } from "./format.js";
 
 export interface EditorIO {
   readFile(absolutePath: string): Promise<string>;
@@ -44,11 +48,29 @@ export class EditRefused extends Error {
   }
 }
 
+/** The edit broke the typecheck, so it was undone (T3.7). */
+export class EditRolledBack extends Error {
+  constructor(readonly diagnostics: Diagnostic[]) {
+    const shown = diagnostics.slice(0, 3).map((d) => `${d.file}${d.line ? `:${d.line}` : ""}: ${d.message}`);
+    const more = diagnostics.length > 3 ? `\n…and ${diagnostics.length - 3} more` : "";
+    super(`The edit was undone because it broke the typecheck:\n${shown.join("\n")}${more}`);
+    this.name = "EditRolledBack";
+  }
+}
+
+export interface EditorOptions {
+  /** The project's typechecker, or null to skip checking (T3.7). */
+  checker?: (projectRoot: string) => Checker | null;
+}
+
 export class Editor {
   /** Per-project queue: edits apply in order, each against the file as the last one left it. */
   private readonly queues = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly io: EditorIO) {}
+  constructor(
+    private readonly io: EditorIO,
+    private readonly options: EditorOptions = {},
+  ) {}
 
   apply(projectRoot: string, file: string, edit: EditIntent): Promise<PageEditResult> {
     return this.enqueue(projectRoot, () => this.run(projectRoot, file, edit));
@@ -106,14 +128,70 @@ export class Editor {
       if (cause instanceof EditOpError) throw new EditRefused(cause.message, { cause });
       throw cause;
     }
-    if (result.source !== before) await this.commit(projectRoot, [{ file, before, after: result.source }]);
+    // Prettier, on the edited node only: an attribute edit can push its tag past the print width.
+    let after = result.source;
+    if ((edit.op === "setProp" || edit.op === "setClass") && after !== before) {
+      after = await formatEdited(after, edit.id, absolute);
+      parseModule(after);
+    }
+    const unchecked = after === before ? null : await this.commitChecked(projectRoot, [{ file, before, after }]);
+    const diff = after === result.source ? result.diff : diffSources(before, after);
     return {
       file,
       select,
-      patch: result.diff.patch,
-      linesAdded: result.diff.linesAdded,
-      linesRemoved: result.diff.linesRemoved,
+      patch: diff.patch,
+      linesAdded: diff.linesAdded,
+      linesRemoved: diff.linesRemoved,
+      unchecked,
     };
+  }
+
+  /**
+   * Commit, typechecking before and after (T3.7). An edit that introduces errors is
+   * rolled back and reported; errors the project already had don't block edits.
+   * Returns why the edit couldn't be checked, or null when it was.
+   */
+  private async commitChecked(projectRoot: string, changes: FileChange[]): Promise<string | null> {
+    const checker = this.options.checker?.(projectRoot) ?? null;
+    let before: Diagnostic[] | null = null;
+    let reason: string | null = checker ? null : "no typechecker";
+    if (checker) {
+      try {
+        before = await checker.check();
+      } catch (error) {
+        reason = error instanceof Error ? error.message : String(error);
+      }
+    }
+    await this.commit(projectRoot, changes);
+    if (!checker || !before) return reason;
+    let after: Diagnostic[];
+    try {
+      after = await checker.check();
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    const broken = introduced(before, after);
+    if (broken.length === 0) return null;
+    await this.revert(projectRoot, changes);
+    await checker.check().catch((error: unknown) => console.warn("[editor] re-check after rollback failed", error));
+    throw new EditRolledBack(broken);
+  }
+
+  /** Undo applied changes, newest first, skipping any file changed since (never clobber). */
+  private async revert(projectRoot: string, changes: FileChange[]): Promise<void> {
+    for (const change of [...changes].reverse()) {
+      const abs = path.join(projectRoot, change.file);
+      const now = await this.io.readFile(abs).catch((err: unknown) => {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+      });
+      if (now !== change.after) {
+        console.error(`[editor] not rolling back ${change.file}: it changed after the edit`);
+        continue;
+      }
+      if (change.before === null) await this.io.deleteFile(abs);
+      else await this.io.writeFile(abs, change.before);
+    }
   }
 
   private async runPage(projectRoot: string, intent: PageIntent): Promise<PageOpResult> {
@@ -159,11 +237,11 @@ export class Editor {
           if (!file) throw new EditRefused(`the new route for ${intent.path} doesn't resolve to a page file`);
           if (await exists(file)) throw new EditRefused(`${file} already exists`);
           const page = renderPage(intent.name, await this.projectIds(projectRoot));
-          await this.commit(projectRoot, [
+          const unchecked = await this.commitChecked(projectRoot, [
             { file, before: null, after: page },
             { file: ROUTER, before: router, after: nextRouter },
           ]);
-          return { path: intent.path, files: [file, ROUTER] };
+          return { path: intent.path, files: [file, ROUTER], unchecked };
         }
         case "renamePage": {
           const page = await pageAt(intent.path);
@@ -187,8 +265,8 @@ export class Editor {
             }
           }
           if (nextRouter !== router) changes.unshift({ file: ROUTER, before: router, after: nextRouter });
-          await this.commit(projectRoot, changes);
-          return { path: target, files: changes.map((c) => c.file) };
+          const unchecked = await this.commitChecked(projectRoot, changes);
+          return { path: target, files: changes.map((c) => c.file), unchecked };
         }
         case "deletePage": {
           const page = await pageAt(intent.path);
@@ -198,12 +276,12 @@ export class Editor {
           if (users.length > 0) throw new EditRefused(`${page.file} is imported by ${users.join(", ")}; remove those imports first`);
           const source = await read(page.file);
           const nextRouter = removeRoute(router, intent.path).source;
-          await this.commit(projectRoot, [
+          const unchecked = await this.commitChecked(projectRoot, [
             { file: ROUTER, before: router, after: nextRouter },
             { file: page.file, before: source, after: null },
           ]);
           const next = others.find((r) => r.path === "/" && !r.dynamic) ?? others.find((r) => !r.dynamic) ?? null;
-          return { path: next?.path ?? null, files: [ROUTER, page.file] };
+          return { path: next?.path ?? null, files: [ROUTER, page.file], unchecked };
         }
       }
     });

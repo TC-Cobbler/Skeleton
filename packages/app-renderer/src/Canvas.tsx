@@ -26,7 +26,7 @@ export interface CanvasEvents {
   /** What's on screen, for the tree at `version` (see the overlay's `mapped` message). */
   onMapped?: (boxes: NodeBox[], version: string) => void;
   /** Where the current drag would land in a frame (null: nowhere in it). */
-  onDropTarget?: (frame: PreviewWidth, target: DropTarget | null) => void;
+  onDropTarget?: (frame: PreviewWidth, target: DropTarget | null, seq: number) => void;
   /** A node was dragged to a new place on the canvas (T3.3). */
   onMove?: (key: string, target: DropTarget) => void;
   /** A Skeleton shortcut pressed while the canvas had focus. */
@@ -37,6 +37,8 @@ export interface CanvasEvents {
 export interface CanvasDrag {
   clientX: number;
   clientY: number;
+  /** The position's number, echoed in the frames' answers. */
+  seq: number;
   /** Key of the node being moved, or null for a new element. */
   moving: string | null;
 }
@@ -210,7 +212,7 @@ function CanvasFrame(props: FrameProps) {
           if (p.primary) p.onMapped?.(msg.boxes, msg.version);
           break;
         case "drop-target":
-          p.onDropTarget?.(p.width, msg.target);
+          p.onDropTarget?.(p.width, msg.target, msg.seq);
           break;
         case "move":
           p.onMove?.(msg.key, msg.target);
@@ -250,13 +252,15 @@ function CanvasFrame(props: FrameProps) {
     if (!inside || !drag || !iframe || !r) {
       if (dragInside.current) post({ source: "skeleton-host", type: "drag-end" });
       dragInside.current = false;
+      // Not over this frame: answer for it straight away.
+      if (drag) latest.current.onDropTarget?.(width, null, drag.seq);
       return;
     }
     dragInside.current = true;
     const cs = getComputedStyle(iframe);
     const x = (drag.clientX - r.left) / scale - parseFloat(cs.borderLeftWidth);
     const y = (drag.clientY - r.top) / scale - parseFloat(cs.borderTopWidth);
-    post({ source: "skeleton-host", type: "drag", x, y, moving: drag.moving });
+    post({ source: "skeleton-host", type: "drag", x, y, moving: drag.moving, seq: drag.seq });
   }, [props.drag]);
 
   const pending = useRef<{ path: string; tries: number; until: number } | null>(null);

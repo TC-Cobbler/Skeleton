@@ -487,3 +487,42 @@ button.danger {
   padding: 3px 6px;
   color: var(--fg);
 }
+.toasts {
+  pointer-events: none;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(480px, 60vw);
+}
+/* Toasts never block what's under them (the inspector); only × takes clicks. */
+.toast {
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-size: 13px;
+}
+.toast-error {
+  border-left-color: var(--error);
+}
+.toast-warning {
+  border-left-color: #d97706;
+}
+.toast button {
+  pointer-events: auto;
+}
+.toast-text {
+  flex: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -5,7 +5,7 @@ import path from "node:path";
 import { buildTree, exportedNames, readRoutes, sourceVersion } from "@skeleton/core";
 import { ELEMENTS, GRID_CLASSES, PALETTE, PALETTE_GROUPS, STACK_CLASSES, moduleFile, projectNameError, templateImports } from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
-import { EditRefused, type Editor } from "../project/editor.js";
+import { EditRefused, EditRolledBack, type Editor } from "../project/editor.js";
 import {
   isChannel,
   type AppInfo,
@@ -340,6 +340,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
         return await deps.editor.page(projectRoot, page);
       } catch (cause) {
         if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
+        if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
         throw cause;
       }
     },
@@ -386,6 +387,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
         return await deps.editor.apply(projectRoot, file, edit);
       } catch (cause) {
         if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
+        if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
         throw cause;
       }
     },

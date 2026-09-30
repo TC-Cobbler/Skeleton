@@ -13,6 +13,7 @@ import { readProjectInfo, RecentProjects } from "./project/recent.js";
 import { ProjectWatcher } from "./project/watcher.js";
 import { Editor, listSources } from "./project/editor.js";
 import { writeFileAtomic } from "./project/atomic.js";
+import { WorkerChecker } from "./project/checker.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
@@ -60,12 +61,26 @@ if (userDataOverride) app.setPath("userData", userDataOverride);
 const renderer = rendererLocation();
 const devServers = new DevServerManager();
 const watcher = new ProjectWatcher();
-const editor = new Editor({
-  readFile: (p) => readFile(p, "utf8"),
-  writeFile: writeFileAtomic,
-  deleteFile: (p) => unlink(p),
-  listSources: (root) => listSources(root, readdir),
-});
+const checkers = new Map<string, WorkerChecker>();
+const editor = new Editor(
+  {
+    readFile: (p) => readFile(p, "utf8"),
+    writeFile: writeFileAtomic,
+    deleteFile: (p) => unlink(p),
+    listSources: (root) => listSources(root, readdir),
+  },
+  {
+    // One typecheck worker per project, started on its first edit (T3.7).
+    checker: (root) => {
+      let checker = checkers.get(root);
+      if (!checker) {
+        checker = new WorkerChecker(root);
+        checkers.set(root, checker);
+      }
+      return checker;
+    },
+  },
+);
 // Lazily: app paths are only valid once Electron has initialised.
 let recentStore: RecentProjects | null = null;
 const recent = () => (recentStore ??= new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json")));
@@ -140,6 +155,7 @@ app.on("before-quit", (event) => {
   quitting = true;
   event.preventDefault();
   watcher.stopAll();
+  for (const checker of checkers.values()) checker.dispose();
   devServers.stopAll().then(
     () => app.quit(),
     (cause: unknown) => {

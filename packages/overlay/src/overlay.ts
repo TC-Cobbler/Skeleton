@@ -145,7 +145,7 @@ export class Overlay {
         this.hovered = null;
         this.hostDragging = true;
         this.dragTo(msg.x, msg.y, msg.moving);
-        this.reportDrop();
+        this.reportDrop(msg.seq);
         break;
       case "navigate":
         this.options.win.location.replace(msg.path);
@@ -156,7 +156,7 @@ export class Overlay {
         this.press = null;
         this.moving = null;
         this.endDrag();
-        this.post({ source: "skeleton-overlay", type: "drop-target", target: null });
+        this.post({ source: "skeleton-overlay", type: "drop-target", target: null, seq: 0 });
         break;
     }
     this.schedule();
@@ -277,7 +277,7 @@ export class Overlay {
         win.scrollBy(0, delta);
         if (win.scrollY === before) return; // at the end of the page
         this.drop = this.dropAt(at.x, at.y, at.moving);
-        this.reportDrop();
+        this.reportDrop(0);
         this.schedule();
         this.scrollFrame = win.requestAnimationFrame(step);
       };
@@ -294,10 +294,10 @@ export class Overlay {
   }
 
   /** Tell the host where a palette drag would land now (move drags report on release). */
-  private reportDrop(): void {
+  private reportDrop(seq: number): void {
     if (this.moving !== null || !this.hostDragging) return;
     const target = this.drop ? { parentKey: this.drop.parentKey, index: this.drop.index } : null;
-    this.post({ source: "skeleton-overlay", type: "drop-target", target });
+    this.post({ source: "skeleton-overlay", type: "drop-target", target, seq });
   }
 
   private onPointer(event: Event): void {
@@ -323,6 +323,8 @@ export class Overlay {
     }
     if (event.type === "pointerup") {
       if (this.moving !== null) {
+        // Where it's released, not where the last move was.
+        if (event instanceof MouseEvent) this.drop = this.dropAt(event.clientX, event.clientY, this.moving);
         const target = this.drop ? { parentKey: this.drop.parentKey, index: this.drop.index } : null;
         if (target) this.post({ source: "skeleton-overlay", type: "move", key: this.moving, target });
         this.swallowClick = true;

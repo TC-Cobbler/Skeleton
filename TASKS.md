@@ -116,7 +116,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
   - Stack properties (direction, gap, padding, align, justify, wrap)
   - Grid properties (columns, gap)
 - [x] **T3.6** Page ops: add / rename / delete (writes the route and page file).
-- [ ] **T3.7** Post-edit pipeline, run on every edit: Prettier → typecheck/build check → auto-rollback plus a toast on failure.
+- [x] **T3.7** Post-edit pipeline, run on every edit: Prettier → typecheck/build check → auto-rollback plus a toast on failure.
 - [ ] **T3.8** Undo/redo within a session (an edit-op stack, independent of git).
 
 **Gate 3:** PRD flow F2 passes, with each drop producing one minimal diff and the code valid.

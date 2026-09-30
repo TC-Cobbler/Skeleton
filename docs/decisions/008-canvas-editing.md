@@ -1,6 +1,6 @@
 # 008: Editing from the canvas
 
-**Status:** accepted · 2026-09-30 · T3.2–T3.6 (applies to all of Phase 3)
+**Status:** accepted · 2026-09-30 · T3.2–T3.7 (applies to all of Phase 3)
 
 ## Context
 
@@ -73,6 +73,12 @@ A drag on a `.map` row therefore moves the whole block, verbatim.
 
 - After Skeleton navigates the canvas, for 3 s any document that loads at a different path is sent on by the overlay (`navigate`, `location.replace`). Re-setting the iframe's `src` to the value it already has doesn't navigate.
 - In-app navigation uses pushState and loads no document, so it's never overridden.
+
+**A drop commits where it was released (T3.7).** The overlay's answers lag the pointer by one round-trip, and more so while the typecheck worker is busy. Committing the latest answer on release once dropped a Button beside the Card it was aimed into.
+
+- Each drag position carries a `seq`, which the overlay echoes. A frame the pointer isn't over answers `null` for that `seq` at once.
+- On release the renderer sends the release position, and drops only on answers for it. If none arrive within 500 ms, nothing is dropped.
+- Move drags recompute the target at the `pointerup` position.
 
 **The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
 

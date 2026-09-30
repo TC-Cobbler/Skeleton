@@ -196,15 +196,16 @@ describe("Overlay", () => {
     };
 
     // Over the trigger: the Dialog is locked, so the drop goes into the div, between the dialog and the rows.
-    send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: null });
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: null, seq: 7 });
     expect(target()).toEqual({ parentKey: "0", index: 1 });
+    expect(sent.at(-1)).toMatchObject({ type: "drop-target", seq: 7 });
     flush();
     const html = document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
     expect(html).toContain("data-drop-indicator");
     expect(html).toContain("Into div #ui_root0");
 
     // Moving the dialog itself: never into itself, and indexes count it as taken out.
-    send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: "0.0" });
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: "0.0", seq: 8 });
     expect(target()).toEqual({ parentKey: "0", index: 0 });
 
     send({ source: "skeleton-host", type: "drag-end" });

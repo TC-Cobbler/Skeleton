@@ -69,11 +69,11 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
       editor: {
         apply: async (_root, file, edit) => {
           if (edit.op === "insert" && edit.parentId === "ui_lockd") throw new EditRefused("insert(ui_lockd): ui_lockd is a locked block");
-          return { file, select: "ui_new01", patch: "", linesAdded: 1, linesRemoved: 0 };
+          return { file, select: "ui_new01", patch: "", linesAdded: 1, linesRemoved: 0, unchecked: null };
         },
         page: async (_root, page) => {
           if (page.op === "deletePage" && page.path === "/") throw new EditRefused("it's the only page; add another one first");
-          return { path: page.op === "deletePage" ? "/" : page.path, files: [] };
+          return { path: page.op === "deletePage" ? "/" : page.path, files: [], unchecked: null };
         },
       },
       ...overrides,
@@ -417,9 +417,9 @@ describe("page:edit", () => {
       editor: {
         apply: async (_root, file, edit) => {
           edits.push(edit);
-          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0 };
+          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0, unchecked: null };
         },
-        page: async () => ({ path: null, files: [] }),
+        page: async () => ({ path: null, files: [], unchecked: null }),
       },
     });
     for (const ref of [{ id: "ui_abcde" }, { parentId: "ui_fghij", index: 2 }]) {
@@ -437,9 +437,9 @@ describe("page:edit", () => {
       editor: {
         apply: async (_root, file, edit) => {
           edits.push(edit);
-          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0 };
+          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0, unchecked: null };
         },
-        page: async () => ({ path: null, files: [] }),
+        page: async () => ({ path: null, files: [], unchecked: null }),
       },
     });
     const valid = [

@@ -156,7 +156,8 @@ describe("move and reorder on the canvas (T3.3)", () => {
     const after = await edited(before);
     expect(childNames(stackId())).toEqual(["h1", "Card", "Button", "Badge", "Stack"]);
     expect(after.split("\n").sort()).toEqual(before.split("\n").sort());
-    expect(await page.getByTestId("selection-id").textContent()).toBe(badge);
+    // The selection follows once the edit's typecheck has answered.
+    await expect.poll(() => page.getByTestId("selection-id").textContent()).toBe(badge);
   });
 
   it("moves across containers: from the row into the card", async () => {
@@ -296,45 +297,55 @@ describe("properties panel (T3.5)", () => {
   const props = () => page.getByTestId("properties");
   const layer = (id: string) => page.getByTestId(`layer-${id}`);
   const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
-  const lineOf = (id: string) => homeFile().split("\n").find((l) => l.includes(`data-ui-id="${id}"`)) ?? "";
+  let target = "";
   async function change(action: () => Promise<unknown>): Promise<string> {
     const before = homeFile();
     await action();
     const after = await edited(before);
-    // Every property edit is one changed line.
-    const removed = before.split("\n").filter((l) => !after.split("\n").includes(l));
-    const added = after.split("\n").filter((l) => !before.split("\n").includes(l));
-    expect([removed.length, added.length]).toEqual([1, 1]);
+    // Every property edit changes only the edited element (Prettier may re-wrap it).
+    const span = (src: string) => findNodeById(buildTree(src).roots, target)?.range ?? { startLine: 0, endLine: 0 };
+    const b = span(before);
+    const a = span(after);
+    expect(after.split("\n").slice(0, a.startLine - 1)).toEqual(before.split("\n").slice(0, b.startLine - 1));
+    expect(after.split("\n").slice(a.endLine)).toEqual(before.split("\n").slice(b.endLine));
     return after;
   }
+  /** The element's source, whether Prettier kept it on one line or wrapped it. */
+  const tagOf = (id: string) => {
+    const node = findNodeById(buildTree(homeFile()).roots, id);
+    return node ? homeFile().slice(node.range.start, node.range.end).replace(/\s+/g, " ") : "";
+  };
 
   it("sets a schema prop, and choosing the default removes it", async () => {
     const button = idOf(stackId(), "Button");
+    target = button;
     await layer(button).click();
     await change(() => props().getByLabel("variant").selectOption("outline"));
-    expect(lineOf(button)).toContain(`variant="outline"`);
+    expect(tagOf(button)).toContain(`variant="outline"`);
     await change(() => props().getByLabel("size").selectOption("lg"));
     await change(() => props().getByLabel("disabled").click());
-    expect(lineOf(button)).toMatch(/variant="outline" size="lg" disabled=\{true\}/);
+    expect(tagOf(button)).toMatch(/variant="outline" size="lg" disabled=\{true\}/);
     await change(() => props().getByLabel("variant").selectOption("default"));
-    expect(lineOf(button)).not.toContain("variant=");
+    expect(tagOf(button)).not.toContain("variant=");
     await canvasFrame(page).locator(`button[data-ui-id="${button}"][disabled]`).waitFor();
   });
 
   it("edits text content, escaping what JSX would change", async () => {
     const button = idOf(stackId(), "Button");
+    target = button;
     await layer(button).click();
     const text = props().getByLabel("Text");
     await change(async () => {
       await text.fill("Save & close");
       await text.press("Enter");
     });
-    expect(lineOf(button)).toContain(`>{"Save & close"}</Button>`);
+    expect(tagOf(button)).toMatch(/> ?\{"Save & close"\} ?<\/Button>$/);
     await canvasFrame(page).getByRole("button", { name: "Save & close" }).waitFor();
   });
 
   it("edits Stack layout as classes, one group at a time", async () => {
     const row = idOf(stackId(), "Stack");
+    target = row;
     await layer(row).click();
     expect(await props().getByLabel("direction").inputValue()).toBe("horizontal");
     expect(await props().getByLabel("Gap").inputValue()).toBe("gap-4");
@@ -342,11 +353,11 @@ describe("properties panel (T3.5)", () => {
     await change(() => props().getByLabel("Justify").selectOption("justify-between"));
     await change(() => props().getByLabel("Align").selectOption("items-center"));
     // A swap stays in place; a new group's class goes at the end.
-    expect(lineOf(row)).toContain(`className="gap-8 p-4 justify-between items-center"`);
+    expect(tagOf(row)).toContain(`className="gap-8 p-4 justify-between items-center"`);
     await change(() => props().getByLabel("Justify").selectOption(""));
-    expect(lineOf(row)).toContain(`className="gap-8 p-4 items-center"`);
+    expect(tagOf(row)).toContain(`className="gap-8 p-4 items-center"`);
     await change(() => props().getByLabel("direction").selectOption("vertical"));
-    expect(lineOf(row)).not.toContain("direction=");
+    expect(tagOf(row).slice(0, 120)).not.toContain("direction=");
     // The canvas shows it: a column now, with the new gap.
     const style = await canvasFrame(page).locator(`[data-ui-id="${row}"]`).evaluate((e) => [getComputedStyle(e).flexDirection, getComputedStyle(e).rowGap]);
     expect(style).toEqual(["column", "32px"]);
@@ -355,7 +366,7 @@ describe("properties panel (T3.5)", () => {
   it("keeps editing literal props on an element with agent logic", async () => {
     const before = homeFile();
     const button = idOf(stackId(), "Button");
-    const source = before.replace(`<Button data-ui-id="${button}"`, `<Button data-ui-id="${button}" onClick={() => alert("hi")}`);
+    const source = before.replace(`data-ui-id="${button}"`, `data-ui-id="${button}" onClick={() => alert("hi")}`);
     const tmp = path.join(projectRoot, "src/pages/.HomePage.tsx.test.tmp");
     writeFileSync(tmp, source);
     renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
@@ -423,5 +434,39 @@ describe("page ops (T3.6)", () => {
     await canvasFrame(page).getByRole("heading", { name: "Compose" }).waitFor();
     // The last page can't be deleted.
     expect(await pages().getByRole("button", { name: "Delete" }).isDisabled()).toBe(true);
+  });
+});
+
+describe("post-edit pipeline (T3.7)", () => {
+  const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
+
+  it("undoes an edit that breaks the typecheck, and says why", async () => {
+    const before = homeFile();
+    const button = idOf(stackId(), "Button");
+    // The panel only offers valid values; a bad one can still arrive (a "(custom)" value, a stale UI).
+    const result = await page.evaluate(
+      ({ root, id }) =>
+        window.skeleton.invoke("page:edit", { projectRoot: root, file: "src/pages/HomePage.tsx", edit: { op: "setProp", id, key: "size", value: "huge" } }),
+      { root: projectRoot, id: button },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: "edit-rolled-back" } });
+    expect(result.ok ? "" : result.error.message).toMatch(/Type '"huge"' is not assignable/);
+    expect(homeFile()).toBe(before);
+  });
+
+  it("shows the reason when an edit from the panel is undone", async () => {
+    const row = idOf(stackId(), "Stack");
+    await page.getByTestId(`layer-${row}`).click();
+    const before = homeFile();
+    // A Stack's direction is typed: "sideways" can't be picked, so drive the bridge like a stale UI would.
+    await page.evaluate(
+      ({ root, id }) => window.skeleton.invoke("page:edit", { projectRoot: root, file: "src/pages/HomePage.tsx", edit: { op: "setProp", id, key: "direction", value: "sideways" } }),
+      { root: projectRoot, id: row },
+    );
+    expect(homeFile()).toBe(before);
+    // Through the UI: a valid edit goes through and formats a long tag.
+    await page.getByTestId("properties").getByLabel("Padding X").selectOption("px-10");
+    await edited(before);
+    expect(homeFile()).toMatch(new RegExp(`<Stack\\n\\s+data-ui-id="${row}"\\n`));
   });
 });

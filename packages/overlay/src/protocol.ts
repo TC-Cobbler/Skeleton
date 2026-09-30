@@ -44,7 +44,7 @@ export type HostMessage =
    * A drag is over this frame at (x, y), in the frame's viewport coordinates. `moving`
    * is the key of the node being moved (never dropped into itself), or null for a new element.
    */
-  | { source: "skeleton-host"; type: "drag"; x: number; y: number; moving: string | null }
+  | { source: "skeleton-host"; type: "drag"; x: number; y: number; moving: string | null; seq: number }
   /** The drag left this frame, ended or was cancelled; also cancels a move drag in the frame (Escape). */
   | { source: "skeleton-host"; type: "drag-end" }
   /** Load `path` (a same-origin path), replacing the current history entry. */
@@ -70,8 +70,11 @@ export type OverlayMessage =
    * canvas is in sync.
    */
   | { source: "skeleton-overlay"; type: "mapped"; version: string; boxes: NodeBox[] }
-  /** Where the current drag would land, in answer to each drag message; null for nowhere. */
-  | { source: "skeleton-overlay"; type: "drop-target"; target: DropTarget | null }
+  /**
+   * Where the current drag would land, in answer to each drag message (echoing its
+   * `seq`, 0 when not answering one); null for nowhere.
+   */
+  | { source: "skeleton-overlay"; type: "drop-target"; target: DropTarget | null; seq: number }
   /** The user dragged the node at `key` on the canvas and dropped it at `target` (T3.3). */
   | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget }
   /** A Skeleton shortcut pressed while the frame has focus, in select mode (Delete, undo…). */
@@ -93,7 +96,7 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
     case "mapped":
       return typeof v["version"] === "string" && Array.isArray(v["boxes"]);
     case "drop-target":
-      return v["target"] === null || isDropTarget(v["target"]);
+      return Number.isInteger(v["seq"]) && (v["target"] === null || isDropTarget(v["target"]));
     case "move":
       return typeof v["key"] === "string" && isDropTarget(v["target"]);
     case "key":
@@ -124,7 +127,12 @@ export function isHostMessage(value: unknown): value is HostMessage {
     case "theme":
       return typeof v["dark"] === "boolean";
     case "drag":
-      return Number.isFinite(v["x"]) && Number.isFinite(v["y"]) && (v["moving"] === null || typeof v["moving"] === "string");
+      return (
+        Number.isFinite(v["x"]) &&
+        Number.isFinite(v["y"]) &&
+        Number.isInteger(v["seq"]) &&
+        (v["moving"] === null || typeof v["moving"] === "string")
+      );
     case "drag-end":
       return true;
     case "navigate":

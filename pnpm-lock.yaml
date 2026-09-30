@@ -29,6 +29,9 @@ importers:
       '@babel/parser':
         specifier: ^7.29.9
         version: 7.29.9
+      '@babel/types':
+        specifier: ^7.29.8
+        version: 7.29.8
       '@skeleton/core':
         specifier: workspace:*
         version: link:../core

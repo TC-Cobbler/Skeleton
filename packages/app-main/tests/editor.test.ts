@@ -2,9 +2,25 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildIdIndex, buildTree, findNodeById, parseModule, readRoutes } from "@skeleton/core";
 import { loadTemplate, renderProject } from "@skeleton/templates";
-import { Editor, EditRefused, listSources, type EditorIO } from "../src/project/editor.js";
+import type { Checker, Diagnostic } from "../src/project/checker.js";
+import { Editor, EditRefused, EditRolledBack, listSources, type EditorIO } from "../src/project/editor.js";
 
 const ROOT = "/projects/demo";
+
+/** Every line outside the element with `id` is byte-identical before and after. */
+function expectOnlyNodeChanged(before: string, after: string, id: string): void {
+  const span = (src: string) => {
+    const node = findNodeById(buildTree(src).roots, id);
+    if (!node) throw new Error(`${id} not found`);
+    return node.range;
+  };
+  const b = span(before);
+  const a = span(after);
+  const lb = before.split("\n");
+  const la = after.split("\n");
+  expect(la.slice(0, a.startLine - 1)).toEqual(lb.slice(0, b.startLine - 1));
+  expect(la.slice(a.endLine)).toEqual(lb.slice(b.endLine));
+}
 
 /** An in-memory project: a freshly rendered template plus a second page. */
 function memoryProject() {
@@ -201,21 +217,24 @@ describe("Editor: remove (T3.4)", () => {
 });
 
 describe("Editor: properties (T3.5)", () => {
-  it("sets props, text and classes, one line each", async () => {
+  it("sets props, text and classes, changing only the element", async () => {
     const p = memoryProject();
     const editor = new Editor(p.io);
     const placed = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "button" });
     const id = placed.select as string;
     const run = async (edit: Parameters<Editor["apply"]>[2]) => {
+      const before = p.home();
       const r = await editor.apply(ROOT, "src/pages/HomePage.tsx", edit);
       expect(r.select).toBe(id);
-      expect([r.linesAdded, r.linesRemoved]).toEqual([1, 1]);
+      expectOnlyNodeChanged(before, p.home(), id);
     };
     await run({ op: "setProp", id, key: "variant", value: "outline" });
+    // Prettier puts the text on its own line once there's a second attribute.
+    expect(p.home()).toContain(`        <Button data-ui-id="${id}" variant="outline">\n          Button\n        </Button>\n`);
     await run({ op: "setText", id, text: "Save" });
     await run({ op: "setClass", id, add: ["w-full"], remove: [] });
     await run({ op: "setProp", id, key: "variant", value: null });
-    expect(p.home()).toContain(`<Button data-ui-id="${id}" className="w-full">Save</Button>`);
+    expect(p.home()).toContain(`        <Button data-ui-id="${id}" className="w-full">\n          Save\n        </Button>\n`);
   });
 
   it("refuses protected props with the op's message", async () => {
@@ -233,7 +252,7 @@ describe("Editor: pages (T3.6)", () => {
   it("adds a page: a new page file and one route", async () => {
     const p = memoryProject();
     const result = await new Editor(p.io).page(ROOT, { op: "addPage", name: "Order history", path: "/orders" });
-    expect(result).toEqual({ path: "/orders", files: ["src/pages/OrderHistoryPage.tsx", "src/router.tsx"] });
+    expect(result).toEqual({ path: "/orders", files: ["src/pages/OrderHistoryPage.tsx", "src/router.tsx"], unchecked: "no typechecker" });
     expect(routes(p)).toEqual([
       ["/", "src/pages/HomePage.tsx"],
       ["/orders", "src/pages/OrderHistoryPage.tsx"],
@@ -292,6 +311,103 @@ describe("Editor: pages (T3.6)", () => {
     await expect(new Editor(p.io).page(ROOT, { op: "addPage", name: "Orders", path: "/orders" })).rejects.toThrow(/disk full/);
     expect(p.files.has(abs("src/pages/OrdersPage.tsx"))).toBe(false);
     expect(p.files.get(abs("src/router.tsx"))).toBe(router);
+  });
+});
+
+describe("Editor: post-edit pipeline (T3.7)", () => {
+  /** A checker that reports an error for every file containing `marker`, plus any `standing` ones. */
+  function fakeChecker(p: ReturnType<typeof memoryProject>, marker: string, standing: Diagnostic[] = []) {
+    let checks = 0;
+    const checker: Checker = {
+      check: async () => {
+        checks++;
+        const errors = [...standing];
+        for (const [file, text] of p.files) {
+          if (text.includes(marker)) errors.push({ file: path.relative(ROOT, file), line: 1, code: 2322, message: `found ${marker}` });
+        }
+        return errors;
+      },
+      dispose: () => undefined,
+    };
+    return { checker, checks: () => checks };
+  }
+
+  it("rolls back an edit that breaks the typecheck, restoring the file exactly", async () => {
+    const p = memoryProject();
+    const { checker, checks } = fakeChecker(p, `direction="sideways"`);
+    const before = p.home();
+    const editor = new Editor(p.io, { checker: () => checker });
+    const error = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "setProp", id: p.stackId, key: "direction", value: "sideways" }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EditRolledBack);
+    expect((error as EditRolledBack).message).toMatch(/undone because it broke the typecheck:\nsrc\/pages\/HomePage.tsx:1: found/);
+    expect(p.home()).toBe(before);
+    expect(checks()).toBe(3); // before, after, and after the rollback
+  });
+
+  it("doesn't block edits on errors the project already had", async () => {
+    const p = memoryProject();
+    const { checker } = fakeChecker(p, "nothing-matches", [{ file: "src/other.ts", line: 3, code: 2304, message: "Cannot find name 'x'." }]);
+    const result = await new Editor(p.io, { checker: () => checker }).apply(ROOT, "src/pages/HomePage.tsx", {
+      op: "setProp",
+      id: p.stackId,
+      key: "direction",
+      value: "horizontal",
+    });
+    expect(result.unchecked).toBeNull();
+    expect(p.home()).toContain(`direction="horizontal"`);
+  });
+
+  it("keeps the edit but says so when the project can't be checked", async () => {
+    const p = memoryProject();
+    const checker: Checker = { check: async () => Promise.reject(new Error("TypeScript isn't installed")), dispose: () => undefined };
+    const result = await new Editor(p.io, { checker: () => checker }).apply(ROOT, "src/pages/HomePage.tsx", { op: "setText", id: p.stackId, text: "x" }).catch((e: unknown) => e);
+    // (A Stack has child elements, so setText refuses before anything is checked.)
+    expect(result).toBeInstanceOf(EditRefused);
+    const ok = await new Editor(p.io, { checker: () => checker }).apply(ROOT, "src/pages/HomePage.tsx", { op: "setClass", id: p.stackId, add: ["gap-8"], remove: ["gap-6"] });
+    expect(ok.unchecked).toBe("TypeScript isn't installed");
+    expect(p.home()).toContain("gap-8");
+  });
+
+  it("rolls back a whole page op, deleting the file it created", async () => {
+    const p = memoryProject();
+    const { checker } = fakeChecker(p, "<OrdersPage />");
+    await expect(new Editor(p.io, { checker: () => checker }).page(ROOT, { op: "addPage", name: "Orders", path: "/orders" })).rejects.toThrow(EditRolledBack);
+    expect(p.files.has(path.join(ROOT, "src/pages/OrdersPage.tsx"))).toBe(false);
+    expect(p.files.get(path.join(ROOT, "src/router.tsx"))).not.toContain("OrdersPage");
+  });
+
+  it("never clobbers a file that changed after the edit", async () => {
+    const p = memoryProject();
+    const page = path.join(ROOT, "src/pages/HomePage.tsx");
+    let calls = 0;
+    const checker: Checker = {
+      check: async () => {
+        calls++;
+        if (calls === 2) {
+          // Someone saves the file between the write and the check.
+          p.files.set(page, (p.files.get(page) as string).replace("gap-6", "gap-2"));
+          return [{ file: "src/pages/HomePage.tsx", line: 1, code: 1, message: "broken" }];
+        }
+        return [];
+      },
+      dispose: () => undefined,
+    };
+    await expect(new Editor(p.io, { checker: () => checker }).apply(ROOT, "src/pages/HomePage.tsx", { op: "setClass", id: p.stackId, add: ["w-full"], remove: [] })).rejects.toThrow(EditRolledBack);
+    expect(p.home()).toContain("gap-2");
+    expect(p.home()).toContain("w-full");
+  });
+
+  it("formats an opening tag that an attribute edit pushed past the print width", async () => {
+    const p = memoryProject();
+    const r = await new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", {
+      op: "setClass",
+      id: p.stackId,
+      add: ["items-center", "justify-between", "flex-wrap", "px-10"],
+      remove: [],
+    });
+    expect(p.home()).toContain(`      <Stack\n        data-ui-id="${p.stackId}"\n        className="gap-6 py-8 items-center justify-between flex-wrap px-10"\n      >`);
+    expect(r.linesRemoved).toBe(1);
+    expect(r.linesAdded).toBe(4);
   });
 });
 

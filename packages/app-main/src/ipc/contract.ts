@@ -228,6 +228,8 @@ export interface PageOpResult {
   path: string | null;
   /** Project-relative files created, changed or deleted. */
   files: string[];
+  /** Why the op couldn't be typechecked (T3.7), or null when it was. */
+  unchecked: string | null;
 }
 
 export interface PageEditRequest extends PageTreeRequest {
@@ -242,6 +244,8 @@ export interface PageEditResult {
   patch: string;
   linesAdded: number;
   linesRemoved: number;
+  /** Why the edit couldn't be typechecked (T3.7), or null when it was. */
+  unchecked: string | null;
 }
 
 /** Every channel: what the renderer sends and what main answers with. */
@@ -311,9 +315,11 @@ type Missing = Exclude<Channel, (typeof CHANNELS)[number]>;
 const allChannelsListed: [Missing] extends [never] ? true : Missing = true;
 void allChannelsListed;
 
-export type IpcErrorCode =
-  /** `edit-refused`: the edit op refused the edit (locked block, bad target…); the file is unchanged. */
-  "bad-request" | "untrusted-sender" | "not-found" | "edit-refused" | "failed";
+/**
+ * - `edit-refused`: the edit op refused the edit (locked block, bad target…); nothing was written.
+ * - `edit-rolled-back`: the edit was written, broke the typecheck, and was undone (T3.7).
+ */
+export type IpcErrorCode = "bad-request" | "untrusted-sender" | "not-found" | "edit-refused" | "edit-rolled-back" | "failed";
 
 export interface IpcError {
   code: IpcErrorCode;
