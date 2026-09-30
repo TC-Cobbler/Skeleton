@@ -7,6 +7,7 @@ import {
   type NodeBox,
   type OverlayMessage,
   type OverlayNode,
+  type TokenUsage,
 } from "@skeleton/overlay/protocol";
 
 export type PreviewWidth = "desktop" | "tablet" | "mobile";
@@ -31,6 +32,8 @@ export interface CanvasEvents {
   onMove?: (key: string, target: DropTarget) => void;
   /** A Skeleton shortcut pressed while the canvas had focus. */
   onKey?: (key: string, mod: boolean, shift: boolean) => void;
+  /** How many elements on the page each token affects (T4.2), while `tokenUsage` is set. */
+  onTokenCounts?: (counts: Record<string, number>) => void;
 }
 
 /** A drag in progress over the canvas, in window coordinates (T3.2). */
@@ -61,6 +64,10 @@ export interface CanvasProps extends CanvasEvents {
   drag: CanvasDrag | null;
   /** The app on screen is mapped to the tree at `version` (null while catching up with an edit). */
   synced: boolean;
+  /** What each token affects, to count on the page (T4.2); null when nobody's looking. */
+  tokenUsage: Record<string, TokenUsage> | null;
+  /** Outline everything this token affects. */
+  tokenHighlight: string | null;
 }
 
 /**
@@ -193,6 +200,8 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "mode", mode: p.mode });
           post({ source: "skeleton-host", type: "theme", dark: p.dark });
           post({ source: "skeleton-host", type: "select", key: p.selected });
+          post({ source: "skeleton-host", type: "token-usage", usage: p.primary ? p.tokenUsage : null });
+          post({ source: "skeleton-host", type: "token-highlight", name: p.tokenHighlight });
           p.onLocation?.(msg.pathname);
           break;
         }
@@ -220,6 +229,9 @@ function CanvasFrame(props: FrameProps) {
         case "key":
           p.onKey?.(msg.key, msg.mod, msg.shift);
           break;
+        case "token-counts":
+          if (p.primary) p.onTokenCounts?.(msg.counts);
+          break;
       }
     };
     window.addEventListener("message", onMessage);
@@ -231,6 +243,9 @@ function CanvasFrame(props: FrameProps) {
   useEffect(() => post({ source: "skeleton-host", type: "highlight", key: props.highlighted }), [props.highlighted]);
   useEffect(() => post({ source: "skeleton-host", type: "mode", mode: props.mode }), [props.mode]);
   useEffect(() => post({ source: "skeleton-host", type: "theme", dark: props.dark }), [props.dark]);
+  // Only the primary frame counts; the others just outline.
+  useEffect(() => post({ source: "skeleton-host", type: "token-usage", usage: props.primary ? props.tokenUsage : null }), [props.tokenUsage, props.primary]);
+  useEffect(() => post({ source: "skeleton-host", type: "token-highlight", name: props.tokenHighlight }), [props.tokenHighlight]);
   // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
   // Skeleton's window, so the overlay doesn't see the key itself.
   useEffect(() => {

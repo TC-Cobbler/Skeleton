@@ -2,10 +2,10 @@
 // git, child processes, AST). This is the only module the renderer imports from
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
-import type { PageTree, RouteInfo, Theme, TokenWrite } from "@skeleton/core";
+import type { PageTree, RouteInfo, Theme, TokenUsage, TokenWrite } from "@skeleton/core";
 import type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
-export type { PageTree, UiNode, NodeKind, RouteInfo, ColourMode, Theme, ThemeToken, TokenGroup, TokenWrite } from "@skeleton/core";
+export type { PageTree, UiNode, NodeKind, RouteInfo, ColourMode, Theme, ThemeToken, TokenGroup, TokenUsage, TokenWrite } from "@skeleton/core";
 export type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
 /** A page's parsed tree plus the version of the text it was parsed from (core's sourceVersion). */
@@ -267,6 +267,8 @@ export interface PageEditResult {
 export interface TokenSheet extends Theme {
   /** Project-relative path of the token file. */
   file: string;
+  /** What each token affects on the canvas (T4.2), by token name. */
+  usage: Record<string, TokenUsage>;
 }
 
 export interface TokenWriteRequest extends ProjectRootRequest {

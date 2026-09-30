@@ -195,6 +195,16 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     [project.projectRoot, setTokenSheet, setEditError],
   );
   const [inspectorTab, setInspectorTab] = useState<"element" | "tokens">("element");
+  // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
+  const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
+  const [tokenHover, setTokenHover] = useState<string | null>(null);
+  const tokenUsage = inspectorTab === "tokens" ? (tokens.sheet?.usage ?? null) : null;
+  useEffect(() => {
+    if (tokenUsage === null) {
+      setTokenCounts(null);
+      setTokenHover(null);
+    }
+  }, [tokenUsage]);
   const moveNode = (key: string, target: DropTarget) => {
     const moved = page.nodes.find((n) => n.key === key)?.node;
     const parentKey = parentKeyOf(key);
@@ -408,7 +418,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           ))}
         </div>
         {inspectorTab === "tokens" && (
-          <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={null} onWrite={writeTokens} onHover={() => undefined} />
+          <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={tokenCounts} onWrite={writeTokens} onHover={setTokenHover} />
         )}
         {inspectorTab === "element" && (
           <>
@@ -458,6 +468,9 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         onDropTarget={canvasDrag.report}
         onMove={moveNode}
         onKey={onShortcut}
+        tokenUsage={tokenUsage}
+        tokenHighlight={tokenHover}
+        onTokenCounts={setTokenCounts}
       />
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (

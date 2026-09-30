@@ -98,3 +98,29 @@ describe("token panel (T4.1)", () => {
     await expect.poll(() => token("--primary", "dark")).toBe("oklch(0.922 0 0)");
   });
 });
+
+describe("token-to-element map (T4.2)", () => {
+  const panel = () => page.getByRole("region", { name: "Tokens" });
+  const count = (name: string) => panel().getByTestId(`token-${name}`).getByTestId("token-count").textContent();
+  const tokenBoxes = () =>
+    frame()
+      .locator("skeleton-overlay")
+      .evaluate((el) => el.shadowRoot?.querySelectorAll("[data-token-box]").length ?? 0);
+
+  it("counts the elements each token affects on the page, live", async () => {
+    await expect.poll(() => count("--radius-button")).toBe("1");
+    expect(Number(await count("--radius"))).toBeGreaterThanOrEqual(1);
+    expect(Number(await count("--background"))).toBeGreaterThanOrEqual(1); // body
+    await page.getByRole("tab", { name: "Element" }).click();
+    await placeFromPalette(page, "button", frame().getByRole("heading", { name: "Tokens" }), { fx: 0.5, fy: 0.9 });
+    await page.getByRole("tab", { name: "Tokens" }).click();
+    await expect.poll(() => count("--radius-button")).toBe("2");
+  });
+
+  it("outlines what a token affects while its row is hovered", async () => {
+    await panel().getByTestId("token---radius-button").hover();
+    await expect.poll(tokenBoxes).toBe(2);
+    await panel().getByRole("heading", { name: "Tokens" }).hover();
+    await expect.poll(tokenBoxes).toBe(0);
+  });
+});

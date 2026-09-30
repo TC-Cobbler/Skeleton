@@ -11,6 +11,7 @@ import {
   referencedTokens,
   setTokens,
   substituteVars,
+  tokenUsage,
   tryEvaluate,
 } from "../src/index.js";
 
@@ -129,5 +130,46 @@ describe("setTokens", () => {
   it("refuses unknown tokens and dark values a token doesn't have", () => {
     expect(() => setTokens(css, [{ name: "--nope", value: "1px", mode: null }])).toThrow(/not found/);
     expect(() => setTokens(css, [{ name: "--radius", value: "1rem", mode: "dark" }])).toThrow(/no dark value/);
+  });
+});
+
+describe("tokenUsage (T4.2)", () => {
+  const usage = tokenUsage(css);
+  const affects = (name: string, utility: string) => (usage[name]?.classes ?? []).some((re) => new RegExp(re).test(utility));
+
+  it("maps a component radius to its utility, and the base radius to every derived one", () => {
+    expect(affects("--radius-button", "rounded-button")).toBe(true);
+    expect(affects("--radius-button", "rounded-tl-button")).toBe(true);
+    expect(affects("--radius-button", "rounded-card")).toBe(false);
+    for (const u of ["rounded-button", "rounded-card", "rounded-lg", "rounded-xs"]) expect(affects("--radius", u), u).toBe(true);
+    expect(affects("--radius", "rounded-full")).toBe(false);
+  });
+
+  it("maps colours through their Tailwind names, with opacity", () => {
+    for (const u of ["bg-primary", "text-primary", "border-primary", "ring-primary/50", "fill-primary"]) expect(affects("--primary", u), u).toBe(true);
+    expect(affects("--primary", "bg-primary-foreground")).toBe(false);
+    expect(affects("--primary-foreground", "text-primary-foreground")).toBe(true);
+  });
+
+  it("maps the spacing base, the type scale and the border width", () => {
+    for (const u of ["p-4", "gap-2.5", "-mt-1", "size-9", "h-10"]) expect(affects("--spacing", u), u).toBe(true);
+    for (const u of ["p-[3px]", "px-px", "max-w-md", "w-full"]) expect(affects("--spacing", u), u).toBe(false);
+    expect(affects("--type-base", "text-sm")).toBe(true);
+    expect(affects("--type-ratio", "text-4xl")).toBe(true);
+    expect(affects("--type-ratio", "text-base")).toBe(false);
+    expect(affects("--text-lg", "text-lg/7")).toBe(true);
+    expect(affects("--border-width", "border")).toBe(true);
+    expect(affects("--border-width", "border-t")).toBe(true);
+    expect(affects("--border-width", "border-2")).toBe(false);
+    expect(affects("--font-sans", "font-sans")).toBe(true);
+  });
+
+  it("follows the base layer: body's colours, and the border colour on every bordered element", () => {
+    expect(usage["--background"]?.selectors).toEqual(["body"]);
+    expect(usage["--foreground"]?.selectors).toEqual(["body"]);
+    expect(usage["--font-sans"]?.selectors).toEqual(["body"]);
+    expect(affects("--border", "border")).toBe(true);
+    expect(affects("--border", "border-b-2")).toBe(true);
+    expect(usage["--border"]?.selectors).toEqual([]);
   });
 });

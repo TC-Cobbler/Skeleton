@@ -2,7 +2,7 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree, exportedNames, readRoutes, readTheme, sourceVersion, type TokenWrite } from "@skeleton/core";
+import { buildTree, exportedNames, readRoutes, readTheme, sourceVersion, tokenUsage, type TokenWrite } from "@skeleton/core";
 import {
   ELEMENTS,
   GLOBALS_CSS,
@@ -494,7 +494,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
 
 function sheetOf(css: string): TokenSheet {
   try {
-    return { file: GLOBALS_CSS, ...readTheme(css, templateTokens()) };
+    return { file: GLOBALS_CSS, ...readTheme(css, templateTokens()), usage: tokenUsage(css) };
   } catch (cause) {
     throw new HandlerError("failed", `${GLOBALS_CSS} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`);
   }

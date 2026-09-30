@@ -28,6 +28,14 @@ export interface DropTarget {
   index: number;
 }
 
+/** What a token affects (T4.2), from core's tokenUsage. */
+export interface TokenUsage {
+  /** Regex sources matching base utilities (variants stripped) that read the token. */
+  classes: string[];
+  /** Base-layer selectors styled with the token. */
+  selectors: string[];
+}
+
 export type HostMessage =
   /**
    * The page being shown and its nodes, parsed from the file text whose sourceVersion
@@ -48,7 +56,11 @@ export type HostMessage =
   /** The drag left this frame, ended or was cancelled; also cancels a move drag in the frame (Escape). */
   | { source: "skeleton-host"; type: "drag-end" }
   /** Load `path` (a same-origin path), replacing the current history entry. */
-  | { source: "skeleton-host"; type: "navigate"; path: string };
+  | { source: "skeleton-host"; type: "navigate"; path: string }
+  /** Count what each token affects and report `token-counts` as the page changes (T4.2); null stops. */
+  | { source: "skeleton-host"; type: "token-usage"; usage: Record<string, TokenUsage> | null }
+  /** Outline every element the token affects; null clears. */
+  | { source: "skeleton-host"; type: "token-highlight"; name: string | null };
 
 export interface NodeBox {
   key: string;
@@ -78,7 +90,9 @@ export type OverlayMessage =
   /** The user dragged the node at `key` on the canvas and dropped it at `target` (T3.3). */
   | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget }
   /** A Skeleton shortcut pressed while the frame has focus, in select mode (Delete, undo…). */
-  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean };
+  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean }
+  /** How many rendered elements each token affects (T4.2): after `token-usage`, and when it changes. */
+  | { source: "skeleton-overlay"; type: "token-counts"; counts: Record<string, number> };
 
 export function isOverlayMessage(value: unknown): value is OverlayMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -101,9 +115,23 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
       return typeof v["key"] === "string" && isDropTarget(v["target"]);
     case "key":
       return typeof v["key"] === "string" && typeof v["mod"] === "boolean" && typeof v["shift"] === "boolean";
+    case "token-counts":
+      return isRecordOf(v["counts"], (n) => Number.isInteger(n));
     default:
       return false;
   }
+}
+
+function isRecordOf(value: unknown, check: (v: unknown) => boolean): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every(check);
+}
+
+const isStringList = (value: unknown): boolean => Array.isArray(value) && value.every((s) => typeof s === "string");
+
+function isTokenUsage(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const u = value as Record<string, unknown>;
+  return isStringList(u["classes"]) && isStringList(u["selectors"]);
 }
 
 function isDropTarget(value: unknown): value is DropTarget {
@@ -137,6 +165,10 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return true;
     case "navigate":
       return typeof v["path"] === "string" && v["path"].startsWith("/") && !v["path"].startsWith("//");
+    case "token-usage":
+      return v["usage"] === null || isRecordOf(v["usage"], isTokenUsage);
+    case "token-highlight":
+      return v["name"] === null || typeof v["name"] === "string";
     default:
       return false;
   }

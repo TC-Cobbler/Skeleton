@@ -138,7 +138,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 ## Phase 4 — Tokens + gizmos
 
 - [x] **T4.1** Token panel with every token, light/dark values side by side, and exact inputs. Derived tokens show their formula, with a detach toggle.
-- [ ] **T4.2** Token-to-element map: which elements each token affects (for the live count and highlighting).
+- [x] **T4.2** Token-to-element map: which elements each token affects (for the live count and highlighting).
 - [ ] **T4.3** Gizmo handles in the overlay:
   - [ ] radius corner handle
   - [ ] gap handles between siblings

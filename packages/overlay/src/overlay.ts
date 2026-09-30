@@ -4,6 +4,7 @@
 
 import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
 import { NodeIndex } from "./mapping.js";
+import { TokenMatcher } from "./tokens.js";
 import { isHostMessage, isShortcut, type DropTarget, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
 
 type Rect = NodeBox["rects"][number];
@@ -16,6 +17,7 @@ const COLORS = {
   selected: "#2563eb",
   locked: "#ea580c",
   drop: "#2563eb",
+  token: "#9333ea",
 };
 
 interface DropState extends DropTarget {
@@ -52,6 +54,10 @@ export class Overlay {
   /** The DOM changed since `mapped` was last reported. */
   private remap = false;
   private lastMapped = "";
+  /** What each token affects (T4.2), while the host wants counts. */
+  private tokens: TokenMatcher | null = null;
+  private tokenHighlight: string | null = null;
+  private lastCounts = "";
   private readonly layer: HTMLElement;
   private readonly shadow: ShadowRoot;
   private frame = 0;
@@ -150,6 +156,14 @@ export class Overlay {
       case "navigate":
         this.options.win.location.replace(msg.path);
         return;
+      case "token-usage":
+        this.tokens = msg.usage ? new TokenMatcher(msg.usage, this.doc.createElement("div")) : null;
+        this.lastCounts = "";
+        this.reportCounts();
+        break;
+      case "token-highlight":
+        this.tokenHighlight = msg.name;
+        break;
       case "drag-end":
         // Also cancels a move drag: Escape reaches the host's window, not this frame.
         this.hostDragging = false;
@@ -397,8 +411,22 @@ export class Overlay {
     this.post({ source: "skeleton-overlay", type: "mapped", version: this.index.version, boxes });
   }
 
+  /** Tell the host what each token affects now, if that changed. */
+  private reportCounts(): void {
+    if (!this.tokens || !this.doc.body) return;
+    const counts = this.tokens.count(this.doc.body, this.layer);
+    const key = JSON.stringify(counts);
+    if (key === this.lastCounts) return;
+    this.lastCounts = key;
+    this.post({ source: "skeleton-overlay", type: "token-counts", counts });
+  }
+
   private draw(): void {
-    if (this.remap && this.index) this.reportMapped(false);
+    if (this.remap) {
+      if (this.index) this.reportMapped(false);
+      this.reportCounts();
+      this.remap = false;
+    }
     const parts: string[] = [];
     // Labels placed so far; a new label slides right until it doesn't overlap one.
     const placed: Rect[] = [];
@@ -427,6 +455,14 @@ export class Overlay {
         }
       });
     };
+    // Everything a hovered token affects (T4.2), under everything else.
+    if (this.tokens && this.tokenHighlight && this.doc.body) {
+      for (const el of this.tokens.elements(this.doc.body, this.layer, this.tokenHighlight)) {
+        const r = rectOf(el);
+        if (r.width === 0 && r.height === 0) continue;
+        parts.push(`<div class="box" data-token-box style="left:${r.x}px;top:${r.y}px;width:${r.width}px;height:${r.height}px;border:1px solid ${COLORS.token}"></div>`);
+      }
+    }
     // Locked blocks are always marked in select mode (T2.4), under hover/selection.
     if (this.mode === "select" && this.index) {
       for (const node of this.index.nodes) {

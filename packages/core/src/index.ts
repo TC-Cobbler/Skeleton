@@ -66,6 +66,7 @@ export {
   type TokenGroup,
   type TokenWrite,
 } from "./theme.js";
+export { tokenUsage, utilitiesFor, type TokenUsage } from "./utilities.js";
 export { findViolations, type Violation, type ViolationKind } from "./violations.js";
 export {
   analyseTakeBack,
