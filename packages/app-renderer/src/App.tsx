@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AppInfo, ProjectInfo } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas } from "./Canvas.js";
 import { DevServerPanel } from "./DevServerPanel.js";
+import { LayersPanel } from "./LayersPanel.js";
 import { useDevServer } from "./useDevServer.js";
 import { usePageTree } from "./usePageTree.js";
 import { ProjectPicker } from "./ProjectPicker.js";
@@ -62,12 +64,41 @@ export function App() {
 
 const DEFAULT_PAGE = "src/pages/HomePage.tsx";
 
+/**
+ * Selection by tree key, re-pointed after every re-parse: keys are child-index paths
+ * and shift when elements are added, so the selection follows the element's
+ * data-ui-id (or clears if it's gone), never the old position.
+ */
+function useSelection(nodes: KeyedNode[]): [string | null, (key: string | null) => void] {
+  const [selection, setSelection] = useState<{ key: string; id: string | null; name: string } | null>(null);
+  const select = useCallback(
+    (key: string | null) => {
+      const node = key === null ? null : nodes.find((n) => n.key === key);
+      setSelection(node ? { key: node.key, id: node.node.id, name: node.node.name } : null);
+    },
+    [nodes],
+  );
+  useEffect(() => {
+    setSelection((sel) => {
+      if (!sel) return sel;
+      const match = sel.id
+        ? nodes.find((n) => n.node.id === sel.id)
+        : nodes.find((n) => n.key === sel.key && n.node.name === sel.name);
+      if (!match) return null;
+      return match.key === sel.key ? sel : { ...sel, key: match.key };
+    });
+  }, [nodes]);
+  return [selection?.key ?? null, select];
+}
+
 function ProjectView({ project }: { project: ProjectInfo }) {
   const server = useDevServer(project.projectRoot, true);
   const page = usePageTree(project.projectRoot, DEFAULT_PAGE);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useSelection(page.nodes);
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
+  const [treeHover, setTreeHover] = useState<string | null>(null);
+  const [onScreen, setOnScreen] = useState<Set<string> | null>(null);
   const selectedNode = page.nodes.find((n) => n.key === selected) ?? null;
 
   return (
@@ -106,17 +137,26 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             <p className="muted">{hovered ? "Click to select." : "Nothing selected."}</p>
           )}
         </section>
+        <LayersPanel
+          nodes={page.nodes}
+          selected={selected}
+          hovered={treeHover ?? hovered}
+          onScreen={onScreen}
+          onSelect={setSelected}
+          onHover={setTreeHover}
+        />
       </aside>
       <Canvas
         status={server.status}
         file={page.tree ? DEFAULT_PAGE : null}
         nodes={page.overlayNodes}
         selected={selected}
-        highlighted={null}
+        highlighted={treeHover}
         mode={mode}
         onSelect={setSelected}
         onHover={setHovered}
         onUpdated={page.reload}
+        onMapped={(boxes) => setOnScreen(new Set(boxes.map((b) => b.key)))}
       />
       <footer className="bottom">
         <DevServerPanel server={server} />

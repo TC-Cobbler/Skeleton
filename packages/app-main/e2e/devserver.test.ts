@@ -101,6 +101,37 @@ describe("new project → running dev server (PRD F1)", () => {
     await canvas.getByRole("heading", { name: "E2E App", exact: true }).waitFor({ timeout: 15_000 });
   }, 60_000);
 
+  it("syncs selection between the layers tree and the canvas (T2.3)", async () => {
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    const tree = page.getByRole("tree", { name: "Layers tree" });
+    const rows = tree.getByRole("treeitem");
+    expect(await rows.count()).toBe(3); // Container > Stack > h1
+
+    // Tree → canvas: the overlay outlines the element with its label.
+    await rows.nth(1).click();
+    expect(await page.getByTestId("selection-name").textContent()).toBe("Stack");
+    const shadow = () => page.frames().find((f) => f.url().startsWith(url))?.evaluate(() => document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "");
+    await expect.poll(shadow).toContain("Stack #ui_");
+
+    // Canvas → tree: clicking the heading selects its row.
+    await canvas.getByRole("heading", { name: "E2E App" }).click();
+    await expect.poll(() => rows.nth(2).getAttribute("aria-selected")).toBe("true");
+    expect(await rows.nth(1).getAttribute("aria-selected")).toBe("false");
+  }, 60_000);
+
+  it("keeps the selection on the same element when an edit shifts the tree", async () => {
+    const file = path.join(projectRoot, "src/pages/HomePage.tsx");
+    const source = readFileSync(file, "utf8");
+    const headingId = await page.getByTestId("selection-id").textContent();
+    writeFileSync(file, source.replace('<h1 data-ui-id', '<p data-ui-id="ui_zzzzz">Intro</p>\n        <h1 data-ui-id'));
+    const rows = page.getByRole("tree", { name: "Layers tree" }).getByRole("treeitem");
+    await expect.poll(() => rows.count(), { timeout: 15_000 }).toBe(4);
+    expect(await page.getByTestId("selection-id").textContent()).toBe(headingId);
+    expect(await rows.nth(3).getAttribute("aria-selected")).toBe("true");
+    writeFileSync(file, source);
+    await expect.poll(() => rows.count(), { timeout: 15_000 }).toBe(3);
+  }, 60_000);
+
   it("closing the project stops its server and lists it as recent", async () => {
     await page.getByRole("button", { name: "Close project" }).click();
     await page.getByRole("heading", { name: "New project" }).waitFor();
