@@ -205,7 +205,10 @@ function CanvasFrame(props: FrameProps) {
         data-testid={props.primary ? "canvas-frame" : `canvas-frame-${width}`}
         src={url}
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
-        style={{ width: pixels, height: `calc((100% - 20px) / ${scale})`, transform: `scale(${scale})` }}
+        // CSS zoom, not transform: Chromium intermittently drops input to a
+        // transformed cross-origin iframe (see docs/decisions/006-canvas.md).
+        // Under zoom, % heights are unscaled but px are scaled, which matches the zoomed 20px top.
+        style={{ width: pixels, height: "calc(100% - 20px)", zoom: scale }}
       />
     </div>
   );

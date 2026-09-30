@@ -95,6 +95,13 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 **Gate 2:** Open the Phase 0 fixture (post-agent) and see every element selectable, locked blocks clearly marked, and the tree matching the canvas.
 
+**Gate 2: passed** (2026-09-30) on both post-agent fixtures (`packages/app-main/e2e/gate2.test.ts`).
+
+- **Tree matches canvas:** every tagged DOM element maps to a tree node, and every rendered node is mapped (loop-01: 69 nodes, 53 on screen; loop-02: 70 nodes, 57 on screen).
+- **Locked blocks marked:** all 4 rendered locked blocks on each page are outlined and labelled 🔒.
+- **Every ID'd element selectable:** 52 on loop-01 and 55 on loop-02. Most are selected by clicking the canvas; the rest, whose area is covered by children or which have no DOM of their own, are selected from the tree with the canvas outline checked.
+- **Caveat, KI-1 (`docs/known-issues.md`):** on a scaled canvas, Chromium occasionally doesn't deliver a click (up to 3 per run, none in most runs). Those elements are selected from the tree and reported.
+
 ---
 
 ## Phase 3 — Composition

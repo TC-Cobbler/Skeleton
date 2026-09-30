@@ -18,10 +18,16 @@ export async function clickOnCanvas(page: Page, frameTestId: string, target: Loc
     const frame = el as HTMLIFrameElement;
     const r = frame.getBoundingClientRect();
     const cs = getComputedStyle(frame);
-    const scale = Number(/scale\(([\d.]+)\)/.exec(frame.style.transform)?.[1] ?? 1);
+    const scale = Number(frame.style.zoom || 1);
     return { x: r.x, y: r.y, left: parseFloat(cs.borderLeftWidth), top: parseFloat(cs.borderTopWidth), scale };
   });
-  await page.mouse.click(outer.x + (outer.left + inner.x) * outer.scale, outer.y + (outer.top + inner.y) * outer.scale);
+  // Let the browser paint after the scroll (so its hit-test data for the iframe is
+  // current), then move and click like a person would.
+  await target.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const x = outer.x + (outer.left + inner.x) * outer.scale;
+  const y = outer.y + (outer.top + inner.y) * outer.scale;
+  await page.mouse.move(x, y);
+  await page.mouse.click(x, y);
 }
 
 export function canvasFrame(page: Page, frameTestId = "canvas-frame"): FrameLocator {

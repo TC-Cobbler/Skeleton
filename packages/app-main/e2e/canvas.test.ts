@@ -87,6 +87,16 @@ describe("locked blocks on the canvas (T2.4)", () => {
   });
 });
 
+describe("disabled elements", () => {
+  it("can be selected by clicking them on the canvas", async () => {
+    const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    const previous = canvas.getByRole("button", { name: "Previous" });
+    expect(await previous.isDisabled()).toBe(true);
+    await clickOnCanvas(page, "canvas-frame", previous);
+    await expect.poll(() => page.getByTestId("selection-id").textContent()).toBe("ui_etgp9");
+  });
+});
+
 describe("preview widths (T2.7)", () => {
   const frameWidth = (id: string) => page.getByTestId(id).evaluate((el) => (el as HTMLIFrameElement).style.width);
 
@@ -106,7 +116,7 @@ describe("preview widths (T2.7)", () => {
     await page.getByTestId("canvas-frame-tablet").waitFor();
     const scales = await page
       .locator(".frame iframe")
-      .evaluateAll((els) => els.map((el) => Number(/scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform)?.[1])));
+      .evaluateAll((els) => els.map((el) => Number((el as HTMLElement).style.zoom)));
     expect(scales).toHaveLength(3);
     for (const scale of scales) expect(scale).toBeCloseTo(scales[0] as number, 2);
 

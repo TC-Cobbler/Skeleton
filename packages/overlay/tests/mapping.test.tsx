@@ -130,6 +130,18 @@ describe("Overlay", () => {
     expect(layer?.shadowRoot?.innerHTML).toContain("button #ui_trig0");
   });
 
+  it("scrolls to selections made elsewhere, but not to the echo of its own click", () => {
+    const { send } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, nodes });
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    ($("#trigger") as HTMLElement).click();
+    send({ source: "skeleton-host", type: "select", key: "0.0.0" });
+    expect(scrolled).not.toHaveBeenCalled();
+    send({ source: "skeleton-host", type: "select", key: "0.1.0" });
+    expect(scrolled).toHaveBeenCalledOnce();
+  });
+
   it("lets clicks through in interact mode", () => {
     const { sent, send } = setup();
     send({ source: "skeleton-host", type: "tree", file: F, nodes });
@@ -166,5 +178,19 @@ describe("labels", () => {
     expect(labelOf(n({ kind: "locked", name: "expression", element: false, id: null }))).toBe("🔒 {…}");
     expect(labelOf(n({ kind: "locked", name: "OrdersTable", element: true, id: "ui_ordt1" }))).toBe("🔒 OrdersTable #ui_ordt1");
     expect(labelOf(n({ kind: "palette", name: "Button", id: "ui_b1234" }))).toBe("Button #ui_b1234");
+  });
+});
+
+describe("deepestAt", () => {
+  it("finds pointer-events: none children (disabled buttons) under the point", async () => {
+    const { deepestAt } = await import("../src/overlay.js");
+    document.body.innerHTML = `<div id="stack"><button id="prev" disabled style="pointer-events:none">Prev</button><button id="next">Next</button></div>`;
+    const rect = (x: number, w: number) => ({ left: x, right: x + w, top: 0, bottom: 20, width: w, height: 20, x, y: 0, toJSON: () => ({}) }) as DOMRect;
+    ($("#stack") as HTMLElement).getBoundingClientRect = () => rect(0, 200);
+    ($("#prev") as HTMLElement).getBoundingClientRect = () => rect(0, 80);
+    ($("#next") as HTMLElement).getBoundingClientRect = () => rect(100, 80);
+    expect(deepestAt($("#stack"), 40, 10)?.id).toBe("prev");
+    expect(deepestAt($("#stack"), 140, 10)?.id).toBe("next");
+    expect(deepestAt($("#stack"), 90, 10)?.id).toBe("stack");
   });
 });

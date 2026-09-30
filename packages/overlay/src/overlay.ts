@@ -90,8 +90,12 @@ export class Overlay {
         this.post({ source: "skeleton-overlay", type: "mapped", boxes: this.boxes() });
         break;
       case "select":
-        this.selected = msg.key;
-        this.scrollIntoView(msg.key);
+        // An echo of this frame's own click must not scroll the page under the cursor;
+        // only selections made elsewhere (the tree, another frame) are brought into view.
+        if (msg.key !== this.selected) {
+          this.selected = msg.key;
+          this.scrollIntoView(msg.key);
+        }
         break;
       case "highlight":
         this.highlighted = msg.key;
@@ -108,8 +112,16 @@ export class Overlay {
   }
 
   private target(event: Event): OverlayNode | null {
-    const el = event.target;
-    if (!this.index || !(el instanceof Element) || el === this.layer) return null;
+    if (!this.index) return null;
+    // Hit-test by position: browsers don't deliver mouse events to disabled form
+    // controls, and elementFromPoint skips pointer-events: none (disabled shadcn
+    // buttons), so descend from the hit to the deepest element at the point.
+    const at =
+      event instanceof MouseEvent && event.isTrusted
+        ? deepestAt(this.doc.elementFromPoint(event.clientX, event.clientY), event.clientX, event.clientY)
+        : null;
+    const el = at ?? event.target;
+    if (!(el instanceof Element) || el === this.layer) return null;
     return this.index.hit(el);
   }
 
@@ -245,6 +257,23 @@ export class Overlay {
 }
 
 /** Canvas label: element name and ID; locked blocks say what locks them. */
+/**
+ * The deepest descendant of `el` whose box contains the point, children checked
+ * last-first (roughly topmost first). Unlike elementFromPoint this includes elements
+ * with pointer-events: none, such as shadcn buttons while disabled.
+ */
+export function deepestAt(el: Element | null, x: number, y: number): Element | null {
+  if (!el) return null;
+  for (let i = el.children.length - 1; i >= 0; i--) {
+    const child = el.children[i] as Element;
+    const r = child.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0 && x >= r.left && x < r.right && y >= r.top && y < r.bottom) {
+      return deepestAt(child, x, y);
+    }
+  }
+  return el;
+}
+
 export function labelOf(node: OverlayNode): string {
   const id = node.id ? ` #${node.id}` : "";
   if (node.kind !== "locked") return `${node.name}${id}`;

@@ -21,8 +21,21 @@ body {
   background: var(--bg);
   color: var(--fg);
 }
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  overflow: hidden;
+}
 main {
+  box-sizing: border-box;
+  height: 100%;
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 .muted {
   color: var(--muted);
@@ -150,7 +163,8 @@ button.quiet {
   grid-template-rows: 1fr auto;
   grid-template-areas: "sidebar canvas" "bottom bottom";
   gap: 12px;
-  height: calc(100vh - 120px);
+  flex: 1;
+  min-height: 0;
   margin-top: 12px;
 }
 .sidebar {

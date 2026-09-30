@@ -41,3 +41,7 @@ The user's `vite.config.ts` and sources are never touched, and a production buil
 - The overlay depends on React dev-mode fiber internals (`__reactFiber$…`, `.return`, `.memoizedProps`). These are stable in practice but not a public API, so they're isolated in one module of `packages/overlay` with tests against a real React.
 - Offsets are only valid while the served code and the parsed tree come from the same file version. The overlay reports Vite's `afterUpdate`, and the renderer re-parses (T2.6).
 - A custom component that spreads unknown props onto the DOM will show `data-skeleton-loc` in dev. That's harmless, and dev only.
+
+## Amendment: scaling with CSS `zoom` (T2.7)
+
+Frames wider than the canvas are scaled with CSS `zoom` on the iframe, not `transform: scale()`. The inner viewport keeps its real width (1280, 768 or 390 CSS px) either way. Chromium intermittently dropped input to a transformed cross-origin iframe; `zoom` is laid out natively and reduced that, but didn't eliminate it. See `docs/known-issues.md` (KI-1).

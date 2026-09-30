@@ -23,7 +23,16 @@ export function LayersPanel({ nodes, selected, hovered, onScreen, onSelect, onHo
       const next = new Set([...prev].filter((k) => !selected.startsWith(`${k}.`)));
       return next.size === prev.size ? prev : next;
     });
-    list.current?.querySelector(`[data-key="${CSS.escape(selected)}"]`)?.scrollIntoView({ block: "nearest" });
+    // Scroll only the sidebar. scrollIntoView would scroll every ancestor, window
+    // included, and move the canvas under the user's pointer.
+    const row = list.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(selected)}"]`);
+    const scroller = row?.closest<HTMLElement>(".sidebar");
+    if (row && scroller) {
+      const r = row.getBoundingClientRect();
+      const c = scroller.getBoundingClientRect();
+      if (r.top < c.top) scroller.scrollTop -= c.top - r.top;
+      else if (r.bottom > c.bottom) scroller.scrollTop += r.bottom - c.bottom;
+    }
   }, [selected]);
 
   const hidden = (key: string) => [...collapsed].some((k) => key.startsWith(`${k}.`));
