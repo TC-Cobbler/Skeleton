@@ -15,6 +15,7 @@ import { Editor, listSources } from "./project/editor.js";
 import { writeFileAtomic } from "./project/atomic.js";
 import { WorkerChecker } from "./project/checker.js";
 import { scaffoldProject } from "./project/scaffold.js";
+import { Loop, pnpmBuild } from "./project/loop.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -71,6 +72,9 @@ const checkerFor = (root: string): WorkerChecker => {
   }
   return checker;
 };
+const git = new GitService();
+// The editor refuses edits while the loop says the project is with the agent (ADR 011).
+let loop: Loop | null = null;
 const editor = new Editor(
   {
     readFile: (p) => readFile(p, "utf8"),
@@ -80,8 +84,17 @@ const editor = new Editor(
   },
   {
     checker: checkerFor,
+    locked: (root) => loop?.lockReason(root) ?? Promise.resolve(null),
   },
 );
+loop = new Loop({
+  io: { readFile: (p) => readFile(p, "utf8"), writeFile: writeFileAtomic, listSources: (root) => listSources(root, readdir) },
+  git,
+  editor,
+  build: pnpmBuild(),
+  setLocked: (root, locked) => watcher.setLocked(root, locked),
+});
+const handoffLoop = loop;
 // Lazily: app paths are only valid once Electron has initialised.
 let recentStore: RecentProjects | null = null;
 const recent = () => (recentStore ??= new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json")));
@@ -134,12 +147,17 @@ const dispatch = createDispatch(
       const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
       return result.canceled ? null : (result.filePaths[0] ?? null);
     },
-    git: new GitService(),
+    git,
     changes: (root) => watcher.changes(root),
     editor,
+    loop: handoffLoop,
     listSources: (root) => listSources(root, readdir),
     // Warm the typechecker up while the dev server starts, so the first edit doesn't wait for it.
-    opened: (root) => void checkerFor(root),
+    // And read where the handoff loop stands, so a project with the agent opens locked.
+    opened: (root) => {
+      void checkerFor(root);
+      handoffLoop.status(root).catch((error: unknown) => console.error(`[loop] ${root}: can't read the loop state`, error));
+    },
   },
   log,
 );

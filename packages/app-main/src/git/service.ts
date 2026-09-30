@@ -33,18 +33,21 @@ export class GitService {
     return { head, clean: changed.length === 0, changed };
   }
 
-  /** Stages everything and commits. Returns null when there was nothing to commit. */
-  async commit(root: string, message: string): Promise<GitCommit | null> {
+  /**
+   * Stages everything and commits. Returns null when there was nothing to commit,
+   * unless `allowEmpty` (a loop commit that marks a point even with no changes, ADR 011).
+   */
+  async commit(root: string, message: string, options: { allowEmpty?: boolean } = {}): Promise<GitCommit | null> {
     const subject = message.trim();
     if (subject === "") throw new GitError("commit", "message is empty");
     await this.git("commit", root, ["add", "-A"]);
     const staged = await this.git("commit", root, ["diff", "--cached", "--name-only"]);
-    if (staged.trim() === "") return null;
+    if (staged.trim() === "" && !options.allowEmpty) return null;
     const identity = await this.run("git", ["config", "user.email"], root).then(
       () => [],
       () => GIT_FALLBACK_IDENTITY,
     );
-    await this.git("commit", root, [...identity, "commit", "-q", "-m", subject]);
+    await this.git("commit", root, [...identity, "commit", "-q", ...(options.allowEmpty ? ["--allow-empty"] : []), "-m", subject]);
     const [latest] = await this.log(root, 1);
     if (!latest) throw new GitError("commit", "commit succeeded but HEAD is missing");
     return latest;
@@ -111,6 +114,25 @@ export class GitService {
     const made = await this.commit(root, message ?? `skeleton: revert to ${target.slice(0, 7)}`);
     if (!made) throw new GitError("revert", `the project already matches ${target.slice(0, 7)}`);
     return made;
+  }
+
+  /** The files under `paths` (project-relative) as they were in `rev`, by project-relative path. */
+  async snapshot(root: string, rev: string, paths: string[]): Promise<Record<string, string>> {
+    const target = await this.resolve(root, "snapshot", rev);
+    const listed = await this.git("snapshot", root, ["ls-tree", "-r", "-z", "--name-only", target, "--", ...paths]);
+    const out: Record<string, string> = {};
+    for (const file of listed.split("\0").filter(Boolean)) {
+      out[file] = await this.git("snapshot", root, ["show", `${target}:${file}`]);
+    }
+    return out;
+  }
+
+  /** The project's first commit (the scaffold). */
+  async rootCommit(root: string): Promise<string> {
+    const out = await this.git("rootCommit", root, ["rev-list", "--max-parents=0", "HEAD"]);
+    const first = out.trim().split("\n").pop();
+    if (!first) throw new GitError("rootCommit", "the project has no commits");
+    return first;
   }
 
   private async resolve(root: string, operation: string, rev: string): Promise<string> {

@@ -10,6 +10,7 @@ import {
   type HandlerDeps,
 } from "../src/ipc/handlers.js";
 import { EditRefused } from "../src/project/editor.js";
+import { LoopRefused } from "../src/project/loop.js";
 
 const fixtureRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -84,6 +85,19 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         tokens: async () => ({ file: "src/styles/globals.css", css: await readFile(path.join(fixtureRoot, "src/styles/globals.css"), "utf8") }),
         promote: async () => Promise.reject(new Error("unused")),
         keep: async () => Promise.reject(new Error("unused")),
+      },
+      loop: {
+        notes: async () => ({ notes: [], replies: [] }),
+        writeNote: async (_root, op) => {
+          if (op.op === "delete") throw new LoopRefused("no note n_aaaaaa");
+          return { notes: [], replies: [] };
+        },
+        status: async () => ({ state: "with-user", handoff: null, pass: null, next: 1, summary: null }),
+        handoff: async () => {
+          throw new LoopRefused("The project doesn't build");
+        },
+        takeBack: async () => ({ state: "with-user", handoff: null, pass: null, next: 2, summary: null }),
+        revert: async () => ({ state: "with-user", handoff: null, pass: null, next: 2, summary: null }),
       },
       ...overrides,
     },
@@ -637,5 +651,34 @@ describe("violations (T4.6)", () => {
       ok: false,
       error: { code: "bad-request" },
     });
+  });
+});
+
+describe("notes and the loop (Phase 5)", () => {
+  it("validates note ops before they reach the loop", async () => {
+    const { dispatch } = setup();
+    const request = (op: unknown) => ({ projectRoot: fixtureRoot, op });
+    for (const bad of [
+      null,
+      { op: "add", target: "tbl", type: "build", text: "x" },
+      { op: "add", target: "ui_tbl01", type: "todo", text: "x" },
+      { op: "add", target: "ui_tbl01", type: "build", text: "x".repeat(2001) },
+      { op: "update", id: "note1", status: "open" },
+      { op: "update", id: "n_aaaaaa", status: "done" },
+      { op: "wipe" },
+    ]) {
+      await expect(dispatch("notes:write", request(bad)), JSON.stringify(bad)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    }
+    await expect(dispatch("notes:write", request({ op: "add", target: "ui_tbl01", type: "question", text: "Empty state?" }))).resolves.toMatchObject({ ok: true });
+    await expect(dispatch("notes:write", request({ op: "update", id: "n_aaaaaa", target: "ui_crd01" }))).resolves.toMatchObject({ ok: true });
+    await expect(dispatch("notes:write", request({ op: "delete", id: "n_aaaaaa" }))).resolves.toMatchObject({ ok: false, error: { code: "edit-refused", message: "no note n_aaaaaa" } });
+  });
+
+  it("answers loop status, and passes refusals back as edit-refused", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("loop:status", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: true, value: { state: "with-user", next: 1 } });
+    await expect(dispatch("loop:handoff", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: false, error: { code: "edit-refused" } });
+    await expect(dispatch("loop:takeBack", { projectRoot: "relative" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
+    await expect(dispatch("loop:revert", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: true });
   });
 });

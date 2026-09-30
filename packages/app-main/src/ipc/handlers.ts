@@ -2,7 +2,7 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree, exportedNames, readRoutes, readTheme, sourceVersion, tokenUsage, type TokenWrite } from "@skeleton/core";
+import { buildTree, exportedNames, NOTE_TEXT_MAX, NOTE_TYPES, readRoutes, readTheme, sourceVersion, tokenUsage, type NoteOp, type NoteType, type TokenWrite } from "@skeleton/core";
 import {
   ELEMENTS,
   GLOBALS_CSS,
@@ -18,6 +18,7 @@ import {
 import type { GitService } from "../git/service.js";
 import { EditRefused, EditRolledBack, type Editor } from "../project/editor.js";
 import { listViolations } from "../project/violations.js";
+import { LoopRefused, type Loop } from "../project/loop.js";
 import {
   isChannel,
   type AppInfo,
@@ -45,6 +46,7 @@ import {
   type PageTreeRequest,
   type ProjectCreateRequest,
   type ProjectCreateResponse,
+  type NoteWriteRequest,
   type TokenSheet,
   type TokenWriteRequest,
   type ViolationKeepRequest,
@@ -77,6 +79,8 @@ export interface HandlerDeps {
   editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history" | "tokens" | "promote" | "keep">;
   /** Project-relative .tsx/.jsx files under src/. */
   listSources: (projectRoot: string) => Promise<string[]>;
+  /** The handoff loop (Phase 5): notes, hand off, take back, revert. */
+  loop: Pick<Loop, "notes" | "writeNote" | "status" | "handoff" | "takeBack" | "revert">;
   /** A project was opened or created: get ready to edit it (starts the typechecker warming up). */
   opened?: (projectRoot: string) => void;
 }
@@ -204,6 +208,12 @@ const validators: Validators = {
     }
     return { projectRoot, writes: writes.map(tokenWriteOf) };
   },
+  "notes:read": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "notes:write": (raw): NoteWriteRequest => ({ projectRoot: projectRootOf(raw), op: noteOpOf((raw as Record<string, unknown>)["op"]) }),
+  "loop:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "loop:handoff": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "loop:takeBack": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "loop:revert": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:changes": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
@@ -250,6 +260,53 @@ function idOf(obj: Record<string, unknown>, label: string, key: string): string 
   const v = obj[key];
   if (typeof v !== "string" || !UI_ID.test(v)) throw new HandlerError("bad-request", `edit.${label} must be a data-ui-id`);
   return v;
+}
+
+const NOTE_ID = /^n_[a-z0-9]{6}$/;
+
+function noteOpOf(raw: unknown): NoteOp {
+  if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "op must be an object");
+  const o = raw as Record<string, unknown>;
+  const has = (key: string) => o[key] !== undefined;
+  const target = (): string => {
+    const v = o["target"];
+    if (typeof v !== "string" || !UI_ID.test(v)) throw new HandlerError("bad-request", "op.target must be a data-ui-id");
+    return v;
+  };
+  const type = (): NoteType => {
+    if (!NOTE_TYPES.includes(o["type"] as NoteType)) throw new HandlerError("bad-request", "op.type must be build, behaviour or question");
+    return o["type"] as NoteType;
+  };
+  const text = (): string => {
+    const v = o["text"];
+    if (typeof v !== "string" || v.length > NOTE_TEXT_MAX) throw new HandlerError("bad-request", `op.text must be a string of at most ${NOTE_TEXT_MAX} characters`);
+    return v;
+  };
+  const id = (): string => {
+    const v = o["id"];
+    if (typeof v !== "string" || !NOTE_ID.test(v)) throw new HandlerError("bad-request", "op.id must be a note id");
+    return v;
+  };
+  switch (o["op"]) {
+    case "add":
+      return { op: "add", target: target(), type: type(), text: text() };
+    case "update": {
+      const status = o["status"];
+      if (has("status") && status !== "open" && status !== "resolved") throw new HandlerError("bad-request", "op.status must be open or resolved");
+      return {
+        op: "update",
+        id: id(),
+        ...(has("type") ? { type: type() } : {}),
+        ...(has("text") ? { text: text() } : {}),
+        ...(has("status") ? { status: status as "open" | "resolved" } : {}),
+        ...(has("target") ? { target: target() } : {}),
+      };
+    }
+    case "delete":
+      return { op: "delete", id: id() };
+    default:
+      throw new HandlerError("bad-request", `unknown note op ${JSON.stringify(o["op"])}`);
+  }
 }
 
 function pageIntentOf(raw: unknown): PageIntent {
@@ -470,6 +527,12 @@ function createHandlers(deps: HandlerDeps): Handlers {
       await editing(() => deps.editor.keep(projectRoot, violation));
       return { utility: null, history: await deps.editor.history(projectRoot) };
     },
+    "notes:read": async ({ projectRoot }) => looping(() => deps.loop.notes(projectRoot)),
+    "notes:write": async ({ projectRoot, op }) => looping(() => deps.loop.writeNote(projectRoot, op)),
+    "loop:status": async ({ projectRoot }) => deps.loop.status(projectRoot),
+    "loop:handoff": async ({ projectRoot }) => looping(() => deps.loop.handoff(projectRoot)),
+    "loop:takeBack": async ({ projectRoot }) => looping(() => deps.loop.takeBack(projectRoot)),
+    "loop:revert": async ({ projectRoot }) => looping(() => deps.loop.revert(projectRoot)),
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
     "page:edit": async ({ projectRoot, file, edit }) => {
       await readPage(projectRoot, file); // inside the project, and exists
@@ -545,6 +608,16 @@ async function editing<T>(task: () => Promise<T>): Promise<T> {
   } catch (cause) {
     if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
     if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
+    throw cause;
+  }
+}
+
+/** Runs a loop call, turning its refusals into IPC errors (nothing was written). */
+async function looping<T>(task: () => Promise<T>): Promise<T> {
+  try {
+    return await task();
+  } catch (cause) {
+    if (cause instanceof LoopRefused) throw new HandlerError("edit-refused", cause.message);
     throw cause;
   }
 }
