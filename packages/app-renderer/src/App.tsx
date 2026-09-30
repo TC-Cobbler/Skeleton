@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppInfo, EditHistory, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
+import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite } from "@skeleton/app-main/ipc";
 import type { DropTarget } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
@@ -18,6 +18,7 @@ import { useDevServer } from "./useDevServer.js";
 import { usePageTree } from "./usePageTree.js";
 import { useProjectRevision } from "./useProjectRevision.js";
 import { ProjectPicker } from "./ProjectPicker.js";
+import { TokensPanel, useTokens } from "./TokensPanel.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
@@ -116,6 +117,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [revision, setRevision] = useState(0);
   const pages = usePages(project.projectRoot, revision);
   const palette = usePalette(project.projectRoot, revision);
+  const tokens = useTokens(project.projectRoot, revision);
   const [pathname, setPathname] = useState("/");
   const [navigate, setNavigate] = useState<{ path: string } | null>(null);
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
@@ -175,6 +177,24 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     },
     [file, project.projectRoot, page.reload, selectId, setEditError, noteUnchecked],
   );
+  // Token writes (T4.1): through the token writer in main, undoable like edits.
+  const setTokenSheet = tokens.set;
+  const writeTokens = useCallback(
+    (writes: TokenWrite[]) => {
+      call("tokens:write", { projectRoot: project.projectRoot, writes }).then(
+        (result) => {
+          setTokenSheet(result.sheet);
+          setRevision((r) => r + 1);
+        },
+        (err: unknown) => {
+          setRevision((r) => r + 1);
+          setEditError(err instanceof Error ? err.message.replace(/^tokens:write: /, "") : String(err));
+        },
+      );
+    },
+    [project.projectRoot, setTokenSheet, setEditError],
+  );
+  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens">("element");
   const moveNode = (key: string, target: DropTarget) => {
     const moved = page.nodes.find((n) => n.key === key)?.node;
     const parentKey = parentKeyOf(key);
@@ -380,24 +400,38 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         />
       </aside>
       <aside className="inspector-panel" aria-label="Inspector">
-        <SelectionPanel
-          projectRoot={project.projectRoot}
-          file={file}
-          node={selectedNode?.node ?? null}
-          hovered={hovered !== null}
-          cannotDelete={selected ? deletion(selected).reason : null}
-          confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
-          onDelete={() => selected && requestDelete(selected)}
-          onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
-          onCancel={() => setConfirmDelete(null)}
-        />
-        {selectedNode && (
-          <PropertiesPanel
-            node={selectedNode.node}
-            schema={palette.palette?.elements[selectedNode.node.name] ?? null}
-            layout={palette.palette?.layout ?? null}
-            onEdit={(intent) => edit(intent)}
-          />
+        <div className="segmented tabs" role="tablist" aria-label="Inspector">
+          {(["element", "tokens"] as const).map((tab) => (
+            <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
+              {tab === "element" ? "Element" : "Tokens"}
+            </button>
+          ))}
+        </div>
+        {inspectorTab === "tokens" && (
+          <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={null} onWrite={writeTokens} onHover={() => undefined} />
+        )}
+        {inspectorTab === "element" && (
+          <>
+            <SelectionPanel
+              projectRoot={project.projectRoot}
+              file={file}
+              node={selectedNode?.node ?? null}
+              hovered={hovered !== null}
+              cannotDelete={selected ? deletion(selected).reason : null}
+              confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
+              onDelete={() => selected && requestDelete(selected)}
+              onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
+              onCancel={() => setConfirmDelete(null)}
+            />
+            {selectedNode && (
+              <PropertiesPanel
+                node={selectedNode.node}
+                schema={palette.palette?.elements[selectedNode.node.name] ?? null}
+                layout={palette.palette?.layout ?? null}
+                onEdit={(intent) => edit(intent)}
+              />
+            )}
+          </>
         )}
       </aside>
       <Canvas

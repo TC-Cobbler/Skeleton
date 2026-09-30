@@ -2,10 +2,10 @@
 // git, child processes, AST). This is the only module the renderer imports from
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
-import type { PageTree, RouteInfo } from "@skeleton/core";
+import type { PageTree, RouteInfo, Theme, TokenWrite } from "@skeleton/core";
 import type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
-export type { PageTree, UiNode, NodeKind, RouteInfo } from "@skeleton/core";
+export type { PageTree, UiNode, NodeKind, RouteInfo, ColourMode, Theme, ThemeToken, TokenGroup, TokenWrite } from "@skeleton/core";
 export type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
 /** A page's parsed tree plus the version of the text it was parsed from (core's sourceVersion). */
@@ -263,6 +263,23 @@ export interface PageEditResult {
   unchecked: string | null;
 }
 
+/** The project's design tokens (T4.1), read from its globals.css. */
+export interface TokenSheet extends Theme {
+  /** Project-relative path of the token file. */
+  file: string;
+}
+
+export interface TokenWriteRequest extends ProjectRootRequest {
+  /** Values to set, each in the mode it applies to; written together as one undoable step. */
+  writes: TokenWrite[];
+}
+
+export interface TokenWriteResult {
+  /** The tokens after the write. */
+  sheet: TokenSheet;
+  history: EditHistory;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
@@ -281,6 +298,10 @@ export interface IpcContract {
   "project:page": { request: PageOpRequest; response: PageOpResult };
   /** The curated components and primitives, checked against the project's files (T3.1). */
   "palette:list": { request: ProjectRootRequest; response: Palette };
+  /** The project's design tokens (T4.1). */
+  "tokens:read": { request: ProjectRootRequest; response: TokenSheet };
+  /** Set token values through the token writer (T4.1, T4.4); undoable like any edit. */
+  "tokens:write": { request: TokenWriteRequest; response: TokenWriteResult };
   /** Pages from the project's router (T2.5). */
   "project:pages": { request: ProjectRootRequest; response: PageList };
   /** File-change revision for re-parsing (T2.6); starts watching on first call. */
@@ -317,6 +338,8 @@ export const CHANNELS = [
   "edit:history",
   "project:page",
   "palette:list",
+  "tokens:read",
+  "tokens:write",
   "project:pages",
   "project:changes",
   "project:create",

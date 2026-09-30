@@ -482,6 +482,36 @@ describe("Editor: undo and redo (T3.8)", () => {
   });
 });
 
+describe("Editor: tokens (T4.1)", () => {
+  const CSS = path.join(ROOT, "src/styles/globals.css");
+
+  it("writes one token through the token writer, as one undoable step", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const before = p.files.get(CSS) as string;
+    await editor.tokens(ROOT, [{ name: "--radius-button", value: "calc(var(--radius) * 1.2)", mode: null }]);
+    const after = p.files.get(CSS) as string;
+    const changed = after.split("\n").filter((l, i) => l !== before.split("\n")[i]);
+    expect(changed).toEqual(["  --radius-button: calc(var(--radius) * 1.2);"]);
+    expect(await editor.history(ROOT)).toEqual({ undo: "Set --radius-button", redo: null });
+    await editor.undo(ROOT);
+    expect(p.files.get(CSS)).toBe(before);
+  });
+
+  it("writes dark values to .dark, and refuses unknown tokens without writing", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    await editor.tokens(ROOT, [{ name: "--primary", value: "oklch(0.6 0.2 250)", mode: "dark" }]);
+    const css = p.files.get(CSS) as string;
+    expect(css.slice(css.indexOf(".dark {"))).toContain("--primary: oklch(0.6 0.2 250);");
+    expect(css.slice(0, css.indexOf(".dark {"))).toContain("--primary: oklch(0.205 0 0);");
+    expect(await editor.history(ROOT)).toMatchObject({ undo: "Set --primary (dark)" });
+    p.writes.length = 0;
+    await expect(editor.tokens(ROOT, [{ name: "--nope", value: "1px", mode: null }])).rejects.toThrow(EditRefused);
+    expect(p.writes).toEqual([]);
+  });
+});
+
 describe("listSources", () => {
   it("walks src/ for .tsx and .jsx, skipping node_modules, dist and dotfiles", async () => {
     const tree: Record<string, { name: string; dir: boolean }[]> = {

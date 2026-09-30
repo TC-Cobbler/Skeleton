@@ -43,6 +43,29 @@ export {
   type RemoveOptions,
 } from "./ops.js";
 export { readTokens, writeTokens, TokenError, type Token, type TokenBlock, type TokenUpdate } from "./tokens.js";
+export {
+  evaluate,
+  tryEvaluate,
+  formatQuantity,
+  referencedTokens,
+  substituteVars,
+  CalcError,
+  type Quantity,
+  type TokenLookup,
+} from "./calc.js";
+export {
+  readTheme,
+  dependentsOf,
+  setTokens,
+  lookupFor,
+  isPlumbing,
+  groupOf,
+  type ColourMode,
+  type Theme,
+  type ThemeToken,
+  type TokenGroup,
+  type TokenWrite,
+} from "./theme.js";
 export { findViolations, type Violation, type ViolationKind } from "./violations.js";
 export {
   analyseTakeBack,

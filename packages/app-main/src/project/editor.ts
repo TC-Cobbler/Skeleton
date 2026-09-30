@@ -26,10 +26,13 @@ import {
   setProp,
   setRoutePath,
   setText,
+  setTokens,
+  TokenError,
   type EditResult,
+  type TokenWrite,
   type RouteInfo,
 } from "@skeleton/core";
-import { componentFor, pageNameError, PALETTE, renderPage, templateImports } from "@skeleton/templates";
+import { componentFor, GLOBALS_CSS, pageNameError, PALETTE, renderPage, templateImports } from "@skeleton/templates";
 import type { EditHistory, EditIntent, HistoryStepResult, PageEditResult, PageIntent, PageOpResult } from "../ipc/contract.js";
 import { introduced, type Checker, type Diagnostic } from "./checker.js";
 import { formatEdited } from "./format.js";
@@ -92,6 +95,29 @@ export class Editor {
   /** Add, rename or delete a page: its route in src/router.tsx and its file (T3.6). */
   page(projectRoot: string, intent: PageIntent): Promise<PageOpResult> {
     return this.enqueue(projectRoot, () => this.runPage(projectRoot, intent));
+  }
+
+  /**
+   * Set token values in globals.css through the token writer (T4.1). One undoable
+   * step; CSS isn't typechecked, so it's written as it is.
+   */
+  tokens(projectRoot: string, writes: readonly TokenWrite[]): Promise<{ file: string; css: string }> {
+    return this.enqueue(projectRoot, async () => {
+      const before = await this.io.readFile(path.join(projectRoot, GLOBALS_CSS));
+      let after: string;
+      try {
+        after = setTokens(before, writes);
+      } catch (cause) {
+        if (cause instanceof TokenError) throw new EditRefused(`token write refused: ${cause.message}`, { cause });
+        throw cause;
+      }
+      if (after !== before) {
+        const changes = [{ file: GLOBALS_CSS, before, after }];
+        await this.commit(projectRoot, changes);
+        this.record(projectRoot, tokenLabel(writes), changes);
+      }
+      return { file: GLOBALS_CSS, css: after };
+    });
   }
 
   /** What Undo and Redo would do next. */
@@ -431,6 +457,13 @@ function labelFor(edit: EditIntent, before: string): string {
     case "setClass":
       return `Change layout of ${nameOf(edit.id)}`;
   }
+}
+
+/** "Set --radius-button", "Set --primary (dark)", "Set 2 tokens". */
+function tokenLabel(writes: readonly TokenWrite[]): string {
+  const [first] = writes;
+  if (!first || writes.length > 1) return `Set ${writes.length} tokens`;
+  return `Set ${first.name}${first.mode === "dark" ? " (dark)" : ""}`;
 }
 
 /** One file's change: `before: null` creates it, `after: null` deletes it. */

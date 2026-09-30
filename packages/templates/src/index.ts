@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mintId, type Random } from "@skeleton/core";
+import { mintId, readTokens, type Random, type Token } from "@skeleton/core";
 
 /** Project-relative POSIX path → file contents. */
 export type ProjectFiles = Record<string, string>;
@@ -13,6 +13,17 @@ export const TEMPLATE_DIR = fileURLToPath(new URL("../project/", import.meta.url
 
 /** Files stored under a different name in the template (npm strips a real .gitignore). */
 const RENAMES: Record<string, string> = { gitignore: ".gitignore" };
+
+/** Where a project's tokens live (PRD §8). Only the token writer writes it. */
+export const GLOBALS_CSS = "src/styles/globals.css";
+
+let templateTokenCache: Token[] | null = null;
+
+/** The scaffold's tokens, as a new project starts: the defaults a detached token re-attaches to (T4.1). */
+export function templateTokens(): Token[] {
+  templateTokenCache ??= readTokens(readFileSync(join(TEMPLATE_DIR, GLOBALS_CSS), "utf8"));
+  return templateTokenCache;
+}
 
 export function loadTemplate(dir: string = TEMPLATE_DIR): ProjectFiles {
   const out: ProjectFiles = {};

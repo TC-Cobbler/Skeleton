@@ -2,8 +2,19 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree, exportedNames, readRoutes, sourceVersion } from "@skeleton/core";
-import { ELEMENTS, GRID_CLASSES, PALETTE, PALETTE_GROUPS, STACK_CLASSES, moduleFile, projectNameError, templateImports } from "@skeleton/templates";
+import { buildTree, exportedNames, readRoutes, readTheme, sourceVersion, type TokenWrite } from "@skeleton/core";
+import {
+  ELEMENTS,
+  GLOBALS_CSS,
+  GRID_CLASSES,
+  PALETTE,
+  PALETTE_GROUPS,
+  STACK_CLASSES,
+  moduleFile,
+  projectNameError,
+  templateImports,
+  templateTokens,
+} from "@skeleton/templates";
 import type { GitService } from "../git/service.js";
 import { EditRefused, EditRolledBack, type Editor } from "../project/editor.js";
 import {
@@ -33,6 +44,8 @@ import {
   type PageTreeRequest,
   type ProjectCreateRequest,
   type ProjectCreateResponse,
+  type TokenSheet,
+  type TokenWriteRequest,
   type RequestOf,
   type ResponseOf,
 } from "./contract.js";
@@ -57,7 +70,7 @@ export interface HandlerDeps {
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
   changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
-  editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history">;
+  editor: Pick<Editor, "apply" | "page" | "undo" | "redo" | "history" | "tokens">;
   /** A project was opened or created: get ready to edit it (starts the typechecker warming up). */
   opened?: (projectRoot: string) => void;
 }
@@ -166,6 +179,15 @@ const validators: Validators = {
   "edit:history": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:page": (raw): PageOpRequest => ({ projectRoot: projectRootOf(raw), page: pageIntentOf((raw as Record<string, unknown>)["page"]) }),
   "palette:list": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "tokens:read": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "tokens:write": (raw): TokenWriteRequest => {
+    const projectRoot = projectRootOf(raw);
+    const writes = (raw as Record<string, unknown>)["writes"];
+    if (!Array.isArray(writes) || writes.length === 0 || writes.length > 50) {
+      throw new HandlerError("bad-request", "writes must be a list of 1 to 50 token writes");
+    }
+    return { projectRoot, writes: writes.map(tokenWriteOf) };
+  },
   "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "project:changes": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
@@ -237,6 +259,20 @@ function pageIntentOf(raw: unknown): PageIntent {
     default:
       throw new HandlerError("bad-request", `unknown page op ${JSON.stringify(p["op"])}`);
   }
+}
+
+/** A token value: one line of CSS, nothing that could end the declaration or open a comment. */
+const TOKEN_VALUE = /^[^;{}\n\r]{1,200}$/;
+
+function tokenWriteOf(raw: unknown): TokenWrite {
+  if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "each write must be an object");
+  const { name, value, mode } = raw as Record<string, unknown>;
+  if (typeof name !== "string" || !/^--[a-z][a-z0-9-]{0,63}$/.test(name)) throw new HandlerError("bad-request", "write.name must be a token name like --radius");
+  if (typeof value !== "string" || !TOKEN_VALUE.test(value) || value.trim() === "" || value.includes("/*")) {
+    throw new HandlerError("bad-request", `write.value for ${name} must be one CSS value`);
+  }
+  if (mode !== null && mode !== "light" && mode !== "dark") throw new HandlerError("bad-request", "write.mode must be light, dark or null");
+  return { name, value: value.trim(), mode };
 }
 
 function classesOf(value: unknown, label: string): string[] {
@@ -382,6 +418,20 @@ function createHandlers(deps: HandlerDeps): Handlers {
       );
       return { groups: [...PALETTE_GROUPS], items, elements: { ...ELEMENTS }, layout: { stack: [...STACK_CLASSES], grid: [...GRID_CLASSES] } };
     },
+    "tokens:read": async ({ projectRoot }) => {
+      let css: string;
+      try {
+        css = await deps.readFile(resolveInside(projectRoot, GLOBALS_CSS));
+      } catch (err) {
+        if (isNodeError(err) && err.code === "ENOENT") throw new HandlerError("not-found", `${GLOBALS_CSS} not found`);
+        throw err;
+      }
+      return sheetOf(css);
+    },
+    "tokens:write": async ({ projectRoot, writes }) => {
+      const { css } = await editing(() => deps.editor.tokens(projectRoot, writes));
+      return { sheet: sheetOf(css), history: await deps.editor.history(projectRoot) };
+    },
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
     "page:edit": async ({ projectRoot, file, edit }) => {
       await readPage(projectRoot, file); // inside the project, and exists
@@ -440,6 +490,14 @@ function createHandlers(deps: HandlerDeps): Handlers {
     "devserver:stop": async ({ projectRoot }) => deps.devServer.stop(projectRoot),
     "devserver:status": async ({ projectRoot, sinceSeq }) => deps.devServer.status(projectRoot, sinceSeq),
   };
+}
+
+function sheetOf(css: string): TokenSheet {
+  try {
+    return { file: GLOBALS_CSS, ...readTheme(css, templateTokens()) };
+  } catch (cause) {
+    throw new HandlerError("failed", `${GLOBALS_CSS} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
 }
 
 /** Runs an editor call, turning its refusals and rollbacks into IPC errors. */
