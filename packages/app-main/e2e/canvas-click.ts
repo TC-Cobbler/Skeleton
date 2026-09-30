@@ -102,3 +102,21 @@ export async function placeFromPalette(page: Page, paletteId: string, target: Lo
   if (id.startsWith("error: ")) throw new Error(`placing ${paletteId} failed: ${id.slice(7)}`);
   return id;
 }
+
+/** Waits until the canvas shows, and has mapped, the page file at `version` (core's sourceVersion). */
+export async function waitForCanvas(page: Page, version: string, frameTestId = "canvas-desktop"): Promise<void> {
+  await page.locator(`[data-testid="${frameTestId}"][data-version="${version}"]`).waitFor({ timeout: 15_000 });
+}
+
+/** Drags from one point on the canvas to another with the real mouse (a move, T3.3). */
+export async function moveOnCanvas(page: Page, source: Locator, target: Locator, aim: Aim, frameTestId = "canvas-frame"): Promise<void> {
+  await source.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
+  const from = await canvasPoint(page, frameTestId, source);
+  const to = await canvasPoint(page, frameTestId, target, aim);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 6, from.y + 6, { steps: 2 });
+  await page.mouse.move(to.x, to.y, { steps: 10 });
+  await page.waitForTimeout(100);
+  await page.mouse.up();
+}

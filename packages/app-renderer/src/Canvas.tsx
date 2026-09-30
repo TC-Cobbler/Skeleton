@@ -20,9 +20,12 @@ export interface CanvasEvents {
   /** Vite applied an update: the page should be re-parsed. */
   onUpdated?: () => void;
   onLocation?: (pathname: string) => void;
-  onMapped?: (boxes: NodeBox[]) => void;
+  /** What's on screen, for the tree at `version` (see the overlay's `mapped` message). */
+  onMapped?: (boxes: NodeBox[], version: string) => void;
   /** Where the current drag would land in a frame (null: nowhere in it). */
   onDropTarget?: (frame: PreviewWidth, target: DropTarget | null) => void;
+  /** A node was dragged to a new place on the canvas (T3.3). */
+  onMove?: (key: string, target: DropTarget) => void;
 }
 
 /** A drag in progress over the canvas, in window coordinates (T3.2). */
@@ -49,6 +52,8 @@ export interface CanvasProps extends CanvasEvents {
   /** Preview the app in dark mode (T2.8). */
   dark: boolean;
   drag: CanvasDrag | null;
+  /** The app on screen is mapped to the tree at `version` (null while catching up with an edit). */
+  synced: boolean;
 }
 
 /**
@@ -183,10 +188,13 @@ function CanvasFrame(props: FrameProps) {
           p.onLocation?.(msg.pathname);
           break;
         case "mapped":
-          if (p.primary) p.onMapped?.(msg.boxes);
+          if (p.primary) p.onMapped?.(msg.boxes, msg.version);
           break;
         case "drop-target":
           p.onDropTarget?.(p.width, msg.target);
+          break;
+        case "move":
+          p.onMove?.(msg.key, msg.target);
           break;
       }
     };
@@ -199,6 +207,16 @@ function CanvasFrame(props: FrameProps) {
   useEffect(() => post({ source: "skeleton-host", type: "highlight", key: props.highlighted }), [props.highlighted]);
   useEffect(() => post({ source: "skeleton-host", type: "mode", mode: props.mode }), [props.mode]);
   useEffect(() => post({ source: "skeleton-host", type: "theme", dark: props.dark }), [props.dark]);
+  // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
+  // Skeleton's window, so the overlay doesn't see the key itself.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") post({ source: "skeleton-host", type: "drag-end" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [origin]);
+
   // Forward a drag over this frame to its overlay, in the frame's own (unscaled)
   // coordinates. The iframe ignores the pointer during a drag (see .is-dragging).
   const dragInside = useRef(false);
@@ -231,10 +249,12 @@ function CanvasFrame(props: FrameProps) {
       ref={box}
       className="frame"
       data-testid={`canvas-${width}`}
+      data-version={props.synced && props.version ? props.version : undefined}
       style={{ width: pixels * scale }}
     >
       <div className="frame-label muted">
         {width} · {pixels}px{scale < 1 ? ` · ${Math.round(scale * 100)}%` : ""}
+        {!props.synced && " · updating…"}
       </div>
       <iframe
         ref={frame}

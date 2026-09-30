@@ -4,7 +4,7 @@
 
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
-import { buildIdIndex, EditOpError, fillMissingIds, insert, type EditResult } from "@skeleton/core";
+import { buildIdIndex, EditOpError, fillMissingIds, insert, move, type EditResult } from "@skeleton/core";
 import { PALETTE, templateImports } from "@skeleton/templates";
 import type { EditIntent, PageEditResult } from "../ipc/contract.js";
 
@@ -55,6 +55,10 @@ export class Editor {
           result = insert(before, edit.parentId, edit.index, jsx, { imports: templateImports(jsx) });
           break;
         }
+        case "move":
+          result = move(before, edit.ref, edit.newParentId, edit.index);
+          select = "id" in edit.ref ? edit.ref.id : null;
+          break;
       }
     } catch (cause) {
       if (cause instanceof EditOpError) throw new EditRefused(cause.message, { cause });

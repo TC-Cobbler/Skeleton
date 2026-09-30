@@ -199,21 +199,25 @@ const validators: Validators = {
 
 const UI_ID = /^ui_[a-z0-9]{5}$/;
 
+function idOf(obj: Record<string, unknown>, label: string, key: string): string {
+  const v = obj[key];
+  if (typeof v !== "string" || !UI_ID.test(v)) throw new HandlerError("bad-request", `edit.${label} must be a data-ui-id`);
+  return v;
+}
+
+function indexOf(obj: Record<string, unknown>, label: string, key: string): number {
+  const v = obj[key];
+  if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 10_000) {
+    throw new HandlerError("bad-request", `edit.${label} must be a non-negative integer`);
+  }
+  return v;
+}
+
 function editIntentOf(raw: unknown): EditIntent {
   if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "edit must be an object");
   const e = raw as Record<string, unknown>;
-  const id = (key: string): string => {
-    const v = e[key];
-    if (typeof v !== "string" || !UI_ID.test(v)) throw new HandlerError("bad-request", `edit.${key} must be a data-ui-id`);
-    return v;
-  };
-  const index = (key: string): number => {
-    const v = e[key];
-    if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 10_000) {
-      throw new HandlerError("bad-request", `edit.${key} must be a non-negative integer`);
-    }
-    return v;
-  };
+  const id = (key: string): string => idOf(e, key, key);
+  const index = (key: string): number => indexOf(e, key, key);
   switch (e["op"]) {
     case "insert": {
       const paletteId = e["paletteId"];
@@ -221,6 +225,13 @@ function editIntentOf(raw: unknown): EditIntent {
         throw new HandlerError("bad-request", "edit.paletteId must name a placeable palette entry");
       }
       return { op: "insert", parentId: id("parentId"), index: index("index"), paletteId };
+    }
+    case "move": {
+      const ref = e["ref"];
+      if (typeof ref !== "object" || ref === null) throw new HandlerError("bad-request", "edit.ref must be an object");
+      const r = ref as Record<string, unknown>;
+      const nodeRef = "id" in r ? { id: idOf(r, "ref.id", "id") } : { parentId: idOf(r, "ref.parentId", "parentId"), index: indexOf(r, "ref.index", "index") };
+      return { op: "move", ref: nodeRef, newParentId: id("newParentId"), index: index("index") };
     }
     default:
       throw new HandlerError("bad-request", `unknown edit op ${JSON.stringify(e["op"])}`);

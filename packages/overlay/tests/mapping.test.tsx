@@ -41,11 +41,11 @@ function Page({ rows, shift = 0, version = V }: { rows: string[]; shift?: number
 }
 
 const nodes: OverlayNode[] = [
-  { key: "0", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true },
-  { key: "0.0", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110 , drop: false },
-  { key: "0.0.0", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105 , drop: false },
-  { key: "0.1", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200 , drop: false },
-  { key: "0.1.0", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190 , drop: false },
+  { key: "0", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true, move: false },
+  { key: "0.0", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110, drop: false, move: true },
+  { key: "0.0.0", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105, drop: false, move: false },
+  { key: "0.1", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200, drop: false, move: true },
+  { key: "0.1.0", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190, drop: false, move: false },
 ];
 
 let container: HTMLElement;
@@ -211,6 +211,70 @@ describe("Overlay", () => {
     expect(target()).toBeNull();
     flush();
     expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).not.toContain("data-drop-indicator");
+  });
+
+  it("moves the nearest movable node by dragging on the canvas, without selecting (T3.3)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    const box = (y: number, h: number) => () => ({ x: 0, y, left: 0, top: y, right: 100, bottom: y + h, width: 100, height: h, toJSON: () => ({}) }) as DOMRect;
+    ($("#root-div") as HTMLElement).getBoundingClientRect = box(0, 100);
+    ($(".dialog") as HTMLElement).getBoundingClientRect = box(0, 40);
+    ($("#trigger") as HTMLElement).getBoundingClientRect = box(10, 20);
+    document.querySelectorAll<HTMLElement>(".row").forEach((el, i) => (el.getBoundingClientRect = box(50 + i * 20, 20)));
+    const at = { el: $("#trigger") };
+    document.elementFromPoint = () => at.el;
+    const mouse = (type: string, el: Element, x: number, y: number, buttons = 1) =>
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons }));
+
+    // Pressing on the trigger (wrapped by the locked Dialog) grabs the Dialog, the nearest movable node.
+    mouse("pointerdown", $("#trigger"), 50, 20);
+    mouse("pointermove", $("#trigger"), 51, 21); // under the threshold: still a click
+    at.el = document.querySelectorAll(".row")[2] as Element;
+    mouse("pointermove", at.el, 50, 85);
+    flush();
+    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).toContain("Move 🔒 Dialog into div #ui_root0");
+    const before = sent.length;
+    mouse("pointerup", at.el, 50, 85, 0);
+    mouse("click", at.el, 50, 85, 0);
+    // Rows sit at y 50–110; below the last row's middle, with the Dialog taken out: index 1.
+    expect(sent.slice(before)).toEqual([{ source: "skeleton-overlay", type: "move", key: "0.0", target: { parentKey: "0", index: 1 } }]);
+    flush();
+    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).not.toContain("data-drop-indicator");
+  });
+
+  it("treats a press without movement as a click, and Escape cancels a move", () => {
+    const { sent, send } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    document.elementFromPoint = () => $("#trigger");
+    const mouse = (type: string, x: number, y: number, buttons = 1) =>
+      $("#trigger").dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons }));
+    const flushed = () => document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
+    mouse("pointerdown", 10, 10);
+    mouse("pointerup", 10, 10, 0);
+    mouse("click", 10, 10, 0);
+    expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "select", key: "0.0.0" });
+    mouse("pointerdown", 10, 10);
+    mouse("pointermove", 40, 40);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    const escaped = sent.length;
+    mouse("pointerup", 40, 40, 0);
+    expect(sent.slice(escaped).some((m) => m.type === "move")).toBe(false);
+    // Escape pressed in Skeleton's window arrives as the host's drag-end.
+    mouse("pointerdown", 10, 10);
+    mouse("pointermove", 40, 40);
+    send({ source: "skeleton-host", type: "drag-end" });
+    const before = sent.length;
+    mouse("pointerup", 40, 40, 0);
+    expect(sent.slice(before).some((m) => m.type === "move")).toBe(false);
+
+    // A release the frame never saw: the next move without buttons ends the drag.
+    mouse("pointerdown", 10, 10);
+    mouse("pointermove", 40, 40);
+    mouse("pointermove", 45, 45, 0);
+    const after = sent.length;
+    mouse("pointerup", 45, 45, 0);
+    expect(sent.slice(after).some((m) => m.type === "move")).toBe(false);
+    expect(flushed()).not.toContain("data-drop-indicator");
   });
 
   it("re-reports what's mapped when the DOM catches up with the tree", async () => {

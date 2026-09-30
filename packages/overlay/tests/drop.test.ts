@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropIndex, flowOf, indicatorRect, unionRect, type PlacedChild } from "../src/drop.js";
+import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "../src/drop.js";
 
 const r = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
 
@@ -94,5 +94,17 @@ describe("unionRect", () => {
   it("covers every rect", () => {
     expect(unionRect([r(10, 10, 10, 10), r(0, 30, 5, 5)])).toEqual(r(0, 10, 20, 25));
     expect(unionRect([])).toBeNull();
+  });
+});
+
+describe("edgeScroll", () => {
+  it("scrolls near the edges, faster closer to them", () => {
+    expect(edgeScroll(300, 600)).toBe(0);
+    expect(edgeScroll(48, 600)).toBe(0);
+    expect(edgeScroll(24, 600)).toBeLessThan(0);
+    expect(edgeScroll(0, 600)).toBeLessThan(edgeScroll(24, 600));
+    expect(edgeScroll(-50, 600)).toBe(-18);
+    expect(edgeScroll(590, 600)).toBeGreaterThan(0);
+    expect(edgeScroll(700, 600)).toBe(18);
   });
 });

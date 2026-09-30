@@ -1,6 +1,6 @@
 # 008: Editing from the canvas
 
-**Status:** accepted · 2026-09-30 · T3.2 (applies to all of Phase 3)
+**Status:** accepted · 2026-09-30 · T3.2, T3.3 (applies to all of Phase 3)
 
 ## Context
 
@@ -30,6 +30,20 @@ A refused op (locked target, bad index) comes back as `edit-refused` with the op
 - The container's flow comes from its computed style: flex direction, a grid with more than one column, or otherwise vertical.
 - The index is where the point falls among the children's rendered rects. Indexes count children as `insert` does, and exclude the node being moved (T3.3).
 - The overlay draws the container and an insertion line, or fills an empty container.
+
+**Moves are dragged inside the frame, and the overlay runs them (T3.3).** A press in select mode, plus 4 px of travel, starts a move of the nearest *movable* node under the pointer. The host marks a node movable when:
+
+- its parent is an editable element: children of a locked block are edited in place only (ADR 002)
+- `move` can address it, by its own ID or by position under its parent's ID
+
+A drag on a `.map` row therefore moves the whole block, verbatim.
+
+- **Pointer handling:** the press cancels `pointerdown`, which suppresses mouse events until release, so the overlay tracks `pointermove`. It captures the pointer so it still sees the release outside the frame.
+- **Cancelling:** a move with no buttons down, `pointercancel` or blur cancels the drag. So does Escape, which lands in Skeleton's window and is forwarded to the frames as `drag-end`.
+- **Autoscroll:** near the frame's top or bottom edge, a drag (palette or move) scrolls the page.
+- **On release:** the overlay posts `move {key, target}`. The renderer turns it into `{ op: "move", ref, newParentId, index }`, and skips a drop back where the node was.
+
+**The canvas knows when it's in sync.** The overlay's `mapped` message names the tree version it mapped. The frame shows "updating…" until what's on screen maps to the current version. It then exposes that version as `data-version`, which tests wait on.
 
 ## Consequences
 

@@ -18,6 +18,8 @@ export interface OverlayNode {
   end: number;
   /** An editable container with an ID: dragged elements can be dropped into it (T3.2). */
   drop: boolean;
+  /** Can be dragged to another place on the page (T3.3): its parent is editable and it can be addressed. */
+  move: boolean;
 }
 
 /** Where a drag would land: child `index` of the node at `parentKey`. */
@@ -43,7 +45,7 @@ export type HostMessage =
    * is the key of the node being moved (never dropped into itself), or null for a new element.
    */
   | { source: "skeleton-host"; type: "drag"; x: number; y: number; moving: string | null }
-  /** The drag left this frame, ended or was cancelled. */
+  /** The drag left this frame, ended or was cancelled; also cancels a move drag in the frame (Escape). */
   | { source: "skeleton-host"; type: "drag-end" };
 
 export interface NodeBox {
@@ -59,10 +61,17 @@ export type OverlayMessage =
   | { source: "skeleton-overlay"; type: "location"; pathname: string }
   /** Vite applied an update or is about to reload: the host should re-parse. */
   | { source: "skeleton-overlay"; type: "updated" }
-  /** Which nodes have DOM on screen, in response to a tree message (for tests and tree badges). */
-  | { source: "skeleton-overlay"; type: "mapped"; boxes: NodeBox[] }
+  /**
+   * Which nodes have DOM on screen, for the tree at `version`: after each tree message,
+   * and again when DOM changes alter the answer. Nothing maps until the rendered app is
+   * the same version of the file as the tree, so boxes for the current version mean the
+   * canvas is in sync.
+   */
+  | { source: "skeleton-overlay"; type: "mapped"; version: string; boxes: NodeBox[] }
   /** Where the current drag would land, in answer to each drag message; null for nowhere. */
-  | { source: "skeleton-overlay"; type: "drop-target"; target: DropTarget | null };
+  | { source: "skeleton-overlay"; type: "drop-target"; target: DropTarget | null }
+  /** The user dragged the node at `key` on the canvas and dropped it at `target` (T3.3). */
+  | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget };
 
 export function isOverlayMessage(value: unknown): value is OverlayMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -78,17 +87,20 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
     case "updated":
       return true;
     case "mapped":
-      return Array.isArray(v["boxes"]);
-    case "drop-target": {
-      const t = v["target"];
-      if (t === null) return true;
-      if (typeof t !== "object" || t === undefined) return false;
-      const target = t as Record<string, unknown>;
-      return typeof target["parentKey"] === "string" && Number.isInteger(target["index"]) && (target["index"] as number) >= 0;
-    }
+      return typeof v["version"] === "string" && Array.isArray(v["boxes"]);
+    case "drop-target":
+      return v["target"] === null || isDropTarget(v["target"]);
+    case "move":
+      return typeof v["key"] === "string" && isDropTarget(v["target"]);
     default:
       return false;
   }
+}
+
+function isDropTarget(value: unknown): value is DropTarget {
+  if (typeof value !== "object" || value === null) return false;
+  const t = value as Record<string, unknown>;
+  return typeof t["parentKey"] === "string" && Number.isInteger(t["index"]) && (t["index"] as number) >= 0;
 }
 
 export function isHostMessage(value: unknown): value is HostMessage {

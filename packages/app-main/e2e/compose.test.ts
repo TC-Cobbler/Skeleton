@@ -1,14 +1,14 @@
 // Phase 3 (composition) on a freshly scaffolded project: the palette, placing,
 // moving and removing elements, and the properties panel. Gate 3 lives in gate3.test.ts.
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Page } from "playwright-core";
-import { buildTree, findNodeById, parseModule } from "@skeleton/core";
+import { buildTree, findNodeById, parseModule, sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canvasFrame, placeFromPalette } from "./canvas-click.js";
+import { canvasFrame, canvasPoint, moveOnCanvas, placeFromPalette, waitForCanvas } from "./canvas-click.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-compose-"));
@@ -19,6 +19,13 @@ const projectRoot = path.join(scratch, "compose");
 const homeFile = () => readFileSync(path.join(projectRoot, "src/pages/HomePage.tsx"), "utf8");
 const stackId = () => /<Stack data-ui-id="(ui_[a-z0-9]{5})"/.exec(homeFile())?.[1] as string;
 const childNames = (id: string) => findNodeById(buildTree(homeFile()).roots, id)?.children.map((c) => c.name) ?? [];
+/** Waits for the file to change from `before`, then for the canvas to show and map it. */
+async function edited(before: string): Promise<string> {
+  await expect.poll(homeFile, { timeout: 10_000 }).not.toBe(before);
+  const after = homeFile();
+  await waitForCanvas(page, sourceVersion(after));
+  return after;
+}
 
 beforeAll(async () => {
   const env = Object.fromEntries(
@@ -127,6 +134,100 @@ describe("drag from the palette (T3.2)", () => {
     await page.mouse.down();
     await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + 60, { steps: 8 });
     await page.waitForTimeout(100);
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    expect(homeFile()).toBe(before);
+    expect(await page.getByTestId("edit-error").count()).toBe(0);
+  });
+});
+
+describe("move and reorder on the canvas (T3.3)", () => {
+  const frame = () => canvasFrame(page);
+  const el = (id: string) => frame().locator(`[data-ui-id="${id}"]`).first();
+  const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
+
+  it("reorders within a stack, as one moved line", async () => {
+    // [Badge, h1, Card, Button, Stack] → the Badge goes after the Button.
+    expect(childNames(stackId())).toEqual(["Badge", "h1", "Card", "Button", "Stack"]);
+    const badge = idOf(stackId(), "Badge");
+    const before = homeFile();
+    await moveOnCanvas(page, el(badge), el(idOf(stackId(), "Button")), { fx: 0.5, fy: 0.9 });
+    const after = await edited(before);
+    expect(childNames(stackId())).toEqual(["h1", "Card", "Button", "Badge", "Stack"]);
+    expect(after.split("\n").sort()).toEqual(before.split("\n").sort());
+    expect(await page.getByTestId("selection-id").textContent()).toBe(badge);
+  });
+
+  it("moves across containers: from the row into the card", async () => {
+    const row = idOf(stackId(), "Stack");
+    const card = idOf(stackId(), "Card");
+    const content = findNodeById(buildTree(homeFile()).roots, card)?.children.find((c) => c.name === "CardContent")?.id as string;
+    const input = idOf(row, "Input");
+    const before = homeFile();
+    await moveOnCanvas(page, el(input), el(idOf(content, "Button")), { fx: 0.5, fy: 0.9 });
+    await edited(before);
+    expect(childNames(row)).toEqual(["Badge", "Button"]);
+    expect(childNames(content)).toEqual(["p", "Button", "Input"]);
+  });
+
+  it("moves a locked .map block as a unit, verbatim", async () => {
+    // The agent adds a list (written atomically, as an editor would).
+    const block = `        {["alpha", "beta"].map((v) => (\n          <p key={v} data-ui-id="ui_mapr1">\n            {v}\n          </p>\n        ))}`;
+    const source = homeFile().replace(/(\n\s*<\/Stack>\n\s*<\/Container>)/, `\n${block}$1`);
+    const tmp = path.join(projectRoot, "src/pages/.HomePage.tsx.test.tmp");
+    writeFileSync(tmp, source);
+    renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
+    await waitForCanvas(page, sourceVersion(source));
+    expect(childNames(stackId())).toEqual(["h1", "Card", "Button", "Badge", "Stack", "map"]);
+
+    // Dragging a row grabs the whole block (rows are edited in place only).
+    await moveOnCanvas(page, frame().getByText("beta"), el(idOf(stackId(), "Button")), { fx: 0.5, fy: 0.1 });
+    const after = await edited(source);
+    expect(childNames(stackId())).toEqual(["h1", "Card", "map", "Button", "Badge", "Stack"]);
+    expect(after).toContain(block);
+  });
+
+  it("scrolls the page while a drag is held at the frame's edge", async () => {
+    // Make the page taller than the canvas (as an agent's page would be).
+    const tall = homeFile().replace(/(\n\s*<\/h1>)/, `$1\n        <div data-ui-id="ui_tall1" className="h-screen" />`);
+    const tmp = path.join(projectRoot, "src/pages/.HomePage.tsx.test.tmp");
+    writeFileSync(tmp, tall);
+    renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
+    await waitForCanvas(page, sourceVersion(tall));
+    // The block is now a screen below the heading; drag it up past the top edge.
+    const row = frame().getByText("alpha");
+    await row.evaluate((e) => e.scrollIntoView({ block: "end" }));
+    const heading = frame().getByRole("heading", { name: "Compose" });
+    expect(await heading.evaluate((h) => h.getBoundingClientRect().bottom < 0)).toBe(true);
+    const from = await canvasPoint(page, "canvas-frame", row);
+    const box = await page.getByTestId("canvas-frame").boundingBox();
+    if (!box) throw new Error("no frame box");
+    const before = homeFile();
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x, from.y - 10, { steps: 2 });
+    await page.mouse.move(from.x, box.y + 8, { steps: 8 });
+    await expect.poll(() => heading.evaluate((h) => h.getBoundingClientRect().top >= 0), { timeout: 5_000 }).toBe(true);
+    const to = await canvasPoint(page, "canvas-frame", heading, { fx: 0.5, fy: 0.2 });
+    await page.mouse.move(to.x, to.y, { steps: 4 });
+    await page.waitForTimeout(100);
+    await page.mouse.up();
+    await edited(before);
+    expect(childNames(stackId())).toEqual(["map", "h1", "div", "Card", "Button", "Badge", "Stack"]);
+  });
+
+  it("changes nothing when dropped where it was, or cancelled with Escape", async () => {
+    const before = homeFile();
+    const button = el(idOf(stackId(), "Button"));
+    await moveOnCanvas(page, button, button, { fx: 0.5, fy: 0.3 });
+    const from = await button.boundingBox();
+    await button.evaluate((e) => e.scrollIntoView({ block: "center" }));
+    const box = await page.getByTestId("canvas-frame").boundingBox();
+    if (!from || !box) throw new Error("no boxes");
+    await page.mouse.move(box.x + box.width / 2, box.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 30, box.y + 160, { steps: 5 });
     await page.keyboard.press("Escape");
     await page.mouse.up();
     await page.waitForTimeout(500);

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppInfo, EditIntent, ProjectInfo } from "@skeleton/app-main/ipc";
+import type { DropTarget } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas, type PreviewLayout } from "./Canvas.js";
 import { useCanvasDrag } from "./canvas/drag.js";
+import { parentKeyOf } from "./canvas/nodes.js";
 import { DevServerPanel } from "./DevServerPanel.js";
 import { matchPage } from "./canvas/routes.js";
 import { LayersPanel } from "./LayersPanel.js";
@@ -142,6 +144,24 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     },
     [file, project.projectRoot, page.reload, selectId],
   );
+  const moveNode = (key: string, target: DropTarget) => {
+    const moved = page.nodes.find((n) => n.key === key)?.node;
+    const parentKey = parentKeyOf(key);
+    const parent = page.nodes.find((n) => n.key === parentKey)?.node;
+    const dest = page.nodes.find((n) => n.key === target.parentKey)?.node;
+    const from = Number(key.slice(key.lastIndexOf(".") + 1));
+    if (!moved || !parent || !dest?.id) {
+      setEditError(`Can't move there: ${dest?.name ?? "that element"} has no data-ui-id.`);
+      return;
+    }
+    if (parentKey === target.parentKey && from === target.index) return; // dropped where it was
+    const ref = moved.id ? { id: moved.id } : parent.id ? { parentId: parent.id, index: from } : null;
+    if (!ref) {
+      setEditError(`Can't move ${moved.name}: neither it nor its parent has a data-ui-id.`);
+      return;
+    }
+    edit({ op: "move", ref, newParentId: dest.id, index: target.index });
+  };
   const canvasDrag = useCanvasDrag((source, target) => {
     const parent = page.nodes.find((n) => n.key === target.parentKey)?.node;
     if (!parent?.id) {
@@ -155,7 +175,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [layout, setLayout] = useState<PreviewLayout>("desktop");
   const [dark, setDark] = useState(false);
   const [treeHover, setTreeHover] = useState<string | null>(null);
-  const [onScreen, setOnScreen] = useState<Set<string> | null>(null);
+  // What the overlay last mapped, and for which version of the page file.
+  const [mapped, setMapped] = useState<{ version: string; keys: Set<string> } | null>(null);
+  const synced = mapped !== null && mapped.version === page.tree?.version && mapped.keys.size > 0;
+  const onScreen = mapped !== null && mapped.version === page.tree?.version ? mapped.keys : null;
   const selectedNode = page.nodes.find((n) => n.key === selected) ?? null;
 
   return (
@@ -266,9 +289,11 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         navigate={navigate}
         layout={layout}
         dark={dark}
-        onMapped={(boxes) => setOnScreen(new Set(boxes.map((b) => b.key)))}
+        onMapped={(boxes, version) => setMapped({ version, keys: new Set(boxes.map((b) => b.key)) })}
+        synced={synced}
         drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, moving: null } : null}
         onDropTarget={canvasDrag.report}
+        onMove={moveNode}
       />
       {canvasDrag.drag && (
         <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>

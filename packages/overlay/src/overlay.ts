@@ -2,11 +2,14 @@
 // Draws hover/selection outlines and maps DOM ↔ source through NodeIndex. Talks to
 // the host only via postMessage; never imports from core.
 
-import { dropIndex, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
+import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
 import { NodeIndex } from "./mapping.js";
 import { isHostMessage, type DropTarget, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
 
 type Rect = NodeBox["rects"][number];
+
+/** Pointer travel before a press on the canvas becomes a move drag. */
+const MOVE_THRESHOLD = 4;
 
 const COLORS = {
   hover: "#3b82f6",
@@ -35,6 +38,17 @@ export class Overlay {
   private highlighted: string | null = null;
   private mode: "select" | "interact" = "select";
   private drop: DropState | null = null;
+  /** A press in select mode that may become a move drag (T3.3). */
+  private press: { x: number; y: number; key: string | null } | null = null;
+  /** The node being moved by a drag inside this frame. */
+  private moving: string | null = null;
+  /** The click that ends a move drag must not select. */
+  private swallowClick = false;
+  /** The latest drag position (palette or move), for scrolling at the edges. */
+  private dragAt: { x: number; y: number; moving: string | null } | null = null;
+  private scrollFrame = 0;
+  /** The host is dragging something from outside the frame (a palette entry). */
+  private hostDragging = false;
   /** The DOM changed since `mapped` was last reported. */
   private remap = false;
   private lastMapped = "";
@@ -61,7 +75,13 @@ export class Overlay {
     for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"] as const) {
       win.addEventListener(type, (e) => this.onPointer(e), { capture: true, signal });
     }
-    win.addEventListener("mousemove", (e) => this.onMove(e), { capture: true, signal });
+    // pointermove, not mousemove: the pointerdown is cancelled in select mode, and that
+    // suppresses mouse events until release, so a move drag would see no mousemoves.
+    win.addEventListener("pointermove", (e) => this.onMove(e), { capture: true, signal });
+    win.addEventListener("keydown", (e) => e.key === "Escape" && this.cancelMove(), { capture: true, signal });
+    // A drag that lost its release (pointer let go outside, focus lost) is cancelled.
+    win.addEventListener("pointercancel", () => this.cancelMove(), { capture: true, signal });
+    win.addEventListener("blur", () => this.cancelMove(), { signal });
     this.doc.addEventListener("mouseleave", () => this.setHover(null), { signal });
     this.observer = new MutationObserver(() => {
       this.index?.invalidate();
@@ -121,15 +141,18 @@ export class Overlay {
       case "theme":
         this.doc.documentElement.classList.toggle("dark", msg.dark);
         break;
-      case "drag": {
+      case "drag":
         this.hovered = null;
-        this.drop = this.dropAt(msg.x, msg.y, msg.moving);
-        const target = this.drop ? { parentKey: this.drop.parentKey, index: this.drop.index } : null;
-        this.post({ source: "skeleton-overlay", type: "drop-target", target });
+        this.hostDragging = true;
+        this.dragTo(msg.x, msg.y, msg.moving);
+        this.reportDrop();
         break;
-      }
       case "drag-end":
-        this.drop = null;
+        // Also cancels a move drag: Escape reaches the host's window, not this frame.
+        this.hostDragging = false;
+        this.press = null;
+        this.moving = null;
+        this.endDrag();
         this.post({ source: "skeleton-overlay", type: "drop-target", target: null });
         break;
     }
@@ -186,8 +209,78 @@ export class Overlay {
   }
 
   private onMove(event: MouseEvent): void {
-    if (this.mode !== "select" || this.drop) return;
+    if (this.mode !== "select") return;
+    const press = this.press;
+    if (press && (event.buttons & 1) === 0) {
+      this.cancelMove();
+      return;
+    }
+    if (press && press.key !== null) {
+      if (this.moving === null && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= MOVE_THRESHOLD) {
+        this.moving = press.key;
+        this.setHover(null);
+      }
+      if (this.moving !== null) {
+        this.dragTo(event.clientX, event.clientY, this.moving);
+        return;
+      }
+    }
+    if (this.drop) return;
     this.setHover(this.target(event)?.key ?? null);
+  }
+
+  /** The nearest node at or above `node` that can be moved (a drag on a wrapped element moves its block). */
+  private movableFrom(node: OverlayNode | null): string | null {
+    for (let key: string | null = node?.key ?? null; key !== null; key = parentKeyOf(key)) {
+      if (this.node(key)?.move) return key;
+    }
+    return null;
+  }
+
+  private cancelMove(): void {
+    if (this.moving === null && this.press === null) return;
+    this.press = null;
+    this.moving = null;
+    this.endDrag();
+  }
+
+  /** A drag (palette or move) is at (x, y): find the drop target, and scroll at the edges. */
+  private dragTo(x: number, y: number, moving: string | null): void {
+    this.dragAt = { x, y, moving };
+    this.drop = this.dropAt(x, y, moving);
+    this.schedule();
+    if (!this.scrollFrame && edgeScroll(y, this.options.win.innerHeight) !== 0) {
+      const { win } = this.options;
+      const step = () => {
+        this.scrollFrame = 0;
+        const at = this.dragAt;
+        const delta = at ? edgeScroll(at.y, win.innerHeight) : 0;
+        if (!at || delta === 0) return;
+        const before = win.scrollY;
+        win.scrollBy(0, delta);
+        if (win.scrollY === before) return; // at the end of the page
+        this.drop = this.dropAt(at.x, at.y, at.moving);
+        this.reportDrop();
+        this.schedule();
+        this.scrollFrame = win.requestAnimationFrame(step);
+      };
+      this.scrollFrame = win.requestAnimationFrame(step);
+    }
+  }
+
+  private endDrag(): void {
+    this.dragAt = null;
+    this.drop = null;
+    if (this.scrollFrame) this.options.win.cancelAnimationFrame(this.scrollFrame);
+    this.scrollFrame = 0;
+    this.schedule();
+  }
+
+  /** Tell the host where a palette drag would land now (move drags report on release). */
+  private reportDrop(): void {
+    if (this.moving !== null || !this.hostDragging) return;
+    const target = this.drop ? { parentKey: this.drop.parentKey, index: this.drop.index } : null;
+    this.post({ source: "skeleton-overlay", type: "drop-target", target });
   }
 
   private onPointer(event: Event): void {
@@ -197,7 +290,36 @@ export class Overlay {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    if (event.type === "pointerdown" && event instanceof MouseEvent && event.button === 0) {
+      this.press = { x: event.clientX, y: event.clientY, key: this.movableFrom(this.target(event)) };
+      this.swallowClick = false;
+      // Keep receiving the drag's moves and its release even outside the frame.
+      if (typeof PointerEvent !== "undefined" && event instanceof PointerEvent && event.target instanceof Element) {
+        try {
+          event.target.setPointerCapture(event.pointerId);
+        } catch (error) {
+          // The pointer is already gone (released during dispatch); the press ends on the next move.
+          console.warn("[skeleton overlay] couldn't capture the pointer", error);
+        }
+      }
+      return;
+    }
+    if (event.type === "pointerup") {
+      if (this.moving !== null) {
+        const target = this.drop ? { parentKey: this.drop.parentKey, index: this.drop.index } : null;
+        if (target) this.post({ source: "skeleton-overlay", type: "move", key: this.moving, target });
+        this.swallowClick = true;
+      }
+      this.press = null;
+      this.moving = null;
+      this.endDrag();
+      return;
+    }
     if (event.type !== "click") return;
+    if (this.swallowClick) {
+      this.swallowClick = false;
+      return;
+    }
     const node = this.target(event);
     this.selected = node?.key ?? null;
     this.post({ source: "skeleton-overlay", type: "select", key: this.selected });
@@ -248,11 +370,12 @@ export class Overlay {
    */
   private reportMapped(always: boolean): void {
     this.remap = false;
+    if (!this.index) return;
     const boxes = this.boxes();
-    const keys = boxes.map((b) => b.key).join(" ");
+    const keys = `${this.index.version} ${boxes.map((b) => b.key).join(" ")}`;
     if (!always && keys === this.lastMapped) return;
     this.lastMapped = keys;
-    this.post({ source: "skeleton-overlay", type: "mapped", boxes });
+    this.post({ source: "skeleton-overlay", type: "mapped", version: this.index.version, boxes });
   }
 
   private draw(): void {
@@ -308,7 +431,8 @@ export class Overlay {
         `<div class="box" data-drop-indicator style="left:${i.x}px;top:${i.y}px;width:${i.width}px;height:${i.height}px;` +
           `background:${drop.fill ? "rgb(37 99 235 / 0.15)" : COLORS.drop}"></div>`,
       );
-      const text = `Into ${labelOf(dropNode)}`;
+      const moved = this.node(this.moving);
+      const text = moved ? `Move ${labelOf(moved)} into ${labelOf(dropNode)}` : `Into ${labelOf(dropNode)}`;
       const at = place(c.x, c.y >= 18 ? c.y - 18 : c.y, text);
       parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${COLORS.drop}">${escapeHtml(text)}</div>`);
     }

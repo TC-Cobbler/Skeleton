@@ -407,6 +407,25 @@ describe("page:edit", () => {
     });
   });
 
+  it("passes a valid move, by ID or by position, to the editor", async () => {
+    const edits: unknown[] = [];
+    const { dispatch } = setup({
+      editor: {
+        apply: async (_root, file, edit) => {
+          edits.push(edit);
+          return { file, select: null, patch: "", linesAdded: 0, linesRemoved: 0 };
+        },
+      },
+    });
+    for (const ref of [{ id: "ui_abcde" }, { parentId: "ui_fghij", index: 2 }]) {
+      await expect(dispatch("page:edit", request({ op: "move", ref, newParentId: "ui_klmno", index: 1 }))).resolves.toMatchObject({ ok: true });
+    }
+    expect(edits).toEqual([
+      { op: "move", ref: { id: "ui_abcde" }, newParentId: "ui_klmno", index: 1 },
+      { op: "move", ref: { parentId: "ui_fghij", index: 2 }, newParentId: "ui_klmno", index: 1 },
+    ]);
+  });
+
   it("rejects malformed intents before any edit", async () => {
     const { dispatch } = setup();
     for (const edit of [
@@ -417,6 +436,10 @@ describe("page:edit", () => {
       { op: "insert", parentId: "ui_abcde", index: 1.5, paletteId: "button" },
       { op: "insert", parentId: "ui_abcde", index: 0, paletteId: "toast" },
       { op: "insert", parentId: "ui_abcde", index: 0, paletteId: "<script>" },
+      { op: "move", ref: null, newParentId: "ui_abcde", index: 0 },
+      { op: "move", ref: { id: "nope" }, newParentId: "ui_abcde", index: 0 },
+      { op: "move", ref: { parentId: "ui_abcde" }, newParentId: "ui_abcde", index: 0 },
+      { op: "move", ref: { id: "ui_abcde" }, newParentId: "ui_abcde", index: "1" },
     ]) {
       await expect(dispatch("page:edit", request(edit)), JSON.stringify(edit)).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
     }

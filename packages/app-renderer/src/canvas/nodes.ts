@@ -32,7 +32,25 @@ export function acceptsDrop(node: UiNode, elements: Record<string, ElementSchema
   return elements[node.name]?.children === "nodes";
 }
 
+/** "0.2.1" → "0.2"; a root's parent is null. */
+export function parentKeyOf(key: string): string | null {
+  const dot = key.lastIndexOf(".");
+  return dot < 0 ? null : key.slice(0, dot);
+}
+
+/**
+ * Can this node be dragged elsewhere (T3.3)? Locked blocks can, as a unit. Its parent
+ * must be an editable element (children of a locked block are edited in place only,
+ * ADR 002), and `move` must be able to address it: by its own ID, or by position
+ * under its parent's ID.
+ */
+export function canMove(node: UiNode, parent: UiNode | null): boolean {
+  if (!parent || parent.kind === "locked" || !parent.element) return false;
+  return node.id !== null || parent.id !== null;
+}
+
 export function toOverlayNodes(nodes: KeyedNode[], elements: Record<string, ElementSchema>): OverlayNode[] {
+  const byKey = new Map(nodes.map((n) => [n.key, n.node]));
   return nodes.map(({ key, node }) => ({
     key,
     kind: node.kind,
@@ -43,5 +61,6 @@ export function toOverlayNodes(nodes: KeyedNode[], elements: Record<string, Elem
     start: node.range.start,
     end: node.range.end,
     drop: acceptsDrop(node, elements),
+    move: canMove(node, byKey.get(parentKeyOf(key) ?? "") ?? null),
   }));
 }

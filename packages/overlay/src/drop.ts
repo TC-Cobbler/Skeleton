@@ -83,3 +83,17 @@ export function unionRect(rects: Rect[]): Rect | null {
   const bottom = Math.max(...rects.map((r) => r.y + r.height));
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
+
+/** Within this distance of a frame edge, a drag scrolls the page. */
+export const EDGE = 48;
+const MAX_STEP = 18;
+
+/**
+ * How far to scroll per frame for a drag at `y` in a viewport `height` tall: faster the
+ * closer to the edge, 0 away from the edges.
+ */
+export function edgeScroll(y: number, height: number): number {
+  if (y < EDGE) return -Math.ceil(MAX_STEP * Math.min(1, (EDGE - y) / EDGE));
+  if (y > height - EDGE) return Math.ceil(MAX_STEP * Math.min(1, (y - (height - EDGE)) / EDGE));
+  return 0;
+}

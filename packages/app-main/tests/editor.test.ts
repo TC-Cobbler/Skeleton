@@ -110,6 +110,48 @@ describe("Editor: insert (T3.2)", () => {
   });
 });
 
+describe("Editor: move (T3.3)", () => {
+  it("moves a node by ID and keeps it selected; the rest of the file is untouched", async () => {
+    const p = memoryProject();
+    const editor = new Editor(p.io);
+    const placed = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 1, paletteId: "button" });
+    const before = p.home();
+    const h1 = findNodeById(buildTree(before).roots, p.stackId)?.children[0]?.id as string;
+    const result = await editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "move", ref: { id: placed.select as string }, newParentId: p.stackId, index: 0 });
+    expect(result.select).toBe(placed.select);
+    const stack = findNodeById(buildTree(p.home()).roots, p.stackId);
+    expect(stack?.children.map((c) => c.id)).toEqual([placed.select, h1]);
+    expect(p.home().split("\n").sort()).toEqual(before.split("\n").sort());
+  });
+
+  it("moves an un-ID'd locked block by position, verbatim", async () => {
+    const p = memoryProject();
+    const page = path.join(ROOT, "src/pages/HomePage.tsx");
+    const withMap = p.home().replace(
+      "      </Stack>",
+      `        {["a", "b"].map((x) => (\n          <p key={x} data-ui-id="ui_row01">\n            {x}\n          </p>\n        ))}\n      </Stack>`,
+    );
+    p.files.set(page, withMap);
+    const result = await new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "move", ref: { parentId: p.stackId, index: 1 }, newParentId: p.stackId, index: 0 });
+    expect(result.select).toBeNull();
+    const stack = findNodeById(buildTree(p.home()).roots, p.stackId);
+    expect(stack?.children.map((c) => c.name)).toEqual(["map", "h1"]);
+    expect(p.home()).toContain(`        {["a", "b"].map((x) => (\n          <p key={x} data-ui-id="ui_row01">`);
+  });
+
+  it("refuses to move a node into itself, without writing", async () => {
+    const p = memoryProject();
+    const container = /<Container data-ui-id="(ui_[a-z0-9]{5})"/.exec(p.home())?.[1] as string;
+    await expect(
+      new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "move", ref: { id: p.stackId }, newParentId: p.stackId, index: 0 }),
+    ).rejects.toThrow(EditRefused);
+    await expect(
+      new Editor(p.io).apply(ROOT, "src/pages/HomePage.tsx", { op: "move", ref: { id: container }, newParentId: p.stackId, index: 0 }),
+    ).rejects.toThrow(/root and has no parent/);
+    expect(p.writes).toEqual([]);
+  });
+});
+
 describe("listSources", () => {
   it("walks src/ for .tsx and .jsx, skipping node_modules, dist and dotfiles", async () => {
     const tree: Record<string, { name: string; dir: boolean }[]> = {

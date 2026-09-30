@@ -190,9 +190,14 @@ export interface ProjectChanges {
 }
 
 /** What the user did on the canvas, as an edit to one page file (Phase 3). */
+/** A node by its ID, or by position under an ID'd parent (for un-ID'd locked blocks). */
+export type NodeRef = { id: string } | { parentId: string; index: number };
+
 export type EditIntent =
   /** Place a palette entry in `parentId` at child `index` (T3.2). */
-  { op: "insert"; parentId: string; index: number; paletteId: string };
+  | { op: "insert"; parentId: string; index: number; paletteId: string }
+  /** Move a node (locked blocks included) to `newParentId` at `index`, counted with the node taken out (T3.3). */
+  | { op: "move"; ref: NodeRef; newParentId: string; index: number };
 
 export interface PageEditRequest extends PageTreeRequest {
   edit: EditIntent;
