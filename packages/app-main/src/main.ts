@@ -10,6 +10,7 @@ import { registerIpc } from "./ipc/register.js";
 import { DevServerManager } from "./devserver/manager.js";
 import { GitService } from "./git/service.js";
 import { readProjectInfo, RecentProjects } from "./project/recent.js";
+import { ProjectWatcher } from "./project/watcher.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
@@ -56,6 +57,7 @@ if (userDataOverride) app.setPath("userData", userDataOverride);
 
 const renderer = rendererLocation();
 const devServers = new DevServerManager();
+const watcher = new ProjectWatcher();
 // Lazily: app paths are only valid once Electron has initialised.
 let recentStore: RecentProjects | null = null;
 const recent = () => (recentStore ??= new RecentProjects(path.join(app.getPath("userData"), "recent-projects.json")));
@@ -109,6 +111,7 @@ const dispatch = createDispatch(
       return result.canceled ? null : (result.filePaths[0] ?? null);
     },
     git: new GitService(),
+    changes: (root) => watcher.changes(root),
   },
   log,
 );
@@ -127,6 +130,7 @@ app.on("before-quit", (event) => {
   if (quitting) return;
   quitting = true;
   event.preventDefault();
+  watcher.stopAll();
   devServers.stopAll().then(
     () => app.quit(),
     (cause: unknown) => {

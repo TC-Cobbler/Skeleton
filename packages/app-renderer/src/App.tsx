@@ -10,6 +10,7 @@ import { PagesPanel, usePages } from "./PagesPanel.js";
 import { useDevServer } from "./useDevServer.js";
 import { ViewSource } from "./ViewSource.js";
 import { usePageTree } from "./usePageTree.js";
+import { useProjectRevision } from "./useProjectRevision.js";
 import { ProjectPicker } from "./ProjectPicker.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
@@ -104,6 +105,14 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const current = pages.list ? matchPage(pages.list.pages, pathname) : null;
   const file = current?.exists ? current.file : pages.list ? null : DEFAULT_PAGE;
   const page = usePageTree(project.projectRoot, file);
+  // External changes (the agent, an editor): re-parse even if Vite's HMR didn't fire.
+  const fsRevision = useProjectRevision(project.projectRoot);
+  const reloadPage = page.reload;
+  useEffect(() => {
+    if (fsRevision.revision === 0) return;
+    reloadPage();
+    setRevision((r) => r + 1);
+  }, [fsRevision.revision, reloadPage]);
   const [selected, setSelected] = useSelection(page.nodes);
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
@@ -125,6 +134,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           </button>
         </div>
         {page.error && <p className="error">{page.error}</p>}
+        {fsRevision.error && <p className="error">{fsRevision.error}</p>}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
         <section aria-label="Selection" data-testid="selection">
           <h2>Selection</h2>

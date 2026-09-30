@@ -175,6 +175,20 @@ export default function OrdersPage() {
     await expect.poll(() => page.getByTestId("layer-ui_ord02").count()).toBe(0);
   }, 60_000);
 
+  it("re-parses external changes even with the dev server stopped (T2.6)", async () => {
+    await page.getByRole("button", { name: "Stop" }).click();
+    await page.getByTestId("canvas-empty").waitFor();
+    const file = path.join(projectRoot, "src/pages/HomePage.tsx");
+    const source = readFileSync(file, "utf8");
+    writeFileSync(file, source.replace('<h1 data-ui-id', '<p data-ui-id="ui_ext01">From outside</p>\n        <h1 data-ui-id'));
+    await page.getByTestId("layer-ui_ext01").waitFor({ timeout: 10_000 });
+    writeFileSync(file, source);
+    await expect.poll(() => page.getByTestId("layer-ui_ext01").count(), { timeout: 10_000 }).toBe(0);
+    await page.getByRole("button", { name: "Start" }).click();
+    await page.getByTestId("devserver-url").waitFor({ timeout: 30_000 });
+    url = (await page.getByTestId("devserver-url").textContent()) ?? "";
+  }, 60_000);
+
   it("closing the project stops its server and lists it as recent", async () => {
     await page.getByRole("button", { name: "Close project" }).click();
     await page.getByRole("heading", { name: "New project" }).waitFor();

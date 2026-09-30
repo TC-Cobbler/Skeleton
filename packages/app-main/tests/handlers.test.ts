@@ -56,6 +56,7 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         forget: async () => [],
       },
       chooseFolder: async () => "/chosen",
+      changes: () => ({ revision: 3, locked: false, changed: ["src/pages/HomePage.tsx"], error: null }),
       git: {
         status: async () => ({ head: "h", clean: true, changed: [] }),
         commit: async (_root, message) => ({ hash: "c0ffee", subject: message, time: 1 }),

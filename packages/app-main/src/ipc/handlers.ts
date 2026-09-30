@@ -15,6 +15,7 @@ import {
   type GitLogRequest,
   type GitRevertRequest,
   type DevServerStatus,
+  type ProjectChanges,
   type ProjectInfo,
   type ProjectList,
   type RecentProject,
@@ -48,6 +49,7 @@ export interface HandlerDeps {
     forget: (projectRoot: string) => Promise<RecentProject[]>;
   };
   chooseFolder: (request: ChooseFolderRequest) => Promise<string | null>;
+  changes: (projectRoot: string) => ProjectChanges;
   git: Pick<GitService, "status" | "commit" | "log" | "diff" | "revert">;
 }
 
@@ -147,6 +149,7 @@ const validators: Validators = {
     return defaultPath === undefined ? { title } : { title, defaultPath };
   },
   "project:pages": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "project:changes": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:status": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
   "git:commit": (raw): GitCommitRequest => {
     const projectRoot = projectRootOf(raw);
@@ -217,6 +220,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
   return {
     "app:info": async () => deps.appInfo(),
     "page:source": async ({ projectRoot, file }) => readPage(projectRoot, file),
+    "project:changes": async ({ projectRoot }) => deps.changes(projectRoot),
     "project:pages": async ({ projectRoot }) => {
       const routerFile = "src/router.tsx";
       let source: string;

@@ -157,6 +157,17 @@ export interface GitRevertRequest extends ProjectRootRequest {
   commit: string;
 }
 
+export interface ProjectChanges {
+  /** Moves every time files under src/ change (while unlocked). */
+  revision: number;
+  /** With the agent: external changes are ignored until take-back (Phase 5). */
+  locked: boolean;
+  /** Project-relative paths changed in the latest revision ("*" after an unlock catch-up). */
+  changed: string[];
+  /** Why watching isn't working, or null. */
+  error: string | null;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
@@ -165,6 +176,8 @@ export interface IpcContract {
   "page:source": { request: PageTreeRequest; response: string };
   /** Pages from the project's router (T2.5). */
   "project:pages": { request: ProjectRootRequest; response: PageList };
+  /** File-change revision for re-parsing (T2.6); starts watching on first call. */
+  "project:changes": { request: ProjectRootRequest; response: ProjectChanges };
   "project:create": { request: ProjectCreateRequest; response: ProjectCreateResponse };
   "devserver:start": { request: ProjectRootRequest; response: DevServerStatus };
   "devserver:stop": { request: ProjectRootRequest; response: DevServerStatus };
@@ -192,6 +205,7 @@ export const CHANNELS = [
   "page:tree",
   "page:source",
   "project:pages",
+  "project:changes",
   "project:create",
   "devserver:start",
   "devserver:stop",
