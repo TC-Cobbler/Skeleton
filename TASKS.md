@@ -64,34 +64,43 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ## Phase 1 — Shell + scaffold
 
-- [ ] **T1.1** Electron app skeleton (React renderer, main process for fs/git/child processes). Set up IPC boundaries: the main process owns the filesystem, git and AST; the renderer owns the UI.
-- [ ] **T1.2** Project scaffolder, turning the fixture into a template. It generates:
+- [x] **T1.1** Electron app skeleton (React renderer, main process for fs/git/child processes). Set up IPC boundaries: the main process owns the filesystem, git and AST; the renderer owns the UI.
+- [x] **T1.2** Project scaffolder, turning the fixture into a template. It generates:
   - the stack, the curated shadcn set (about 20) and the layout primitives
   - React Router with a home page
   - `globals.css` with the full v1 token set (radius base plus per-component derived tokens, spacing, type scale, colour light/dark, border width)
   - `/skeleton/config.json` and `/skeleton/notes.json`
   - `PRD.md`, `ROADMAP.md`, `CLAUDE.md` (contract), `TASKS.md`, `HANDOFF.md`
   - `git init` plus an initial commit
-- [ ] **T1.3** Dev server manager: spawn Vite per project, detect its port, restart only on dependency change, surface logs and errors in a panel.
-- [ ] **T1.4** Project picker: new / open recent.
-- [ ] **T1.5** Git service: commit with message, diff between commits, revert to commit.
+- [x] **T1.3** Dev server manager: spawn Vite per project, detect its port, restart only on dependency change, surface logs and errors in a panel.
+- [x] **T1.4** Project picker: new / open recent.
+- [x] **T1.5** Git service: commit with message, diff between commits, revert to commit.
 
 **Gate 1:** New project to running app on screen in under 30 s (PRD F1).
+
+**Gate 1: passed** (2026-09-30). From clicking **Create project** in the Electron app to the new app's home page rendering its heading: 4.6 s with a warm pnpm store, 6.2 s with an empty one (126 packages downloaded), first measured in a second window. Since T2.1 it is measured on the canvas itself: 8.7 s with the full e2e suite running in parallel. Benchmark: `packages/app-main/e2e/gate1.test.ts` (`GATE1_COLD=1` for an empty store).
 
 ---
 
 ## Phase 2 — Canvas (read-only)
 
-- [ ] **T2.1** Embedded webview pointing at the dev server.
-- [ ] **T2.2** Overlay script injected into the webview: hover and selection outlines, and a DOM → `data-ui-id` lookup. Communicates with the host via `postMessage`.
-- [ ] **T2.3** Layers tree panel built from the parser output, with bi-directional selection sync between tree and canvas.
-- [ ] **T2.4** Locked-block rendering: label (component name or expression type), distinct outline, "view source" popover.
-- [ ] **T2.5** Page list mirroring the router, including navigate-on-select.
-- [ ] **T2.6** File watcher: re-parse and reload on external change (unlocked state only).
-- [ ] **T2.7** Preview widths: desktop / tablet / mobile toggle, plus a side-by-side mode.
-- [ ] **T2.8** Light/dark toggle, which sets `.dark` on the previewed document.
+- [x] **T2.1** Embedded webview pointing at the dev server.
+- [x] **T2.2** Overlay script injected into the webview: hover and selection outlines, and a DOM → `data-ui-id` lookup. Communicates with the host via `postMessage`.
+- [x] **T2.3** Layers tree panel built from the parser output, with bi-directional selection sync between tree and canvas.
+- [x] **T2.4** Locked-block rendering: label (component name or expression type), distinct outline, "view source" popover.
+- [x] **T2.5** Page list mirroring the router, including navigate-on-select.
+- [x] **T2.6** File watcher: re-parse and reload on external change (unlocked state only).
+- [x] **T2.7** Preview widths: desktop / tablet / mobile toggle, plus a side-by-side mode.
+- [x] **T2.8** Light/dark toggle, which sets `.dark` on the previewed document.
 
 **Gate 2:** Open the Phase 0 fixture (post-agent) and see every element selectable, locked blocks clearly marked, and the tree matching the canvas.
+
+**Gate 2: passed** (2026-09-30) on both post-agent fixtures (`packages/app-main/e2e/gate2.test.ts`).
+
+- **Tree matches canvas:** every tagged DOM element maps to a tree node, and every rendered node is mapped (loop-01: 69 nodes, 53 on screen; loop-02: 70 nodes, 57 on screen).
+- **Locked blocks marked:** all 4 rendered locked blocks on each page are outlined and labelled 🔒.
+- **Every ID'd element selectable:** 52 on loop-01 and 55 on loop-02. Most are selected by clicking the canvas; the rest, whose area is covered by children or which have no DOM of their own, are selected from the tree with the canvas outline checked.
+- **Caveat, KI-1 (`docs/known-issues.md`):** on a scaled canvas, Chromium occasionally doesn't deliver a click (up to 3 per run, none in most runs). Those elements are selected from the tree and reported.
 
 ---
 

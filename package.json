@@ -9,8 +9,10 @@
   "scripts": {
     "test": "vitest run",
     "test:core": "pnpm --filter @skeleton/core test",
-    "typecheck": "tsc -b && tsc -p packages/core/tests",
-    "spike": "pnpm --filter @skeleton/cli --silent spike"
+    "typecheck": "tsc -b && tsc -p packages/core/tests && tsc -p packages/app-main/tests && tsc -p packages/app-renderer && tsc -p packages/app-main/e2e && tsc -p packages/templates/tests && tsc -p packages/overlay/tests",
+    "spike": "pnpm --filter @skeleton/cli --silent spike",
+    "dev": "pnpm --filter @skeleton/app-main dev",
+    "test:e2e": "pnpm --filter @skeleton/app-main test:e2e"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
