@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, shell } from "electron";
 import { createDispatch } from "./ipc/handlers.js";
 import { registerIpc } from "./ipc/register.js";
+import { DevServerManager } from "./devserver/manager.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import type { RendererLocation } from "./ipc/trust.js";
 
@@ -48,6 +49,7 @@ function createWindow(renderer: RendererLocation): BrowserWindow {
 }
 
 const renderer = rendererLocation();
+const devServers = new DevServerManager();
 const log = (
   error: { code: string; channel: string; message: string },
   cause?: unknown,
@@ -70,6 +72,11 @@ const dispatch = createDispatch(
     readFile: (absolutePath) => readFile(absolutePath, "utf8"),
     createProject: (request) =>
       scaffoldProject(request, { skeletonVersion: app.getVersion() }),
+    devServer: {
+      start: (root) => devServers.start(root),
+      stop: (root) => devServers.stop(root),
+      status: (root, sinceSeq) => devServers.status(root, sinceSeq),
+    },
   },
   log,
 );
@@ -81,6 +88,20 @@ void app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(renderer);
   });
+});
+// Stop every project's Vite before quitting, so none are left running.
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  quitting = true;
+  event.preventDefault();
+  devServers.stopAll().then(
+    () => app.quit(),
+    (cause: unknown) => {
+      console.error("[devserver] failed to stop dev servers on quit", cause);
+      app.quit();
+    },
+  );
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

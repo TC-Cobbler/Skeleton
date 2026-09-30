@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { AppInfo, PageTree, UiNode } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { DevServerPanel } from "./DevServerPanel.js";
 
 // Phase 1 shell. Proves the renderer → main → core path end to end; the project
-// picker (T1.4) and canvas (Phase 2) replace the page form.
+// picker (T1.4) replaces the project root field, and the canvas (Phase 2) the rest.
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [projectRoot, setProjectRoot] = useState("");
 
   useEffect(() => {
     call("app:info", null).then(setInfo, (err: unknown) =>
@@ -25,13 +27,34 @@ export function App() {
         </p>
       )}
       {error && <p className="error">{error}</p>}
-      <PageTreeProbe />
+      <ProjectRootField value={projectRoot} onChange={setProjectRoot} />
+      <DevServerPanel projectRoot={projectRoot} />
+      <PageTreeProbe projectRoot={projectRoot} />
     </main>
   );
 }
 
-function PageTreeProbe() {
-  const [projectRoot, setProjectRoot] = useState("");
+function ProjectRootField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onChange(draft.trim());
+      }}
+    >
+      <input
+        aria-label="Project root"
+        placeholder="/absolute/path/to/project"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      <button type="submit">Open</button>
+    </form>
+  );
+}
+
+function PageTreeProbe({ projectRoot }: { projectRoot: string }) {
   const [file, setFile] = useState("src/pages/HomePage.tsx");
   const [tree, setTree] = useState<PageTree | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,17 +75,13 @@ function PageTreeProbe() {
       <h2>Page tree</h2>
       <form onSubmit={load}>
         <input
-          aria-label="Project root"
-          placeholder="/absolute/path/to/project"
-          value={projectRoot}
-          onChange={(e) => setProjectRoot(e.target.value)}
-        />
-        <input
           aria-label="Page file"
           value={file}
           onChange={(e) => setFile(e.target.value)}
         />
-        <button type="submit">Parse</button>
+        <button type="submit" disabled={!projectRoot}>
+          Parse
+        </button>
       </form>
       {error && <p className="error">{error}</p>}
       {tree?.rootError && <p className="error">{tree.rootError}</p>}

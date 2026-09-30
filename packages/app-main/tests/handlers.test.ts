@@ -22,6 +22,17 @@ const appInfo = {
   platform: "linux",
 };
 
+const stoppedStatus = (projectRoot: string) => ({
+  projectRoot,
+  state: "stopped" as const,
+  url: null,
+  port: null,
+  lastError: null,
+  starts: 0,
+  logs: [],
+  lastSeq: 0,
+});
+
 function setup(overrides: Partial<HandlerDeps> = {}) {
   const errors: IpcError[] = [];
   const dispatch = createDispatch(
@@ -33,6 +44,11 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         commit: "abc123",
         timings: { write: 1, install: 2, git: 3 },
       }),
+      devServer: {
+        start: async (projectRoot) => ({ ...stoppedStatus(projectRoot), state: "starting" }),
+        stop: async (projectRoot) => stoppedStatus(projectRoot),
+        status: (projectRoot, sinceSeq) => ({ ...stoppedStatus(projectRoot), lastSeq: sinceSeq }),
+      },
       ...overrides,
     },
     (error) => errors.push(error),
@@ -201,5 +217,32 @@ describe("project:create", () => {
       error: { code: "failed", channel: "project:create", message: "scaffold failed at install: offline" },
     });
     expect(errors).toHaveLength(1);
+  });
+});
+
+describe("devserver channels", () => {
+  it("validates projectRoot and sinceSeq", async () => {
+    const { dispatch } = setup();
+    for (const [channel, request] of [
+      ["devserver:start", { projectRoot: "rel" }],
+      ["devserver:stop", null],
+      ["devserver:status", { projectRoot: "/p", sinceSeq: -1 }],
+      ["devserver:status", { projectRoot: "/p" }],
+    ] as const) {
+      const result = await dispatch(channel, request);
+      expect(result.ok, `${channel} ${JSON.stringify(request)}`).toBe(false);
+    }
+  });
+
+  it("passes normalised requests to the manager", async () => {
+    const { dispatch } = setup();
+    await expect(dispatch("devserver:start", { projectRoot: "/p/./x/" })).resolves.toMatchObject({
+      ok: true,
+      value: { projectRoot: "/p/x", state: "starting" },
+    });
+    await expect(dispatch("devserver:status", { projectRoot: "/p", sinceSeq: 7 })).resolves.toMatchObject({
+      ok: true,
+      value: { lastSeq: 7 },
+    });
   });
 });

@@ -72,7 +72,7 @@ If this can't be reached, stop and rethink the architecture before touching UI.
   - `/skeleton/config.json` and `/skeleton/notes.json`
   - `PRD.md`, `ROADMAP.md`, `CLAUDE.md` (contract), `TASKS.md`, `HANDOFF.md`
   - `git init` plus an initial commit
-- [ ] **T1.3** Dev server manager: spawn Vite per project, detect its port, restart only on dependency change, surface logs and errors in a panel.
+- [x] **T1.3** Dev server manager: spawn Vite per project, detect its port, restart only on dependency change, surface logs and errors in a panel.
 - [ ] **T1.4** Project picker: new / open recent.
 - [ ] **T1.5** Git service: commit with message, diff between commits, revert to commit.
 

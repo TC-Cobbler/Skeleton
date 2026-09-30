@@ -80,6 +80,7 @@ describe("Electron shell", () => {
 
   it("shows the parsed tree in the UI", async () => {
     await page.getByLabel("Project root").fill(fixtureRoot);
+    await page.getByRole("button", { name: "Open" }).click();
     await page.getByRole("button", { name: "Parse" }).click();
     await expect(
       page.locator(".tree li").first().textContent(),

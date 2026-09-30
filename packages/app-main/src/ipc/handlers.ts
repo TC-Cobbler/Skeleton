@@ -8,6 +8,9 @@ import {
   isChannel,
   type AppInfo,
   type Channel,
+  type DevServerStatus,
+  type DevServerStatusRequest,
+  type ProjectRootRequest,
   type IpcError,
   type IpcErrorCode,
   type IpcResult,
@@ -23,6 +26,20 @@ export interface HandlerDeps {
   readFile: (absolutePath: string) => Promise<string>;
   /** Creates a project on disk (scaffold, install, initial commit). */
   createProject: (request: ProjectCreateRequest) => Promise<ProjectCreateResponse>;
+  devServer: {
+    start: (projectRoot: string) => Promise<DevServerStatus>;
+    stop: (projectRoot: string) => Promise<DevServerStatus>;
+    status: (projectRoot: string, sinceSeq: number) => DevServerStatus;
+  };
+}
+
+function projectRootOf(raw: unknown): string {
+  if (typeof raw !== "object" || raw === null) throw new HandlerError("bad-request", "expects { projectRoot }");
+  const { projectRoot } = raw as Record<string, unknown>;
+  if (typeof projectRoot !== "string" || !path.isAbsolute(projectRoot)) {
+    throw new HandlerError("bad-request", "projectRoot must be an absolute path");
+  }
+  return path.resolve(projectRoot);
 }
 
 /** Thrown inside a handler to answer with a specific error code. */
@@ -86,6 +103,16 @@ const validators: Validators = {
     if (nameError) throw new HandlerError("bad-request", nameError);
     return { parentDir, name };
   },
+  "devserver:start": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "devserver:stop": (raw): ProjectRootRequest => ({ projectRoot: projectRootOf(raw) }),
+  "devserver:status": (raw): DevServerStatusRequest => {
+    const projectRoot = projectRootOf(raw);
+    const { sinceSeq } = raw as Record<string, unknown>;
+    if (typeof sinceSeq !== "number" || !Number.isInteger(sinceSeq) || sinceSeq < 0) {
+      throw new HandlerError("bad-request", "sinceSeq must be a non-negative integer");
+    }
+    return { projectRoot, sinceSeq };
+  },
 };
 
 /** Resolves `file` inside `root`, refusing anything that escapes it. */
@@ -122,6 +149,9 @@ function createHandlers(deps: HandlerDeps): Handlers {
       return buildTree(source);
     },
     "project:create": async (request) => deps.createProject(request),
+    "devserver:start": async ({ projectRoot }) => deps.devServer.start(projectRoot),
+    "devserver:stop": async ({ projectRoot }) => deps.devServer.stop(projectRoot),
+    "devserver:status": async ({ projectRoot, sinceSeq }) => deps.devServer.status(projectRoot, sinceSeq),
   };
 }
 

@@ -35,11 +35,50 @@ export interface ProjectCreateResponse {
   timings: { write: number; install: number; git: number };
 }
 
+export type DevServerState = "starting" | "running" | "installing" | "stopped" | "crashed" | "failed";
+
+export interface LogLine {
+  seq: number;
+  time: number;
+  stream: "stdout" | "stderr" | "skeleton";
+  level: "info" | "error";
+  text: string;
+}
+
+export interface DevServerStatus {
+  projectRoot: string;
+  state: DevServerState;
+  /** Set once Vite reports it is listening. */
+  url: string | null;
+  port: number | null;
+  /** Why the server is `crashed` or `failed`, or the latest error line while running. */
+  lastError: string | null;
+  /** How many times the process has been (re)started. */
+  starts: number;
+  /** Log lines with `seq > sinceSeq`, oldest first. */
+  logs: LogLine[];
+  /** The highest `seq` so far; pass it back as `sinceSeq` to get only new lines. */
+  lastSeq: number;
+}
+
+export interface ProjectRootRequest {
+  /** Absolute path to the project root. */
+  projectRoot: string;
+}
+
+export interface DevServerStatusRequest extends ProjectRootRequest {
+  /** Only return log lines after this sequence number (0 for all). */
+  sinceSeq: number;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
   "page:tree": { request: PageTreeRequest; response: PageTree };
   "project:create": { request: ProjectCreateRequest; response: ProjectCreateResponse };
+  "devserver:start": { request: ProjectRootRequest; response: DevServerStatus };
+  "devserver:stop": { request: ProjectRootRequest; response: DevServerStatus };
+  "devserver:status": { request: DevServerStatusRequest; response: DevServerStatus };
 }
 
 export type Channel = keyof IpcContract;
@@ -50,6 +89,9 @@ export const CHANNELS = [
   "app:info",
   "page:tree",
   "project:create",
+  "devserver:start",
+  "devserver:stop",
+  "devserver:status",
 ] as const satisfies readonly Channel[];
 
 // Compile-time check that CHANNELS lists every channel in IpcContract.
