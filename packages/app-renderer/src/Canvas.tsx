@@ -3,6 +3,8 @@ import type { DevServerStatus } from "@skeleton/app-main/ipc";
 import {
   isOverlayMessage,
   type DropTarget,
+  type GizmoCommit,
+  type GizmoToken,
   type HostMessage,
   type NodeBox,
   type OverlayMessage,
@@ -34,6 +36,18 @@ export interface CanvasEvents {
   onKey?: (key: string, mod: boolean, shift: boolean) => void;
   /** How many elements on the page each token affects (T4.2), while `tokenUsage` is set. */
   onTokenCounts?: (counts: Record<string, number>) => void;
+  /** A gizmo drag was released (T4.4): write this, then answer through `gizmoDone`. */
+  onGizmoCommit?: (key: string, commit: GizmoCommit) => void;
+  /** A colour chip was clicked (T4.3). */
+  onColourChip?: (chip: { key: string; utility: string; token: string; alt: boolean }) => void;
+}
+
+/** What the selected element's gizmos can do (T4.3). */
+export interface GizmoContext {
+  key: string;
+  tokens: GizmoToken[];
+  spacingSteps: number[];
+  classEdits: string | null;
 }
 
 /** A drag in progress over the canvas, in window coordinates (T3.2). */
@@ -68,6 +82,11 @@ export interface CanvasProps extends CanvasEvents {
   tokenUsage: Record<string, TokenUsage> | null;
   /** Outline everything this token affects. */
   tokenHighlight: string | null;
+  gizmos: GizmoContext | null;
+  /** How the last gizmo commit went; a new object is sent to the frames. */
+  gizmoDone: { ok: boolean } | null;
+  /** CSS to preview on the page (the colour picker), or null. */
+  preview: string | null;
 }
 
 /**
@@ -202,6 +221,7 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "select", key: p.selected });
           post({ source: "skeleton-host", type: "token-usage", usage: p.primary ? p.tokenUsage : null });
           post({ source: "skeleton-host", type: "token-highlight", name: p.tokenHighlight });
+          if (p.gizmos) post({ source: "skeleton-host", type: "gizmos", ...p.gizmos });
           p.onLocation?.(msg.pathname);
           break;
         }
@@ -232,6 +252,12 @@ function CanvasFrame(props: FrameProps) {
         case "token-counts":
           if (p.primary) p.onTokenCounts?.(msg.counts);
           break;
+        case "gizmo-commit":
+          p.onGizmoCommit?.(msg.key, msg.commit);
+          break;
+        case "colour-chip":
+          p.onColourChip?.({ key: msg.key, utility: msg.utility, token: msg.token, alt: msg.alt });
+          break;
       }
     };
     window.addEventListener("message", onMessage);
@@ -246,6 +272,13 @@ function CanvasFrame(props: FrameProps) {
   // Only the primary frame counts; the others just outline.
   useEffect(() => post({ source: "skeleton-host", type: "token-usage", usage: props.primary ? props.tokenUsage : null }), [props.tokenUsage, props.primary]);
   useEffect(() => post({ source: "skeleton-host", type: "token-highlight", name: props.tokenHighlight }), [props.tokenHighlight]);
+  useEffect(() => {
+    if (props.gizmos) post({ source: "skeleton-host", type: "gizmos", ...props.gizmos });
+  }, [props.gizmos]);
+  useEffect(() => {
+    if (props.gizmoDone) post({ source: "skeleton-host", type: "gizmo-done", ok: props.gizmoDone.ok });
+  }, [props.gizmoDone]);
+  useEffect(() => post({ source: "skeleton-host", type: "preview", css: props.preview }), [props.preview]);
   // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
   // Skeleton's window, so the overlay doesn't see the key itself.
   useEffect(() => {

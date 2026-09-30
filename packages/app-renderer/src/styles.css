@@ -612,3 +612,20 @@ button.danger {
 .token-derived button {
   padding: 0 4px;
 }
+.colour-panel {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.colour-panel h2 {
+  margin: 0;
+  flex: 1;
+}
+.colour-panel .segmented {
+  margin: 6px 0;
+}
+.colour-inputs input[type="color"] {
+  flex: none;
+  width: 36px;
+  height: 28px;
+  padding: 0;
+}

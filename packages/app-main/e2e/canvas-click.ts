@@ -120,3 +120,33 @@ export async function moveOnCanvas(page: Page, source: Locator, target: Locator,
   await page.waitForTimeout(100);
   await page.mouse.up();
 }
+
+/**
+ * Drags a gizmo handle (T4.3) by (dx, dy) window pixels with the real mouse, holding
+ * `modifier` (Shift or Alt) for the whole drag. `during` runs before the release, for
+ * checking the live preview.
+ */
+export async function dragGizmo(
+  page: Page,
+  handle: Locator,
+  dx: number,
+  dy: number,
+  options: { modifier?: "Shift" | "Alt"; during?: () => Promise<void>; frameTestId?: string } = {},
+): Promise<void> {
+  // A previous gizmo's preview stays until the page updates, and handles move with it.
+  const frame = page.frameLocator(`[data-testid="${options.frameTestId ?? "canvas-frame"}"]`);
+  await frame.locator("style[data-skeleton-live]").waitFor({ state: "detached", timeout: 10_000 });
+  await handle.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const from = await canvasPoint(page, options.frameTestId ?? "canvas-frame", handle);
+  await page.mouse.move(from.x, from.y);
+  if (options.modifier) await page.keyboard.down(options.modifier);
+  try {
+    await page.mouse.down();
+    await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
+    await page.waitForTimeout(50);
+    await options.during?.();
+  } finally {
+    await page.mouse.up();
+    if (options.modifier) await page.keyboard.up(options.modifier);
+  }
+}

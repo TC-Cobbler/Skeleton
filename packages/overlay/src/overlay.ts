@@ -3,9 +3,19 @@
 // the host only via postMessage; never imports from core.
 
 import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
+import { handlesFor, LIVE_TARGET, planDrag, scopeOf, type Drag, type GizmoData, type Handle, type Measured, type Scope } from "./gizmos.js";
 import { NodeIndex } from "./mapping.js";
-import { TokenMatcher } from "./tokens.js";
-import { isHostMessage, isShortcut, type DropTarget, type HostMessage, type NodeBox, type OverlayMessage, type OverlayNode } from "./protocol.js";
+import { stripVariants, TokenMatcher } from "./tokens.js";
+import {
+  isHostMessage,
+  isShortcut,
+  type DropTarget,
+  type GizmoCommit,
+  type HostMessage,
+  type NodeBox,
+  type OverlayMessage,
+  type OverlayNode,
+} from "./protocol.js";
 
 type Rect = NodeBox["rects"][number];
 
@@ -18,7 +28,27 @@ const COLORS = {
   locked: "#ea580c",
   drop: "#2563eb",
   token: "#9333ea",
+  gizmo: "#db2777",
 };
+
+/** How long a released gizmo's preview may wait for the page to update before it goes anyway. */
+const LIVE_SETTLE_MS = 4000;
+
+/** A gizmo drag in progress (T4.3). */
+interface GizmoDrag {
+  key: string;
+  handle: Handle;
+  scope: Scope;
+  drag: Drag;
+  x: number;
+  y: number;
+  start: number;
+  value: number;
+  text: string;
+  commit: GizmoCommit | null;
+  /** Elements the token affects, counted at the start (T4.2). */
+  count: number;
+}
 
 interface DropState extends DropTarget {
   container: Rect;
@@ -58,6 +88,17 @@ export class Overlay {
   private tokens: TokenMatcher | null = null;
   private tokenHighlight: string | null = null;
   private lastCounts = "";
+  /** What the selected element's gizmos can do, from the host (T4.3). */
+  private gizmoData: (GizmoData & { key: string }) | null = null;
+  private gizmo: GizmoDrag | null = null;
+  /** The handle under the pointer, with the scope its modifiers would pick (T4.5). */
+  private gizmoHover: { handle: Handle; scope: Scope } | null = null;
+  /** Why the last gizmo press couldn't start, shown by the handle for a moment. */
+  private gizmoRefusal: { text: string; x: number; y: number; until: number } | null = null;
+  /** Handles as last drawn, for hit-testing. */
+  private handles: Handle[] = [];
+  /** The live preview of a gizmo drag (T4.4), kept after release until the page updates. */
+  private live: { style: HTMLStyleElement; target: Element; pending: boolean; timer: number } | null = null;
   private readonly layer: HTMLElement;
   private readonly shadow: ShadowRoot;
   private frame = 0;
@@ -85,6 +126,16 @@ export class Overlay {
     // suppresses mouse events until release, so a move drag would see no mousemoves.
     win.addEventListener("pointermove", (e) => this.onMove(e), { capture: true, signal });
     win.addEventListener("keydown", (e) => this.onKey(e), { capture: true, signal });
+    win.addEventListener(
+      "keyup",
+      (e) => {
+        if (this.gizmoHover && (e.key === "Shift" || e.key === "Alt")) {
+          this.gizmoHover = { ...this.gizmoHover, scope: scopeOf(e) };
+          this.schedule();
+        }
+      },
+      { capture: true, signal },
+    );
     // A drag that lost its release (pointer let go outside, focus lost) is cancelled.
     win.addEventListener("pointercancel", () => this.cancelMove(), { capture: true, signal });
     win.addEventListener("blur", () => this.cancelMove(), { signal });
@@ -112,6 +163,8 @@ export class Overlay {
   /** For Vite HMR hooks in the entry module. */
   notifyUpdated(): void {
     this.post({ source: "skeleton-overlay", type: "updated" });
+    // The written value is on the page now: the preview can go, once React has re-rendered.
+    if (this.live?.pending) this.settleLive(150);
   }
 
   private post(message: OverlayMessage): void {
@@ -164,11 +217,28 @@ export class Overlay {
       case "token-highlight":
         this.tokenHighlight = msg.name;
         break;
+      case "gizmos":
+        this.gizmoData = { key: msg.key, tokens: msg.tokens, spacingSteps: msg.spacingSteps, classEdits: msg.classEdits };
+        break;
+      case "preview":
+        // A preview already written waits for the page to update (see gizmo-done).
+        if (msg.css === null) {
+          if (this.live && !this.live.pending && !this.gizmo) this.clearLive();
+        } else this.preview(msg.css);
+        break;
+      case "gizmo-done":
+        if (!msg.ok) this.clearLive();
+        else if (this.live) {
+          this.live.pending = true;
+          this.settleLive(LIVE_SETTLE_MS);
+        }
+        break;
       case "drag-end":
         // Also cancels a move drag: Escape reaches the host's window, not this frame.
         this.hostDragging = false;
         this.press = null;
         this.moving = null;
+        this.cancelGizmo();
         this.endDrag();
         this.post({ source: "skeleton-overlay", type: "drop-target", target: null, seq: 0 });
         break;
@@ -227,6 +297,24 @@ export class Overlay {
 
   private onMove(event: MouseEvent): void {
     if (this.mode !== "select") return;
+    if (this.gizmo) {
+      if ((event.buttons & 1) === 0) {
+        this.cancelGizmo();
+        return;
+      }
+      this.gizmoTo(event.clientX - this.gizmo.x, event.clientY - this.gizmo.y);
+      return;
+    }
+    const handle = this.handleAt(event);
+    const hover = handle ? { handle, scope: scopeOf(event) } : null;
+    if (hover?.handle !== this.gizmoHover?.handle || hover?.scope !== this.gizmoHover?.scope) {
+      this.gizmoHover = hover;
+      this.schedule();
+    }
+    if (handle) {
+      this.setHover(null);
+      return;
+    }
     const press = this.press;
     if (press && (event.buttons & 1) === 0) {
       this.cancelMove();
@@ -251,7 +339,15 @@ export class Overlay {
    * (focus can be in this frame after a click), and never to the app.
    */
   private onKey(event: KeyboardEvent): void {
-    if (event.key === "Escape") this.cancelMove();
+    if (event.key === "Escape") {
+      this.cancelMove();
+      this.cancelGizmo();
+    }
+    // Shift and Alt change the scope the hover label shows (T4.5).
+    if (this.gizmoHover && (event.key === "Shift" || event.key === "Alt")) {
+      this.gizmoHover = { ...this.gizmoHover, scope: scopeOf(event) };
+      this.schedule();
+    }
     if (this.mode !== "select") return;
     const mod = event.ctrlKey || event.metaKey;
     if (!isShortcut(event.key, mod)) return;
@@ -321,6 +417,7 @@ export class Overlay {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    if (this.onGizmoPointer(event)) return;
     if (event.type === "pointerdown" && event instanceof MouseEvent && event.button === 0) {
       this.press = { x: event.clientX, y: event.clientY, key: this.movableFrom(this.target(event)) };
       this.swallowClick = false;
@@ -357,6 +454,206 @@ export class Overlay {
     this.selected = node?.key ?? null;
     this.post({ source: "skeleton-overlay", type: "select", key: this.selected });
     this.schedule();
+  }
+
+  /** Presses on handles and chips (T4.3). True when the event was a gizmo's. */
+  private onGizmoPointer(event: Event): boolean {
+    if (!(event instanceof MouseEvent)) return false;
+    if (this.gizmo) {
+      if (event.type === "pointerup") this.releaseGizmo();
+      return true;
+    }
+    // The click that ends a gizmo drag selects nothing, wherever it lands.
+    if (event.type === "click" && this.swallowClick) {
+      this.swallowClick = false;
+      return true;
+    }
+    const chip = this.chipAt(event);
+    if (chip) {
+      if (event.type === "click" && this.selected) {
+        this.post({ source: "skeleton-overlay", type: "colour-chip", key: this.selected, utility: chip.utility, token: chip.token, alt: event.altKey });
+      }
+      return true;
+    }
+    const handle = this.handleAt(event);
+    if (!handle) return false;
+    if (event.type === "pointerdown" && event.button === 0) this.startGizmo(handle, event);
+    return true;
+  }
+
+  private startGizmo(handle: Handle, event: MouseEvent): void {
+    const data = this.gizmoData;
+    const el = this.selectedElement();
+    if (!data || !el || data.key !== this.selected) return;
+    const scope = scopeOf(event);
+    const m = this.measure(el, this.node(this.selected));
+    const plan = planDrag(handle, scope, m, data);
+    if ("unavailable" in plan) {
+      this.gizmoRefusal = { text: `Can't: ${plan.unavailable}`, x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
+      this.schedule();
+      this.options.win.setTimeout(() => this.schedule(), 2600);
+      return;
+    }
+    this.clearLive();
+    const count = plan.token && this.tokens && this.doc.body ? this.tokens.elements(this.doc.body, this.layer, plan.token).length : 1;
+    const start = plan.valueAt(0, 0);
+    this.gizmo = { key: data.key, handle, scope, drag: plan, x: event.clientX, y: event.clientY, start, value: start, text: plan.at(start).text, commit: null, count };
+    this.setHover(null);
+    // Keep receiving the drag's moves and release even outside the frame. The handle
+    // itself is redrawn every frame, so the capture goes on the document element.
+    if (typeof PointerEvent !== "undefined" && event instanceof PointerEvent) {
+      try {
+        this.doc.documentElement.setPointerCapture(event.pointerId);
+      } catch (error) {
+        console.warn("[skeleton overlay] couldn't capture the pointer", error);
+      }
+    }
+    this.schedule();
+  }
+
+  /** The gizmo moved by (dx, dy): preview the new value everywhere it applies (T4.4). */
+  private gizmoTo(dx: number, dy: number): void {
+    const g = this.gizmo;
+    if (!g) return;
+    const value = g.drag.valueAt(dx, dy);
+    if (value === g.value && g.commit !== null) return;
+    const { css, commit, text } = g.drag.at(value);
+    g.value = value;
+    g.text = text;
+    g.commit = value === g.start ? null : commit;
+    this.preview(css);
+    this.schedule();
+  }
+
+  private releaseGizmo(): void {
+    const g = this.gizmo;
+    this.gizmo = null;
+    this.swallowClick = true;
+    if (!g || !g.commit) {
+      this.clearLive();
+    } else {
+      if (this.live) this.live.pending = true;
+      // Nothing may arrive (a write refused before any update): don't keep a stale preview.
+      this.settleLive(LIVE_SETTLE_MS * 2);
+      this.post({ source: "skeleton-overlay", type: "gizmo-commit", key: g.key, commit: g.commit });
+    }
+    this.schedule();
+  }
+
+  private cancelGizmo(): void {
+    if (!this.gizmo) return;
+    this.gizmo = null;
+    this.clearLive();
+    this.schedule();
+  }
+
+  /** Show `css` on the page, with the selected element marked as the instance target. */
+  private preview(css: string): void {
+    const target = this.selectedElement();
+    if (!target) return;
+    if (!this.live || this.live.target !== target) {
+      this.clearLive();
+      const style = this.doc.createElement("style");
+      style.setAttribute("data-skeleton-live", "");
+      this.doc.head.appendChild(style);
+      target.setAttribute(LIVE_TARGET, "");
+      this.live = { style, target, pending: false, timer: 0 };
+    }
+    this.live.style.textContent = css;
+  }
+
+  /** Take the preview away after `ms` (sooner calls win). */
+  private settleLive(ms: number): void {
+    const live = this.live;
+    if (!live) return;
+    if (live.timer) this.options.win.clearTimeout(live.timer);
+    live.timer = this.options.win.setTimeout(() => {
+      if (this.live === live) this.clearLive();
+    }, ms);
+  }
+
+  private clearLive(): void {
+    const live = this.live;
+    if (!live) return;
+    this.live = null;
+    if (live.timer) this.options.win.clearTimeout(live.timer);
+    live.style.remove();
+    live.target.removeAttribute(LIVE_TARGET);
+  }
+
+  private selectedElement(): Element | null {
+    const node = this.node(this.selected);
+    if (!node || !this.index || !this.doc.body) return null;
+    return this.index.elementsOf(node, this.doc.body, this.layer)[0] ?? null;
+  }
+
+  /** The handle an event is on: handles take pointer events inside the drawing layer. */
+  private handleAt(event: Event): Handle | null {
+    const hit = event.composedPath()[0];
+    if (!(hit instanceof Element) || !hit.hasAttribute("data-gizmo")) return null;
+    return this.handles[Number(hit.getAttribute("data-gizmo"))] ?? null;
+  }
+
+  private chipAt(event: Event): { utility: string; token: string } | null {
+    const hit = event.composedPath()[0];
+    if (!(hit instanceof Element)) return null;
+    const utility = hit.getAttribute("data-chip");
+    const token = hit.getAttribute("data-token");
+    return utility && token ? { utility, token } : null;
+  }
+
+  /** What the gizmos need to know about an element's box and styles. */
+  private measure(el: Element, node: OverlayNode | null): Measured {
+    const win = this.options.win;
+    const cs = win.getComputedStyle(el);
+    const flow = flowOf(cs.display, cs.flexDirection, cs.gridTemplateColumns);
+    const rowish = flow === "horizontal" || flow === "grid";
+    const container = cs.display.includes("flex") || cs.display.includes("grid");
+    const children = [...el.children].map(rectOf).filter((r) => r.width > 0 || r.height > 0);
+    children.sort((a, b) => (rowish ? a.x - b.x : a.y - b.y));
+    const r = rectOf(el);
+    const gaps: Measured["gaps"] = [];
+    for (let i = 1; i < children.length; i++) {
+      const a = children[i - 1] as Rect;
+      const b = children[i] as Rect;
+      gaps.push(
+        rowish
+          ? { x: a.x + a.width, y: r.y, width: Math.max(0, b.x - a.x - a.width), height: r.height }
+          : { x: r.x, y: a.y + a.height, width: r.width, height: Math.max(0, b.y - a.y - a.height) },
+      );
+    }
+    const border = (side: string) => (cs.getPropertyValue(`border-${side}-style`) === "none" ? 0 : parseFloat(cs.getPropertyValue(`border-${side}-width`)) || 0);
+    return {
+      rect: r,
+      container: node?.drop ?? false,
+      classes: [...el.classList].filter((c) => stripVariants(c) === c).map((c) => c.replace(/^!|!$/g, "")),
+      radius: parseFloat(cs.borderTopLeftRadius) || 0,
+      flow: container ? (rowish ? "row" : "column") : null,
+      gap: parseFloat(rowish ? cs.columnGap : cs.rowGap) || 0,
+      padding: { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0, bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 },
+      fontSize: parseFloat(cs.fontSize) || 16,
+      hasText: [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? "").trim() !== ""),
+      borderWidth: Math.max(border("top"), border("right"), border("bottom"), border("left")),
+      gaps,
+      rem: parseFloat(win.getComputedStyle(this.doc.documentElement).fontSize) || 16,
+    };
+  }
+
+  /** Colour utilities on the element that read a colour token: one chip each (T4.3). */
+  private chipsFor(el: Element, classes: string[]): { utility: string; token: string; colour: string }[] {
+    const data = this.gizmoData;
+    if (!data) return [];
+    const cs = this.options.win.getComputedStyle(el);
+    const out: { utility: string; token: string; colour: string }[] = [];
+    for (const c of classes) {
+      const m = /^(bg|text|border)-([a-z0-9-]+?)(\/\d+)?$/.exec(c);
+      if (!m) continue;
+      const token = `--${m[2]}`;
+      if (!data.tokens.some((t) => t.name === token && t.colour) || out.some((o) => o.utility === m[1])) continue;
+      const prop = m[1] === "bg" ? "background-color" : m[1] === "text" ? "color" : "border-top-color";
+      out.push({ utility: m[1] as string, token, colour: cs.getPropertyValue(prop) });
+    }
+    return out;
   }
 
   private setHover(key: string | null): void {
@@ -477,6 +774,7 @@ export class Overlay {
       box(hovered, hovered.kind === "locked" ? COLORS.locked : COLORS.hover, 1, hovered.kind === "locked", true);
     }
     if (selected) box(selected, selected.kind === "locked" ? COLORS.locked : COLORS.selected, 2, selected.kind === "locked", true);
+    this.drawGizmos(parts, place);
     const drop = this.drop;
     const dropNode = drop ? this.node(drop.parentKey) : null;
     if (drop && dropNode) {
@@ -493,8 +791,54 @@ export class Overlay {
     }
     this.shadow.innerHTML =
       `<style>.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
-      `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}</style>` +
+      `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}` +
+      `.gz{position:fixed;box-sizing:border-box;pointer-events:auto;background:#fff;border:2px solid ${COLORS.gizmo};border-radius:3px}` +
+      `.gz[data-kind=radius]{border-radius:50%;cursor:nwse-resize}.gz[data-kind=gap],.gz[data-kind=padding]{cursor:move}` +
+      `.gz[data-kind=type]{cursor:ns-resize}.gz[data-kind=border]{cursor:ew-resize}` +
+      `.chip{position:fixed;box-sizing:border-box;width:14px;height:14px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px ${COLORS.gizmo}}</style>` +
       parts.join("");
+  }
+
+  /** Handles and chips on the selected element (T4.3), and the drag's or hover's label (T4.5). */
+  private drawGizmos(parts: string[], place: (x: number, y: number, text: string) => { x: number; y: number }): void {
+    this.handles = [];
+    const data = this.gizmoData;
+    const busy = this.moving !== null || this.drop !== null || this.hostDragging;
+    const el = this.mode === "select" && !busy && data && data.key === this.selected ? this.selectedElement() : null;
+    if (!el) return;
+    const m = this.measure(el, this.node(this.selected));
+    const g = this.gizmo;
+    this.handles = g ? [g.handle] : handlesFor(m);
+    this.handles.forEach((h, i) => {
+      const r = h.rect;
+      parts.push(`<div class="gz" data-gizmo="${i}" data-kind="${h.kind}" data-part="${h.part ?? ""}" style="left:${r.x}px;top:${r.y}px;width:${r.width}px;height:${r.height}px"></div>`);
+    });
+    if (!g) {
+      this.chipsFor(el, m.classes).forEach((chip, i) => {
+        const x = m.rect.x + m.rect.width - 16 * (i + 1);
+        const y = m.rect.y >= 18 ? m.rect.y - 16 : m.rect.y + 2;
+        parts.push(
+          `<div class="chip" data-chip="${chip.utility}" data-token="${escapeHtml(chip.token)}" title="${escapeHtml(`${chip.utility}: ${chip.token}`)}" ` +
+            `style="left:${x}px;top:${y}px;background:${escapeHtml(chip.colour)}"></div>`,
+        );
+      });
+    }
+    const label = (x: number, y: number, text: string) => {
+      const at = place(x, y, text);
+      parts.push(`<div class="label" data-gizmo-label style="left:${at.x}px;top:${at.y}px;background:${COLORS.gizmo}">${escapeHtml(text)}</div>`);
+    };
+    if (g) {
+      const affected = g.scope === "instance" || g.drag.token === null ? "this element" : `${g.count} element${g.count === 1 ? "" : "s"}`;
+      label(g.handle.rect.x + 14, g.handle.rect.y + 12, `${g.text} · ${affected}`);
+    } else if (this.gizmoHover) {
+      const { handle, scope } = this.gizmoHover;
+      const plan = planDrag(handle, scope, m, data as GizmoData);
+      const what = "unavailable" in plan ? `can't: ${plan.unavailable}` : plan.label;
+      label(handle.rect.x + 14, handle.rect.y + 12, `${SCOPE_NAMES[scope]}: ${what}`);
+    }
+    const refusal = this.gizmoRefusal;
+    if (refusal && refusal.until > Date.now()) label(refusal.x + 14, refusal.y + 12, refusal.text);
+    else this.gizmoRefusal = null;
   }
 
   private watchLocation(signal: AbortSignal): void {
@@ -518,6 +862,9 @@ export class Overlay {
     win.addEventListener("popstate", report, { signal });
   }
 }
+
+/** How the hover label names each scope (PRD §10.3). */
+const SCOPE_NAMES: Record<Scope, string> = { component: "Drag", global: "Shift", instance: "Alt" };
 
 function rectOf(el: Element): Rect {
   const r = el.getBoundingClientRect();

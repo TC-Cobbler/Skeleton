@@ -156,6 +156,56 @@ describe("Overlay", () => {
     expect(layer?.shadowRoot?.innerHTML).toContain("button #ui_trig0");
   });
 
+  it("drags a gizmo: previews live, commits on release, and keeps the preview until the page updates (T4.3, T4.4)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    const trigger = $("#trigger") as HTMLElement;
+    trigger.classList.add("rounded-button");
+    trigger.style.borderTopLeftRadius = "8px";
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 120, 40));
+    trigger.click();
+    send({
+      source: "skeleton-host",
+      type: "gizmos",
+      key: "0.0.0",
+      tokens: [
+        { name: "--radius", value: "0.625rem", resolved: null, colour: false },
+        { name: "--radius-button", value: "calc(var(--radius) * 0.8)", resolved: "0.5rem", colour: false },
+      ],
+      spacingSteps: [0, 1, 2, 4],
+      classEdits: null,
+    });
+    flush();
+    const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
+    const radius = shadow.querySelector('.gz[data-kind="radius"]') as HTMLElement;
+    expect(radius).not.toBeNull();
+    const pointer = (type: string, target: EventTarget, x: number, y: number, buttons = 1) =>
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, composed: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons }));
+    pointer("pointerdown", radius, 106, 106);
+    pointer("pointermove", document, 114, 114);
+    const live = document.querySelector("style[data-skeleton-live]");
+    expect(live?.textContent).toBe(".rounded-button{border-radius:16px!important}");
+    expect(trigger.hasAttribute("data-skeleton-gizmo")).toBe(true);
+    flush();
+    expect(shadow.innerHTML).toContain("--radius-button: calc(var(--radius) * 1.6)");
+    pointer("pointerup", document, 114, 114, 0);
+    expect(sent.at(-1)).toEqual({
+      source: "skeleton-overlay",
+      type: "gizmo-commit",
+      key: "0.0.0",
+      commit: { kind: "token", name: "--radius-button", value: "calc(var(--radius) * 1.6)" },
+    });
+    // The click that ends the drag selects nothing.
+    const before = sent.length;
+    pointer("click", document, 114, 114, 0);
+    expect(sent.length).toBe(before);
+    send({ source: "skeleton-host", type: "gizmo-done", ok: true });
+    expect(document.querySelector("style[data-skeleton-live]")).not.toBeNull();
+    send({ source: "skeleton-host", type: "gizmo-done", ok: false });
+    expect(document.querySelector("style[data-skeleton-live]")).toBeNull();
+    expect(trigger.hasAttribute("data-skeleton-gizmo")).toBe(false);
+  });
+
   it("scrolls to selections made elsewhere, but not to the echo of its own click", () => {
     const { send } = setup();
     send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });

@@ -1,0 +1,58 @@
+# 010: Tokens and gizmos
+
+**Status:** accepted · 2026-09-30 · T4.1–T4.5 (applies to all of Phase 4)
+
+## Context
+
+Phase 4 edits the design system from the canvas: a token panel, a map of what each token affects, on-canvas handles with live feedback, and three scopes per drag (PRD §10). Constraints:
+
+- **Non-negotiable 5:** only the token writer writes `globals.css`.
+- **ADR 003 and 006:** the renderer and the overlay never import `core` at runtime. Everything that needs CSS or Tailwind knowledge is worked out in main and sent as data.
+- Tokens in `@theme inline` (per-component radii, the type scale) are inlined into utilities by Tailwind. There's no `--radius-button` variable at runtime to set.
+
+## Decisions
+
+**The token panel (T4.1) reads `readTheme` in core.** It gives one entry per token, with its light and `.dark` values, its formula's references, and what it comes to (`calc` evaluated by `calc.ts`: lengths, numbers and `var()`, nothing layout-dependent).
+
+- **Plumbing isn't listed:** `--color-x: var(--x)` and `--default-border-width` only hand a token to Tailwind.
+- **Detach** writes the resolved literal. **Attach** writes the template's formula (`templateTokens()`), so a token is "detached" exactly when the template has a formula for it and the project doesn't.
+- **Writes** go through `tokens:write` → `Editor.tokens` → `setTokens` → `writeTokens`. They're queued with page edits and undoable, and not typechecked (CSS can't break `tsc`). Values are one line of CSS with no `;{}` or comments.
+
+**What a token affects (T4.2) is worked out in core and matched in the page.** `tokenUsage(css)` gives, per token, regexes for the base utilities that read it (Tailwind v4 namespaces: `--color-*`, `--radius-*`, `--text-*`, `--font-*`, `--spacing`, `--default-border-width`), through every token derived from it. It also gives the base-layer selectors styled with it (`body`), and makes every bordered element depend on `--border` (`* { @apply border-border }`).
+
+- The overlay strips variants from each DOM class (`hover:bg-primary/90` → `bg-primary/90`) and counts matching elements. That includes shadcn internals and agent components, which only the DOM shows.
+- It re-counts on DOM changes, and reports only when the counts change.
+
+**Gizmos are planned in the overlay, from what it measures (T4.3).** `gizmos.ts` is pure:
+
+- **Inputs:** the selected element's box, its unvaried classes and its computed styles, plus the tokens in the mode shown, the spacing scale and whether its classes can be edited, all sent by the host per selection.
+- **Outputs:** handles, and for a drag a stylesheet to preview with and a commit.
+- **Which handles:** radius on anything; gap and padding only on layout containers (nodes the host marks `drop`: a Button is inline-flex with padding, but it isn't a stack); a baseline on elements with their own text; an edge on bordered elements; a chip per colour utility that reads a colour token.
+
+**Scopes (T4.5, PRD §10.3):**
+
+| Handle | Plain drag | Shift | Alt |
+|---|---|---|---|
+| Radius | The element's `--radius-x` (from its `rounded-x` class). An attached token keeps its formula: only the factor in `calc(var(--radius) * k)` changes. | `--radius`, set so this element lands where dragged | `rounded-[Npx]` |
+| Gap, padding | A step on the spacing scale (`gap-6`): a token-conforming class, not a violation | `--spacing`, scaled from the element's step | `gap-[Npx]` |
+| Type | A step on the type scale (`text-lg`), one per 12px | `--type-base`, scaled | `text-[Npx]` |
+| Border width | `--border-width`: there are no per-component widths, so plain and Shift are the same | `--border-width` | `border-[Npx]` |
+| Colour | The token, in the mode shown (T4.7) | — | `bg-[#hex]` |
+
+- Spacing and type have no component tokens in v1 (PRD §10.1), so "component" means a step on the project's scale.
+- Class edits replace the element's classes in the same group (a regex per group that never catches `text-primary` or `border-input`), with one `setClass`. They need an ID and a literal `className`; otherwise the scope says why it's unavailable.
+- The hover label names the scope before the drag and follows Shift and Alt.
+
+**Live preview (T4.4) is one injected stylesheet, and no file is written until release.**
+
+- Runtime variables (`:root`, `.dark`, `@theme`) are previewed with `:root{--x:v!important}`, which beats `.dark{}`.
+- Inlined tokens are previewed by overriding their utility (`.rounded-button{border-radius:…}`).
+- Instance and step edits target the element through a temporary `data-skeleton-gizmo` attribute.
+- **On release** the overlay posts `gizmo-commit`, and the renderer writes it through `tokens:write` or `page:edit`. The preview stays until Vite's next update (the written value is then on the page), so nothing flickers back. It goes at once if the write fails, and after a timeout at the latest.
+- The colour picker previews the same way (`preview`), and writes when the native picker closes (`change`, not React's `onChange`).
+
+## Consequences
+
+- Handles live in the overlay's shadow root with `pointer-events: auto`. The drag captures the pointer on the document element, because handles are redrawn every frame.
+- The picker's hex is written as oklch (`hexToOklch`), keeping the token's alpha, so `globals.css` stays in one colour space.
+- e2e: `e2e/tokens.test.ts`. Gizmo drags wait for any previous preview to clear first: handles move as a written value lands.

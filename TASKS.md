@@ -139,15 +139,15 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 - [x] **T4.1** Token panel with every token, light/dark values side by side, and exact inputs. Derived tokens show their formula, with a detach toggle.
 - [x] **T4.2** Token-to-element map: which elements each token affects (for the live count and highlighting).
-- [ ] **T4.3** Gizmo handles in the overlay:
-  - [ ] radius corner handle
-  - [ ] gap handles between siblings
-  - [ ] padding handles on stack edges
-  - [ ] type baseline handle (steps through the scale)
-  - [ ] border-width edge handle
-  - [ ] colour swatch chip → picker
-- [ ] **T4.4** Live drag: update CSS variables in the webview during the drag (no file write). Write to disk on release.
-- [ ] **T4.5** Scope modifiers:
+- [x] **T4.3** Gizmo handles in the overlay:
+  - [x] radius corner handle
+  - [x] gap handles between siblings
+  - [x] padding handles on stack edges
+  - [x] type baseline handle (steps through the scale)
+  - [x] border-width edge handle
+  - [x] colour swatch chip → picker
+- [x] **T4.4** Live drag: update CSS variables in the webview during the drag (no file write). Write to disk on release.
+- [x] **T4.5** Scope modifiers:
   - plain drag → component token
   - Shift → global token
   - Alt → instance override (arbitrary class)

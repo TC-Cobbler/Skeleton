@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite } from "@skeleton/app-main/ipc";
-import type { DropTarget } from "@skeleton/overlay/protocol";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AppInfo, EditHistory, EditIntent, ProjectInfo, TokenWrite, UiNode } from "@skeleton/app-main/ipc";
+import type { DropTarget, GizmoCommit } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
-import { Canvas, type PreviewLayout } from "./Canvas.js";
+import { Canvas, type GizmoContext, type PreviewLayout } from "./Canvas.js";
+import { COLOUR_GROUP } from "./colour.js";
+import { ColourPanel, type ColourChip } from "./ColourPanel.js";
 import { useCanvasDrag } from "./canvas/drag.js";
 import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
 import { PropertiesPanel } from "./PropertiesPanel.js";
@@ -71,6 +73,14 @@ export function App() {
       )}
     </main>
   );
+}
+
+/** Why gizmos can't edit an element's classes (instance overrides, scale steps), or null when they can. */
+function classEditsBlocked(node: UiNode): string | null {
+  if (node.kind === "locked") return "it's a locked block: its classes are agent code";
+  if (!node.id) return "it has no data-ui-id";
+  if (node.protectedProps.includes("className")) return "its className is set by agent code";
+  return null;
 }
 
 /** Shown until the router has been read. */
@@ -156,14 +166,18 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     [pushToast],
   );
   const edit = useCallback(
-    (intent: EditIntent, after?: () => void) => {
-      if (!file) return;
+    (intent: EditIntent, after?: () => void, settled?: (ok: boolean) => void) => {
+      if (!file) {
+        settled?.(false);
+        return;
+      }
       const epoch = selectionEpoch.current;
       call("page:edit", { projectRoot: project.projectRoot, file, edit: intent }).then(
         (result) => {
           page.reload();
           setRevision((r) => r + 1);
           noteUnchecked(result.unchecked);
+          settled?.(true);
           if (selectionEpoch.current !== epoch) return;
           if (result.select) selectId(result.select);
           after?.();
@@ -171,6 +185,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         (err: unknown) => {
           // A rolled-back edit did touch the file: re-read it either way.
           page.reload();
+          settled?.(false);
           setEditError(err instanceof Error ? err.message.replace(/^page:edit: /, "") : String(err));
         },
       );
@@ -180,14 +195,16 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   // Token writes (T4.1): through the token writer in main, undoable like edits.
   const setTokenSheet = tokens.set;
   const writeTokens = useCallback(
-    (writes: TokenWrite[]) => {
+    (writes: TokenWrite[], settled?: (ok: boolean) => void) => {
       call("tokens:write", { projectRoot: project.projectRoot, writes }).then(
         (result) => {
           setTokenSheet(result.sheet);
           setRevision((r) => r + 1);
+          settled?.(true);
         },
         (err: unknown) => {
           setRevision((r) => r + 1);
+          settled?.(false);
           setEditError(err instanceof Error ? err.message.replace(/^tokens:write: /, "") : String(err));
         },
       );
@@ -198,13 +215,52 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
   const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
   const [tokenHover, setTokenHover] = useState<string | null>(null);
-  const tokenUsage = inspectorTab === "tokens" ? (tokens.sheet?.usage ?? null) : null;
+  // Always counted: gizmo drags show how many elements they affect (T4.2, T4.4).
+  const tokenUsage = tokens.sheet?.usage ?? null;
   useEffect(() => {
-    if (tokenUsage === null) {
-      setTokenCounts(null);
-      setTokenHover(null);
+    if (inspectorTab !== "tokens") setTokenHover(null);
+  }, [inspectorTab]);
+  const [dark, setDark] = useState(false);
+  // Gizmos (T4.3–T4.5): what the selected element's handles can do, and their writes.
+  const [gizmoDone, setGizmoDone] = useState<{ ok: boolean } | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [colourChip, setColourChip] = useState<ColourChip | null>(null);
+  const selectedForGizmos = page.nodes.find((n) => n.key === selected) ?? null;
+  const spacingSteps = useMemo(
+    () =>
+      (palette.palette?.layout.stack.find((g) => g.id === "gap")?.options ?? [])
+        .map((o) => (o.class ? Number(o.class.slice("gap-".length)) : NaN))
+        .filter((n) => Number.isFinite(n)),
+    [palette.palette],
+  );
+  const gizmos = useMemo((): GizmoContext | null => {
+    if (!selectedForGizmos || !tokens.sheet) return null;
+    return {
+      key: selectedForGizmos.key,
+      tokens: tokens.sheet.tokens.map((t) => ({ name: t.name, value: dark && t.dark !== null ? t.dark : t.value, resolved: t.resolved, colour: t.group === "colour" })),
+      spacingSteps,
+      classEdits: classEditsBlocked(selectedForGizmos.node),
+    };
+  }, [selectedForGizmos, tokens.sheet, dark, spacingSteps]);
+  useEffect(() => setColourChip(null), [selected]);
+  const done = useCallback((ok: boolean) => setGizmoDone({ ok }), []);
+  /** Replace the element's classes matching `remove` (a regex source) with `add`. */
+  const setClassFor = (key: string, remove: string, add: string) => {
+    const node = page.nodes.find((n) => n.key === key)?.node;
+    const blocked = node ? classEditsBlocked(node) : "it isn't on the page any more";
+    if (!node?.id || blocked) {
+      setEditError(`Can't change this element: ${blocked ?? "it has no data-ui-id"}`);
+      done(false);
+      return;
     }
-  }, [tokenUsage]);
+    const re = new RegExp(remove);
+    const classes = typeof node.props["className"] === "string" ? node.props["className"].split(/\s+/).filter(Boolean) : [];
+    edit({ op: "setClass", id: node.id, add: [add], remove: classes.filter((c) => re.test(c)) }, undefined, done);
+  };
+  const onGizmoCommit = (key: string, commit: GizmoCommit) => {
+    if (commit.kind === "token") writeTokens([{ name: commit.name, value: commit.value, mode: null }], done);
+    else setClassFor(key, commit.remove, commit.add);
+  };
   const moveNode = (key: string, target: DropTarget) => {
     const moved = page.nodes.find((n) => n.key === key)?.node;
     const parentKey = parentKeyOf(key);
@@ -324,7 +380,6 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [mode, setMode] = useState<"select" | "interact">("select");
   const [layout, setLayout] = useState<PreviewLayout>("desktop");
-  const [dark, setDark] = useState(false);
   const [treeHover, setTreeHover] = useState<string | null>(null);
   // What the overlay last mapped, and for which version of the page file.
   const [mapped, setMapped] = useState<{ version: string; keys: Set<string> } | null>(null);
@@ -422,6 +477,30 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         )}
         {inspectorTab === "element" && (
           <>
+            {colourChip && colourChip.key === selected && (
+              <ColourPanel
+                chip={colourChip}
+                token={tokens.sheet?.tokens.find((t) => t.name === colourChip.token) ?? null}
+                dark={dark}
+                classEdits={gizmos ? gizmos.classEdits : "nothing selected"}
+                onPreview={setPreview}
+                onToken={(value) => {
+                  const token = tokens.sheet?.tokens.find((t) => t.name === colourChip.token);
+                  writeTokens([{ name: colourChip.token, value, mode: token?.dark != null && dark ? "dark" : token?.dark != null ? "light" : null }], (ok) => {
+                    done(ok);
+                    setPreview(null);
+                  });
+                }}
+                onInstance={(utility, cls) => {
+                  setClassFor(colourChip.key, COLOUR_GROUP[utility] ?? "^$", cls);
+                  setPreview(null);
+                }}
+                onClose={() => {
+                  setPreview(null);
+                  setColourChip(null);
+                }}
+              />
+            )}
             <SelectionPanel
               projectRoot={project.projectRoot}
               file={file}
@@ -471,6 +550,14 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         tokenUsage={tokenUsage}
         tokenHighlight={tokenHover}
         onTokenCounts={setTokenCounts}
+        gizmos={gizmos}
+        gizmoDone={gizmoDone}
+        preview={preview}
+        onGizmoCommit={onGizmoCommit}
+        onColourChip={(chip) => {
+          setInspectorTab("element");
+          setColourChip(chip);
+        }}
       />
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (
