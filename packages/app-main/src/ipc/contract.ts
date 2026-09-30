@@ -2,9 +2,26 @@
 // git, child processes, AST). This is the only module the renderer imports from
 // app-main, and only for types. See docs/decisions/003-ipc-boundaries.md.
 
-import type { PageTree, RouteInfo, Theme, TokenUsage, TokenWrite, ViolationDetail } from "@skeleton/core";
+import type {
+  ContractBreach,
+  ElementRef,
+  HandoffTask,
+  IdRepair,
+  LockedBlock,
+  Note,
+  NoteOp,
+  PageTree,
+  Reply,
+  RouteInfo,
+  Theme,
+  TokenUsage,
+  TokenWrite,
+  Violation,
+  ViolationDetail,
+} from "@skeleton/core";
 import type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
+export type { ContractBreach, ElementRef, HandoffTask, IdRepair, LockedBlock, Note, NoteOp, NoteStatus, NoteType, Reply, Violation } from "@skeleton/core";
 export type { PageTree, UiNode, NodeKind, RouteInfo, ColourMode, Theme, ThemeToken, TokenGroup, TokenUsage, TokenWrite, ViolationDetail, ViolationProperty, PromoteKind } from "@skeleton/core";
 export type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
@@ -317,6 +334,69 @@ export interface ViolationFixResult {
   history: EditHistory;
 }
 
+/** A note as listed (T5.1): whether its element still exists, and what that element is. */
+export interface NoteView extends Note {
+  /** Its element is gone from the project (T5.5, the orphan tray). */
+  orphaned: boolean;
+  /** The element's name and file, when it exists. */
+  element: string | null;
+  file: string | null;
+}
+
+export interface NotesView {
+  notes: NoteView[];
+  replies: Reply[];
+}
+
+export interface NoteWriteRequest extends ProjectRootRequest {
+  op: NoteOp;
+}
+
+/** Where the loop stands (ADR 011): derived from the project's git history. */
+export type LoopState = "with-user" | "with-agent";
+
+export interface PassSummary {
+  pass: number;
+  handoffCommit: string;
+  passCommit: string;
+  /** Every file the agent changed (handoff → pass). */
+  files: { path: string; status: "added" | "modified" | "deleted"; additions: number; deletions: number }[];
+  elementsAdded: ElementRef[];
+  elementsRemoved: ElementRef[];
+  /** Notes whose element is gone after the pass. */
+  orphanedNotes: number;
+  newViolations: Violation[];
+  newLockedBlocks: LockedBlock[];
+  breaches: ContractBreach[];
+  /** IDs re-minted or assigned on take-back (T5.6). */
+  repairs: IdRepair[];
+  tasks: { sent: number; resolved: number; unmatched: HandoffTask[] };
+  /** The agent's replies in this pass. */
+  replies: Reply[];
+  /** Files that no longer parse. */
+  parseErrors: { file: string; message: string }[];
+  build: BuildResult;
+}
+
+export interface BuildResult {
+  ok: boolean;
+  /** The last lines of the build's output when it failed. */
+  output: string;
+  ms: number;
+}
+
+export interface LoopStatus {
+  state: LoopState;
+  /** The latest handoff, if any. */
+  handoff: { number: number; commit: string; time: number } | null;
+  /** The latest pass while nothing came after it: it can be reviewed and reverted (T5.7, T5.8). */
+  pass: { number: number; commit: string; handoffCommit: string; time: number } | null;
+  /** The number the next handoff gets. */
+  next: number;
+  /** The summary of `pass`, if it was taken back this session (T5.4). */
+  summary: PassSummary | null;
+}
+
 /** Every channel: what the renderer sends and what main answers with. */
 export interface IpcContract {
   "app:info": { request: null; response: AppInfo };
@@ -345,6 +425,18 @@ export interface IpcContract {
   "violations:promote": { request: ViolationPromoteRequest; response: ViolationFixResult };
   /** Acknowledge a violation, in skeleton/config.json (T4.6). */
   "violations:keep": { request: ViolationKeepRequest; response: ViolationFixResult };
+  /** The intent notes and agent replies (T5.1). */
+  "notes:read": { request: ProjectRootRequest; response: NotesView };
+  /** Add, change, re-attach or delete a note (T5.1, T5.5). Refused while with the agent. */
+  "notes:write": { request: NoteWriteRequest; response: NotesView };
+  /** Where the handoff loop stands (ADR 011). */
+  "loop:status": { request: ProjectRootRequest; response: LoopStatus };
+  /** Hand off (T5.2): validate, write HANDOFF.md, commit, lock. */
+  "loop:handoff": { request: ProjectRootRequest; response: LoopStatus };
+  /** Take back (T5.3): commit the agent's pass, read HANDOFF.md, analyse, repair, unlock. */
+  "loop:takeBack": { request: ProjectRootRequest; response: LoopStatus };
+  /** Revert the latest pass to its handoff (T5.8). */
+  "loop:revert": { request: ProjectRootRequest; response: LoopStatus };
   /** Pages from the project's router (T2.5). */
   "project:pages": { request: ProjectRootRequest; response: PageList };
   /** File-change revision for re-parsing (T2.6); starts watching on first call. */
@@ -386,6 +478,12 @@ export const CHANNELS = [
   "violations:list",
   "violations:promote",
   "violations:keep",
+  "notes:read",
+  "notes:write",
+  "loop:status",
+  "loop:handoff",
+  "loop:takeBack",
+  "loop:revert",
   "project:pages",
   "project:changes",
   "project:create",

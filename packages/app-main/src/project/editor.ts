@@ -69,6 +69,8 @@ export class EditRolledBack extends Error {
 export interface EditorOptions {
   /** The project's typechecker, or null to skip checking (T3.7). */
   checker?: (projectRoot: string) => Checker | null;
+  /** Why the project can't be edited now (it's with the agent, ADR 011), or null. */
+  locked?: (projectRoot: string) => Promise<string | null>;
 }
 
 /** One undoable step: what it was, and the file changes it made (T3.8). */
@@ -235,7 +237,29 @@ export class Editor {
     stack.redo = [];
   }
 
+  /** Forget the session's undo and redo steps: they'd cross a hand off or take back (ADR 011). */
+  clearHistory(projectRoot: string): void {
+    this.stacks.delete(projectRoot);
+  }
+
+  /**
+   * Run `task` in the project's edit queue, after every edit before it and before any
+   * after it, without the lock check: the handoff loop's own writes (ADR 011).
+   */
+  exclusive<T>(projectRoot: string, task: () => Promise<T>): Promise<T> {
+    return this.queue(projectRoot, task);
+  }
+
+  /** An edit: queued, and refused while the project is with the agent. */
   private enqueue<T>(projectRoot: string, task: () => Promise<T>): Promise<T> {
+    return this.queue(projectRoot, async () => {
+      const reason = (await this.options.locked?.(projectRoot)) ?? null;
+      if (reason !== null) throw new EditRefused(reason);
+      return task();
+    });
+  }
+
+  private queue<T>(projectRoot: string, task: () => Promise<T>): Promise<T> {
     const previous = this.queues.get(projectRoot) ?? Promise.resolve();
     const next = previous.then(task, task);
     this.queues.set(projectRoot, next);

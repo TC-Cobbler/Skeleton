@@ -177,6 +177,7 @@ button.quiet {
   margin-top: 0;
 }
 .canvas {
+  position: relative;
   grid-area: canvas;
   display: flex;
   justify-content: center;
@@ -664,4 +665,175 @@ button.danger {
 .violation form input {
   min-width: 0;
   padding: 2px 4px;
+}
+/* The handoff loop (Phase 5) */
+.loop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.loop.is-with-agent {
+  border-color: #d97706;
+  background: rgb(217 119 6 / 0.08);
+}
+.loop p {
+  margin: 0;
+}
+button.primary {
+  font-weight: 600;
+}
+.loop-error {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+.is-inert {
+  opacity: 0.5;
+}
+.agent-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(24 24 27 / 0.35);
+  border-radius: 8px;
+}
+.agent-veil > div {
+  max-width: 320px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid #d97706;
+  text-align: center;
+}
+.agent-veil p {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+.note-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.note {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.note.is-resolved .note-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.note-head .muted {
+  margin-left: auto;
+}
+.note-type {
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+}
+.note-build {
+  background: #2563eb;
+}
+.note-behaviour {
+  background: #16a34a;
+}
+.note-question {
+  background: #d97706;
+}
+.note-text {
+  margin: 2px 0;
+}
+.note-reply {
+  margin: 4px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+}
+.note-actions {
+  gap: 4px;
+  margin-top: 4px;
+}
+.note-actions button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.note-form {
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.note-form input {
+  min-width: 0;
+}
+.notes .segmented {
+  margin: 4px 0;
+}
+.notes h3,
+.pass h3 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.orphans {
+  margin-top: 12px;
+  padding: 8px;
+  border: 1px dashed #d97706;
+  border-radius: 6px;
+}
+.orphans h3 {
+  margin-top: 0;
+}
+.pass-summary p {
+  margin: 4px 0;
+}
+.pass-group {
+  font-size: 12px;
+  margin: 4px 0;
+}
+.pass-group summary {
+  cursor: pointer;
+}
+.pass-group ul,
+.diffs ul {
+  list-style: none;
+  padding-left: 12px;
+  margin: 4px 0;
+}
+.diffs {
+  font-size: 12px;
+}
+.patch {
+  max-height: 300px;
+  overflow: auto;
+  margin: 4px 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.patch .add {
+  color: #16a34a;
+}
+.patch .del {
+  color: var(--error);
+}
+.patch .hunk {
+  color: var(--muted);
+}
+.pass-revert {
+  margin-top: 12px;
 }

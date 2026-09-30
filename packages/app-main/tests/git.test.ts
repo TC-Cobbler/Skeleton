@@ -86,6 +86,19 @@ describe("GitService", () => {
     expect(await git.status(root)).toMatchObject({ clean: true });
   });
 
+  it("makes an empty commit only when asked (loop markers, ADR 011)", async () => {
+    expect(await git.commit(root, "agent: pass #2")).toBeNull();
+    const marked = await git.commit(root, "agent: pass #2", { allowEmpty: true });
+    expect(marked?.subject).toBe("agent: pass #2");
+    expect((await git.diff(root, `${marked?.hash}`, null)).files).toEqual([]);
+  });
+
+  it("reads a commit's files under some paths, and finds the root commit", async () => {
+    expect(await git.snapshot(root, first, ["src"])).toEqual({ "src/keep.tsx": "keep\n", "src/page.tsx": "one\n" });
+    expect(await git.snapshot(root, second, ["src/new.tsx", "missing"])).toEqual({ "src/new.tsx": "new\n" });
+    expect(await git.rootCommit(root)).toBe(first);
+  });
+
   it("rejects things that aren't commits", async () => {
     await expect(git.diff(root, "HEAD~1", null)).rejects.toThrow(GitError);
     await expect(git.revert(root, "deadbeef")).rejects.toThrow(/unknown commit deadbeef/);

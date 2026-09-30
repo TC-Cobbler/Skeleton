@@ -48,7 +48,10 @@ for (const fixture of ["loop-01", "loop-02"]) {
         env: { ...env, SKELETON_USER_DATA: path.join(work, "profile") },
       });
       page = await app.firstWindow();
-      await page.setViewportSize({ width: 1600, height: 1000 });
+      // Size the real window, not an emulated viewport: CDP input to points outside the
+      // real window reaches the page but never a cross-process iframe (KI-1).
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 1000));
+      await page.waitForFunction(() => window.innerWidth === 1600 && window.innerHeight === 1000);
       await app.evaluate(({ dialog }, folder) => {
         dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
       }, projectRoot);
@@ -124,9 +127,16 @@ for (const fixture of ["loop-01", "loop-02"]) {
       });
       let byClick = 0;
       let byTree = 0;
-      let retries = 0;
-      const lost: string[] = [];
       for (const n of ids) {
+        // Aim once the overlay has settled: the previous selection's handles arrive a
+        // moment after it, and a point they cover takes the press (KI-1).
+        const overlayNow = () => frame().evaluate(() => document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "");
+        for (let prev = await overlayNow(); ; ) {
+          await page.waitForTimeout(100);
+          const next = await overlayNow();
+          if (next === prev) break;
+          prev = next;
+        }
         // A point where this element is the topmost thing (not a child), scanning a grid over it.
         const target = await frame().evaluate((id) => {
           const el = [...document.querySelectorAll(`[data-ui-id="${id}"]`)].find((e) => (e as HTMLElement).offsetParent !== null || e.getClientRects().length > 0);
@@ -137,13 +147,25 @@ for (const fixture of ["loop-01", "loop-02"]) {
             for (let fx = 0.05; fx < 1; fx += 0.1) {
               const x = r.x + r.width * fx;
               const y = r.y + r.height * fy;
-              // The element must own the point and a 4px margin around it, so scaling
-              // and pixel rounding of the real click can't land on a neighbour.
+              // The element must own the point and a 4px margin around it (diagonals
+              // included), so scaling and pixel rounding of the real click can't land on
+              // a neighbour. "Own" as the overlay decides it: nothing of Skeleton's layer
+              // on top (the selection's handles and label take a press there), then down
+              // into any child whose box holds the point, because elementFromPoint skips
+              // disabled (pointer-events: none) buttons and the overlay selects them.
+              const deepest = (from: Element, px: number, py: number): Element => {
+                for (let i = from.children.length - 1; i >= 0; i--) {
+                  const b = (from.children[i] as Element).getBoundingClientRect();
+                  if (b.width > 0 && b.height > 0 && px >= b.left && px < b.right && py >= b.top && py < b.bottom) return deepest(from.children[i] as Element, px, py);
+                }
+                return from;
+              };
               const owns = (px: number, py: number) => {
                 const hit = document.elementFromPoint(px, py);
-                return hit !== null && hit.closest("[data-skeleton-loc]") === el;
+                return hit !== null && hit.tagName !== "SKELETON-OVERLAY" && deepest(hit, px, py).closest("[data-skeleton-loc]") === el;
               };
-              if (owns(x, y) && owns(x - 4, y) && owns(x + 4, y) && owns(x, y - 4) && owns(x, y + 4)) return { x, y, scrollY: window.scrollY };
+              const margin = [-4, 0, 4].flatMap((dx) => [-4, 0, 4].map((dy) => [dx, dy] as const));
+              if (margin.every(([dx, dy]) => owns(x + dx, y + dy))) return { x, y, scrollY: window.scrollY };
             }
           }
           return { x: -1, y: -1, scrollY: window.scrollY };
@@ -163,33 +185,11 @@ for (const fixture of ["loop-01", "loop-02"]) {
           const py = outer.y + (outer.t + target.y) * outer.s;
           await page.mouse.move(px, py);
           await page.mouse.click(px, py);
-          // Synthetic (CDP) clicks into a CSS-scaled cross-origin iframe are
-          // occasionally not delivered at all (the overlay sees no event). Retry once,
-          // as a person would, and report how often it was needed.
+          // One click, where the overlay itself would say this element is: it must
+          // select it. (The clicks KI-1 reported as lost were how the test aimed and
+          // sized the window; see docs/known-issues.md.)
           const selectedNow = () => page.getByTestId("selection-id").textContent();
-          const landed = await expect.poll(selectedNow, { timeout: 1000 }).toBe(n.id).then(() => true, () => false);
-          if (!landed) {
-            // Move out of the canvas and back, as a person would, then click again.
-            retries++;
-            await page.mouse.move(5, 5);
-            await page.waitForTimeout(100);
-            await page.mouse.move(px, py);
-            await page.mouse.click(px, py);
-          }
-          const delivered = await expect.poll(selectedNow, { timeout: 3000 }).toBe(n.id).then(() => true, () => false);
-          if (!delivered) {
-            // Known issue KI-1 (docs/known-issues.md): after some click sequences,
-            // Chromium doesn't deliver a synthetic click to a scaled cross-origin
-            // iframe at all (the overlay receives no event). The element must still be
-            // selectable: select it from the tree, and count it.
-            const after = await frame().evaluate((t) => document.elementFromPoint(t.x, t.y)?.closest("[data-skeleton-loc]")?.getAttribute("data-ui-id"), target);
-            expect(after, `${n.id}: the point should still hit it`).toBe(n.id);
-            lost.push(n.id as string);
-            await row.click();
-            await expect.poll(selectedNow).toBe(n.id);
-            byTree++;
-            continue;
-          }
+          await expect.poll(selectedNow, { timeout: 3000, message: `${n.id}: clicking it on the canvas should select it` }).toBe(n.id);
           expect(await row.getAttribute("aria-selected")).toBe("true");
           byClick++;
         } else {
@@ -207,8 +207,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
         }
       }
       report.push(
-        `selectable: ${ids.length} ID'd elements, ${byClick} by clicking the canvas (${retries} needed a second click), ${byTree} from the tree` +
-          (lost.length ? `; canvas click not delivered for ${lost.join(", ")} (KI-1), selected from the tree` : ""),
+        `selectable: ${ids.length} ID'd elements, ${byClick} by clicking the canvas, ${byTree} from the tree (no point of their own)`,
       );
       expect(byClick + byTree).toBe(ids.length);
     }, 240_000);

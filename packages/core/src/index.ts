@@ -103,3 +103,39 @@ export {
 } from "./routes.js";
 export { exportedNames } from "./exports.js";
 export { sourceVersion } from "./version.js";
+export {
+  readNotes,
+  writeNotes,
+  applyNoteOp,
+  orphanedNotes,
+  NotesError,
+  NOTE_TYPES,
+  NOTE_ID_PATTERN,
+  NOTE_TEXT_MAX,
+  type Note,
+  type NoteOp,
+  type NoteOpContext,
+  type NoteStatus,
+  type NoteType,
+  type NotesFile,
+  type Reply,
+} from "./notes.js";
+export {
+  HANDOFF_FILE,
+  changesSince,
+  compileHandoff,
+  parseHandoff,
+  takeBackNotes,
+  contractBreaches,
+  type BreachContext,
+  type ChangesConfig,
+  type ContractBreach,
+  type ElementRef,
+  type HandoffChanges,
+  type HandoffInput,
+  type HandoffTask,
+  type NotesTakeBack,
+  type ParsedHandoff,
+  type TokenEdit,
+} from "./handoff.js";
+export { repairIds, type IdRepair, type RepairOptions, type RepairResult } from "./repair.js";

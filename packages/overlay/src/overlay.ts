@@ -13,6 +13,7 @@ import {
   type GizmoCommit,
   type HostMessage,
   type NodeBox,
+  type NotePin,
   type OverlayMessage,
   type OverlayNode,
 } from "./protocol.js";
@@ -99,6 +100,8 @@ export class Overlay {
   private handles: Handle[] = [];
   /** The live preview of a gizmo drag (T4.4), kept after release until the page updates. */
   private live: { style: HTMLStyleElement; target: Element; pending: boolean; timer: number } | null = null;
+  /** Note pins to draw (T5.1). */
+  private pins: NotePin[] = [];
   private readonly layer: HTMLElement;
   private readonly shadow: ShadowRoot;
   private frame = 0;
@@ -243,6 +246,9 @@ export class Overlay {
           if (this.live && !this.live.pending && !this.gizmo) this.clearLive();
         } else this.preview(msg.css);
         break;
+      case "pins":
+        this.pins = msg.pins;
+        break;
       case "gizmo-done":
         if (!msg.ok) this.clearLive();
         else if (this.live) {
@@ -270,7 +276,7 @@ export class Overlay {
    */
   private dropAt(x: number, y: number, moving: string | null): DropState | null {
     if (!this.index || !this.doc.body) return null;
-    const at = deepestAt(this.doc.elementFromPoint(x, y), x, y);
+    const at = deepestAt(this.pointAt(x, y), x, y);
     if (!at || at === this.layer) return null;
     const hit = this.index.hit(at);
     const inMoving = (key: string) => moving !== null && (key === moving || key.startsWith(`${moving}.`));
@@ -305,7 +311,7 @@ export class Overlay {
     // buttons), so descend from the hit to the deepest element at the point.
     const at =
       event instanceof MouseEvent && event.isTrusted
-        ? deepestAt(this.doc.elementFromPoint(event.clientX, event.clientY), event.clientX, event.clientY)
+        ? deepestAt(this.pointAt(event.clientX, event.clientY), event.clientX, event.clientY)
         : null;
     const el = at ?? event.target;
     if (!(el instanceof Element) || el === this.layer) return null;
@@ -432,9 +438,12 @@ export class Overlay {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    if (this.onPinPointer(event)) return;
     if (this.onGizmoPointer(event)) return;
     if (event.type === "pointerdown" && event instanceof MouseEvent && event.button === 0) {
-      this.press = { x: event.clientX, y: event.clientY, key: this.movableFrom(this.target(event)) };
+      // The selection's label is its grip: it moves the selected node itself, which a
+      // press on its content can't when children cover it (a Table, T5 gate).
+      this.press = { x: event.clientX, y: event.clientY, key: this.grabAt(event) ?? this.movableFrom(this.target(event)) };
       this.swallowClick = false;
       // Keep receiving the drag's moves and its release even outside the frame.
       if (typeof PointerEvent !== "undefined" && event instanceof PointerEvent && event.target instanceof Element) {
@@ -469,6 +478,35 @@ export class Overlay {
     this.selected = node?.key ?? null;
     this.post({ source: "skeleton-overlay", type: "select", key: this.selected });
     this.schedule();
+  }
+
+  /**
+   * The app's element at a point, looking through Skeleton's own drawing layer: the
+   * grip label, pins and handles take pointer events, and must never hide what's under
+   * them from a click, a hover or a drop.
+   */
+  private pointAt(x: number, y: number): Element | null {
+    const top = this.doc.elementFromPoint(x, y);
+    if (top !== this.layer || typeof this.doc.elementsFromPoint !== "function") return top;
+    return this.doc.elementsFromPoint(x, y).find((el) => el !== this.layer) ?? null;
+  }
+
+  /** The key of the selected node when the event is on its label (its grip), else null. */
+  private grabAt(event: Event): string | null {
+    const hit = event.composedPath()[0];
+    if (!(hit instanceof Element)) return null;
+    const key = hit.getAttribute("data-grab");
+    return key !== null && key === this.selected && this.node(key)?.move ? key : null;
+  }
+
+  /** A click on a note pin (T5.1) goes to the host. True when the event was on a pin. */
+  private onPinPointer(event: Event): boolean {
+    const hit = event.composedPath()[0];
+    if (!(hit instanceof Element)) return false;
+    const key = hit.closest("[data-pin]")?.getAttribute("data-pin");
+    if (!key) return false;
+    if (event.type === "click") this.post({ source: "skeleton-overlay", type: "pin", key });
+    return true;
   }
 
   /** Presses on handles and chips (T4.3). True when the event was a gizmo's. */
@@ -753,7 +791,7 @@ export class Overlay {
       placed.push({ x: left, y, width, height: 18 });
       return { x: left, y };
     };
-    const box = (node: OverlayNode, color: string, width: number, dashed: boolean, label: boolean) => {
+    const box = (node: OverlayNode, color: string, width: number, dashed: boolean, label: boolean, grip = false) => {
       const rects = this.rects(node);
       rects.forEach((r, i) => {
         parts.push(
@@ -763,7 +801,8 @@ export class Overlay {
         if (label && i === 0) {
           const text = labelOf(node);
           const at = place(r.x, r.y >= 18 ? r.y - 18 : r.y + r.height, text);
-          parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${color}">${escapeHtml(text)}</div>`);
+          const grab = grip ? ` data-grab="${escapeHtml(node.key)}" title="Drag to move"` : "";
+          parts.push(`<div class="label"${grab} style="left:${at.x}px;top:${at.y}px;background:${color}">${grip ? "⠿ " : ""}${escapeHtml(text)}</div>`);
         }
       });
     };
@@ -788,7 +827,9 @@ export class Overlay {
     if (hovered && hovered !== selected && hovered !== highlighted) {
       box(hovered, hovered.kind === "locked" ? COLORS.locked : COLORS.hover, 1, hovered.kind === "locked", true);
     }
-    if (selected) box(selected, selected.kind === "locked" ? COLORS.locked : COLORS.selected, 2, selected.kind === "locked", true);
+    const grip = selected !== null && selected.move && this.mode === "select" && this.moving === null;
+    if (selected) box(selected, selected.kind === "locked" ? COLORS.locked : COLORS.selected, 2, selected.kind === "locked", true, grip);
+    this.drawPins(parts);
     this.drawGizmos(parts, place);
     const drop = this.drop;
     const dropNode = drop ? this.node(drop.parentKey) : null;
@@ -807,11 +848,34 @@ export class Overlay {
     this.shadow.innerHTML =
       `<style>.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
       `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}` +
+      `.label[data-grab]{pointer-events:auto;cursor:grab}` +
       `.gz{position:fixed;box-sizing:border-box;pointer-events:auto;background:#fff;border:2px solid ${COLORS.gizmo};border-radius:3px}` +
       `.gz[data-kind=radius]{border-radius:50%;cursor:nwse-resize}.gz[data-kind=gap],.gz[data-kind=padding]{cursor:move}` +
       `.gz[data-kind=type]{cursor:ns-resize}.gz[data-kind=border]{cursor:ew-resize}` +
+      `.pin{position:fixed;box-sizing:border-box;min-width:18px;height:18px;padding:0 5px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:9px 9px 9px 2px;` +
+      `font:bold 10px/14px system-ui,sans-serif;color:#fff;text-align:center;box-shadow:0 1px 3px rgb(0 0 0/.3)}` +
       `.chip{position:fixed;box-sizing:border-box;width:14px;height:14px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px ${COLORS.gizmo}}</style>` +
       parts.join("");
+  }
+
+  /** A pin at the top-right of each element with notes (T5.1), in select mode. */
+  private drawPins(parts: string[]): void {
+    if (this.mode !== "select") return;
+    for (const pin of this.pins) {
+      const node = this.node(pin.key);
+      const r = node ? this.rects(node)[0] : undefined;
+      if (!r) continue;
+      const colour = pin.open === 0 ? PIN_COLOURS.resolved : PIN_COLOURS[pin.type];
+      const text = pin.open > 0 ? String(pin.open) : pin.total > 0 ? "✓" : "";
+      const notes = pin.total > 0 ? `${pin.open} open of ${pin.total} note${pin.total === 1 ? "" : "s"}` : "";
+      const title = [notes, pin.replied ? "agent replied" : ""].filter(Boolean).join(" · ");
+      const x = Math.max(0, r.x + r.width - 12);
+      const y = Math.max(0, r.y - 10);
+      parts.push(
+        `<div class="pin" data-pin="${escapeHtml(pin.key)}" data-open="${pin.open}" title="${escapeHtml(title)}" style="left:${x}px;top:${y}px;background:${colour}">` +
+          `${escapeHtml(text)}${pin.replied ? `${text ? "&thinsp;" : ""}↩` : ""}</div>`,
+      );
+    }
   }
 
   /** Handles and chips on the selected element (T4.3), and the drag's or hover's label (T4.5). */
@@ -877,6 +941,8 @@ export class Overlay {
     win.addEventListener("popstate", report, { signal });
   }
 }
+
+const PIN_COLOURS = { build: "#2563eb", behaviour: "#16a34a", question: "#d97706", resolved: "#71717a" };
 
 /** How the hover label names each scope (PRD §10.3). */
 const SCOPE_NAMES: Record<Scope, string> = { component: "Drag", global: "Shift", instance: "Alt" };

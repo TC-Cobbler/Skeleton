@@ -10,6 +10,6 @@ export default defineConfig({
   server: { port: 5199, strictPort: true },
   test: {
     name: "app-renderer",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
   },
 });
