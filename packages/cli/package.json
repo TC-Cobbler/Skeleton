@@ -8,9 +8,10 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "spike": "tsx src/index.ts"
+    "spike": "tsx --conditions=source src/index.ts"
   },
   "dependencies": {
-    "@skeleton/core": "workspace:*"
+    "@skeleton/core": "workspace:*",
+    "prettier": "^3.9.9"
   }
 }

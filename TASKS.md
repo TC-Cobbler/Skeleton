@@ -10,35 +10,37 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **Gate** = phase exit c
 
 Goal: prove the code can round-trip before building anything around it. This phase is CLI only.
 
-- [ ] **T0.1** Hand-scaffold a fixture project: Vite + React + TS + Tailwind v4 + shadcn (Button, Card, Table only) + Stack primitive. Commit it as `fixtures/base`.
-- [ ] **T0.2** Pick the AST library. Build the same edit (insert a JSX child at an index) twice, once with Babel (`@babel/parser` + `recast`) and once with ts-morph. Compare on:
+- [x] **T0.1** Hand-scaffold a fixture project: Vite + React + TS + Tailwind v4 + shadcn (Button, Card, Table only) + Stack primitive. Commit it as `fixtures/base`.
+- [x] **T0.2** Pick the AST library. Build the same edit (insert a JSX child at an index) twice, once with Babel (`@babel/parser` + `recast`) and once with ts-morph. Compare on:
   - formatting and comment preservation
   - TS generics / type annotations surviving
   - diff size
 
   Record the choice in `docs/decisions/001-ast.md`.
-- [ ] **T0.3** Parser: page file → element tree, keyed by `data-ui-id`. Classify each node as one of:
+- [x] **T0.3** Parser: page file → element tree, keyed by `data-ui-id`. Classify each node as one of:
   - `palette`
   - `primitive`
   - `plain` (element with ID)
-  - `locked` (custom component, `.map`, conditional, logic-bearing)
-- [ ] **T0.4** Edit ops as pure functions (`source in → source out`). Each must produce a minimal diff:
-  - [ ] `insert(parentId, index, node)`
-  - [ ] `move(id, newParentId, index)` (locked blocks included)
-  - [ ] `remove(id)`
-  - [ ] `setProp(id, key, value)`
-  - [ ] `setClass(id, add[], remove[])`
-- [ ] **T0.5** ID minting: `ui_` + 5 lowercase alphanumerics, unique within the project. Build a project-wide ID index.
-- [ ] **T0.6** Token writer: read and write `@theme` variables in `globals.css`, covering both light and `.dark` blocks. Must not touch anything else in the file.
-- [ ] **T0.7** Write the round-trip contract text (PRD §13) as `CLAUDE.md` in the fixture.
-- [ ] **T0.8** Take-back analyser: given a before/after commit pair, report:
+  - `locked` (custom component, `.map`, conditional, spread props)
+
+  Logic-bearing props are protected rather than locking the element, and elements wrapped by locked blocks stay editable in place: see `docs/decisions/002-editability.md`.
+- [x] **T0.4** Edit ops as pure functions (`source in → source out`). Each must produce a minimal diff:
+  - [x] `insert(parentId, index, node)`
+  - [x] `move(id, newParentId, index)` (locked blocks included)
+  - [x] `remove(id)`
+  - [x] `setProp(id, key, value)`
+  - [x] `setClass(id, add[], remove[])`
+- [x] **T0.5** ID minting: `ui_` + 5 lowercase alphanumerics, unique within the project. Build a project-wide ID index.
+- [x] **T0.6** Token writer: read and write `@theme` variables in `globals.css`, covering both light and `.dark` blocks. Must not touch anything else in the file.
+- [x] **T0.7** Write the round-trip contract text (PRD §13) as `CLAUDE.md` in the fixture.
+- [x] **T0.8** Take-back analyser: given a before/after commit pair, report:
   - orphaned IDs
   - duplicate IDs
   - new un-IDed editable nodes
   - new violations (arbitrary values, inline styles, hard-coded colours)
   - new locked blocks
   - token file tampering
-- [ ] **T0.9** **Manual loop test.** On the fixture, run 5 rounds of the following:
+- [x] **T0.9** **Manual loop test.** On the fixture, run 5 rounds of the following:
   1. Apply scripted edits via the CLI.
   2. Write a handoff task.
   3. Run Claude Code with a real task (fetch data into the Table, add a dialog, etc.).
@@ -46,7 +48,7 @@ Goal: prove the code can round-trip before building anything around it. This pha
   5. Apply more edits on top of the agent's code.
 
   Log every failure in `docs/spike-log.md`.
-- [ ] **T0.10** Fix or tighten based on the log. This may mean new contract rules, more conservative edit ops, or auto-repair (re-minting IDs).
+- [x] **T0.10** Fix or tighten based on the log. This may mean new contract rules, more conservative edit ops, or auto-repair (re-minting IDs).
 
 **Gate 0:** 5 consecutive loops on the fixture with:
 - zero agent-authored lines altered by edit ops
@@ -55,6 +57,8 @@ Goal: prove the code can round-trip before building anything around it. This pha
 - a build passing after each step
 
 If this can't be reached, stop and rethink the architecture before touching UI.
+
+**Gate 0: passed** (2026-09-30). 5/5 consecutive clean loops, logged in `docs/spike-log.md` (loop 2); artefacts in `fixtures/post-agent/loop-02`.
 
 ---
 
