@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { copy } from "./copy.js";
 
 export interface Toast {
   id: number;
@@ -43,7 +44,7 @@ export function Toasts({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id:
       {toasts.map((t) => (
         <div key={t.id} className={`toast toast-${t.kind}`} role={t.kind === "error" ? "alert" : "status"} data-testid={t.kind === "error" ? "edit-error" : "edit-warning"}>
           <span className="toast-text">{t.text}</span>
-          <button type="button" className="quiet" aria-label="Dismiss" onClick={() => onDismiss(t.id)}>
+          <button type="button" className="quiet" aria-label={copy.toasts.dismiss} onClick={() => onDismiss(t.id)}>
             ×
           </button>
         </div>

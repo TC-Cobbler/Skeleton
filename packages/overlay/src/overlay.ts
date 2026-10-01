@@ -5,6 +5,7 @@
 import { besideSide, dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type Flow, type PlacedChild } from "./drop.js";
 import { handlesFor, LIVE_TARGET, planDrag, scopeOf, type Drag, type GizmoData, type Handle, type Measured, type Scope } from "./gizmos.js";
 import { NodeIndex } from "./mapping.js";
+import { copy } from "./copy.js";
 import { stripVariants, TokenMatcher } from "./tokens.js";
 import {
   isHostMessage,
@@ -640,7 +641,7 @@ export class Overlay {
     const m = this.measure(el, this.node(this.selected));
     const plan = planDrag(handle, scope, m, data);
     if ("unavailable" in plan) {
-      this.gizmoRefusal = { text: `Can't: ${plan.unavailable}`, x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
+      this.gizmoRefusal = { text: copy.gizmos.refusal(plan.unavailable), x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
       this.schedule();
       this.options.win.setTimeout(() => this.schedule(), 2600);
       return;
@@ -874,7 +875,7 @@ export class Overlay {
     input.type = "text";
     input.value = text;
     input.setAttribute("data-text-editor", "");
-    input.setAttribute("aria-label", `Text of ${labelOf(node)}`);
+    input.setAttribute("aria-label", copy.overlay.textOf(labelOf(node)));
     input.style.cssText =
       `position:fixed;box-sizing:border-box;margin:0;pointer-events:auto;z-index:1;` +
       `font:${cs.font};letter-spacing:${cs.letterSpacing};text-align:${cs.textAlign};color:${cs.color};` +
@@ -995,7 +996,7 @@ export class Overlay {
         if (label && i === 0) {
           const text = labelOf(node);
           const at = place(r.x, r.y >= 18 ? r.y - 18 : r.y + r.height, text);
-          const grab = grip ? ` data-grab="${escapeHtml(node.key)}" title="Drag to move"` : "";
+          const grab = grip ? ` data-grab="${escapeHtml(node.key)}" title="${escapeHtml(copy.overlay.dragToMove)}"` : "";
           parts.push(`<div class="label"${grab} style="left:${at.x}px;top:${at.y}px;background:${color}">${grip ? "⠿ " : ""}${escapeHtml(text)}</div>`);
         }
       });
@@ -1037,10 +1038,8 @@ export class Overlay {
       const moved = this.node(this.moving);
       const besideNode = drop.beside ? this.node(drop.beside.key) : null;
       const where =
-        drop.beside && besideNode
-          ? `${drop.beside.side === "before" ? "before" : "after"} ${labelOf(besideNode)} in ${labelOf(dropNode)}`
-          : `into ${labelOf(dropNode)}`;
-      const text = moved ? `Move ${labelOf(moved)} ${where}` : where.charAt(0).toUpperCase() + where.slice(1);
+        drop.beside && besideNode ? copy.overlay.dropBeside(drop.beside.side, labelOf(besideNode), labelOf(dropNode)) : copy.overlay.dropInto(labelOf(dropNode));
+      const text = moved ? copy.overlay.move(labelOf(moved), where) : copy.overlay.drop(where);
       const at = place(c.x, c.y >= 18 ? c.y - 18 : c.y, text);
       parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${COLORS.drop}">${escapeHtml(text)}</div>`);
     }
@@ -1067,8 +1066,8 @@ export class Overlay {
       if (!r) continue;
       const colour = pin.open === 0 ? PIN_COLOURS.resolved : PIN_COLOURS[pin.type];
       const text = pin.open > 0 ? String(pin.open) : pin.total > 0 ? "✓" : "";
-      const notes = pin.total > 0 ? `${pin.open} open of ${pin.total} note${pin.total === 1 ? "" : "s"}` : "";
-      const title = [notes, pin.replied ? "agent replied" : ""].filter(Boolean).join(" · ");
+      const notes = pin.total > 0 ? copy.overlay.pinNotes(pin.open, pin.total) : "";
+      const title = [notes, pin.replied ? copy.overlay.pinReplied : ""].filter(Boolean).join(" · ");
       const x = Math.max(0, r.x + r.width - 12);
       const y = Math.max(0, r.y - 10);
       parts.push(
@@ -1107,13 +1106,13 @@ export class Overlay {
       parts.push(`<div class="label" data-gizmo-label style="left:${at.x}px;top:${at.y}px;background:${COLORS.gizmo}">${escapeHtml(text)}</div>`);
     };
     if (g) {
-      const affected = g.scope === "instance" || g.drag.token === null ? "this element" : `${g.count} element${g.count === 1 ? "" : "s"}`;
-      label(g.handle.rect.x + 14, g.handle.rect.y + 12, `${g.text} · ${affected}`);
+      const affected = g.scope === "instance" || g.drag.token === null ? copy.gizmos.thisElement : copy.gizmos.elements(g.count);
+      label(g.handle.rect.x + 14, g.handle.rect.y + 12, copy.gizmos.dragging(g.text, affected));
     } else if (this.gizmoHover) {
       const { handle, scope } = this.gizmoHover;
       const plan = planDrag(handle, scope, m, data as GizmoData);
-      const what = "unavailable" in plan ? `can't: ${plan.unavailable}` : plan.label;
-      label(handle.rect.x + 14, handle.rect.y + 12, `${SCOPE_NAMES[scope]}: ${what}`);
+      const what = "unavailable" in plan ? copy.gizmos.hoverRefusal(plan.unavailable) : plan.label;
+      label(handle.rect.x + 14, handle.rect.y + 12, copy.gizmos.hover(SCOPE_NAMES[scope], what));
     }
     const refusal = this.gizmoRefusal;
     if (refusal && refusal.until > Date.now()) label(refusal.x + 14, refusal.y + 12, refusal.text);
@@ -1148,7 +1147,7 @@ const DIALOG_TRIGGER = '[aria-haspopup="dialog"][aria-expanded]';
 const PIN_COLOURS = { build: "#2563eb", behaviour: "#16a34a", question: "#d97706", resolved: "#71717a" };
 
 /** How the hover label names each scope (PRD §10.3). */
-const SCOPE_NAMES: Record<Scope, string> = { component: "Drag", global: "Shift", instance: "Alt" };
+const SCOPE_NAMES: Record<Scope, string> = copy.gizmos.scopes;
 
 function rectOf(el: Element): Rect {
   const r = el.getBoundingClientRect();
@@ -1182,8 +1181,8 @@ export function deepestAt(el: Element | null, x: number, y: number): Element | n
 export function labelOf(node: OverlayNode): string {
   const id = node.id ? ` #${node.id}` : "";
   if (node.kind !== "locked") return `${node.name}${id}`;
-  const what: Record<string, string> = { map: ".map()", conditional: "conditional", expression: "{…}", fragment: "<>…</>", spread: "{...}" };
-  return `🔒 ${node.element ? node.name : (what[node.name] ?? node.name)}${id}`;
+  const what: Record<string, string> = copy.overlay.lockedKinds;
+  return copy.overlay.lockedLabel(node.element ? node.name : (what[node.name] ?? node.name), id);
 }
 
 function escapeHtml(text: string): string {

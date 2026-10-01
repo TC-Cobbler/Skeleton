@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ThemeToken, TokenGroup, TokenSheet, TokenWrite } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { TextInput } from "./PropertiesPanel.js";
+import { copy } from "./copy.js";
 
 /** The project's tokens, re-read when files change. */
 export function useTokens(projectRoot: string, revision: number): { sheet: TokenSheet | null; error: string | null; set: (sheet: TokenSheet) => void } {
@@ -24,14 +25,7 @@ export function useTokens(projectRoot: string, revision: number): { sheet: Token
   return { sheet, error, set: setSheet };
 }
 
-const GROUPS: { id: TokenGroup; label: string }[] = [
-  { id: "colour", label: "Colour" },
-  { id: "radius", label: "Radius" },
-  { id: "spacing", label: "Spacing" },
-  { id: "type", label: "Type" },
-  { id: "font", label: "Font" },
-  { id: "border", label: "Border width" },
-];
+const GROUPS: { id: TokenGroup; label: string }[] = (["colour", "radius", "spacing", "type", "font", "border"] as const).map((id) => ({ id, label: copy.tokens.groups[id] }));
 
 export interface TokensPanelProps {
   sheet: TokenSheet | null;
@@ -53,12 +47,12 @@ export interface TokensPanelProps {
 export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover }: TokensPanelProps) {
   const [filter, setFilter] = useState("");
   return (
-    <section aria-label="Tokens" className="tokens" data-testid="tokens">
-      <h2>Tokens</h2>
+    <section aria-label={copy.tokens.title} className="tokens" data-testid="tokens">
+      <h2>{copy.tokens.title}</h2>
       {error && <p className="error">{error}</p>}
       {sheet && (
         <>
-          <input aria-label="Filter tokens" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input aria-label={copy.tokens.filterLabel} placeholder={copy.tokens.filter} value={filter} onChange={(e) => setFilter(e.target.value)} />
           <p className="muted small">{sheet.file}</p>
           {GROUPS.map((group) => {
             const tokens = sheet.tokens.filter((t) => t.group === group.id && t.name.includes(filter.trim()));
@@ -68,8 +62,8 @@ export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover }: To
                 <h3>{group.label}</h3>
                 {group.id === "colour" && (
                   <div className="token-modes muted">
-                    <span className={dark ? "" : "is-shown"}>Light</span>
-                    <span className={dark ? "is-shown" : ""}>Dark</span>
+                    <span className={dark ? "" : "is-shown"}>{copy.app.light}</span>
+                    <span className={dark ? "is-shown" : ""}>{copy.app.dark}</span>
                   </div>
                 )}
                 <ul role="list">
@@ -103,37 +97,37 @@ function TokenRow({
   return (
     <li className="token" data-testid={`token-${token.name}`} onPointerEnter={() => onHover(token.name)} onPointerLeave={() => onHover(null)}>
       <div className="token-head">
-        <code>{token.name}</code>
+        <code>{copy.tokens.tokenName(token.name)}</code>
         {count !== null && (
-          <span className="muted small" title="Elements on this page it affects" data-testid="token-count">
+          <span className="muted small" title={copy.tokens.countTitle} data-testid="token-count">
             {count}
           </span>
         )}
       </div>
       <div className={`token-values${token.dark !== null ? " has-dark" : ""}`}>
-        <TokenValue label={`${token.name} value`} value={token.value} swatch={token.group === "colour"} onCommit={(v) => write(v, token.dark !== null ? "light" : null)} />
-        {token.dark !== null && <TokenValue label={`${token.name} dark value`} value={token.dark} swatch onCommit={(v) => write(v, "dark")} />}
+        <TokenValue label={copy.tokens.valueLabel(token.name)} value={token.value} swatch={token.group === "colour"} onCommit={(v) => write(v, token.dark !== null ? "light" : null)} />
+        {token.dark !== null && <TokenValue label={copy.tokens.darkValueLabel(token.name)} value={token.dark} swatch onCommit={(v) => write(v, "dark")} />}
       </div>
       {(derived || detached) && (
         <div className="token-derived muted small">
           {derived ? (
             <>
-              <span title="Derived: follows the tokens it refers to">= {token.resolved ?? "…"}</span>
+              <span title={copy.tokens.derivedTitle}>{copy.tokens.resolved(token.resolved)}</span>
               <button
                 type="button"
                 className="quiet"
                 disabled={token.resolved === null}
-                title={token.resolved === null ? "It doesn't come to a single value, so it can't be detached here" : `Replace the formula with ${token.resolved}`}
+                title={token.resolved === null ? copy.tokens.cantDetach : copy.tokens.detachTitle(token.resolved)}
                 onClick={() => token.resolved !== null && write(token.resolved, null)}
               >
-                Detach
+                {copy.tokens.detach}
               </button>
             </>
           ) : (
             <>
-              <span>Detached</span>
-              <button type="button" className="quiet" title={`Back to ${token.defaultFormula}`} onClick={() => token.defaultFormula && write(token.defaultFormula, null)}>
-                Attach
+              <span>{copy.tokens.detached}</span>
+              <button type="button" className="quiet" title={copy.tokens.attachTitle(token.defaultFormula)} onClick={() => token.defaultFormula && write(token.defaultFormula, null)}>
+                {copy.tokens.attach}
               </button>
             </>
           )}

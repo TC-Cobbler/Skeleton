@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Palette, PaletteEntry } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
 
 /** The palette, checked against the project's component files; refreshed when files change. */
 export function usePalette(projectRoot: string, revision: number): { palette: Palette | null; error: string | null } {
@@ -34,22 +35,22 @@ export interface PalettePanelProps {
 export function unavailableReason(item: PaletteEntry): string | null {
   if (item.available) return null;
   if (item.note) return item.note;
-  return `This project doesn't have ${item.missing.join(", ")}.`;
+  return copy.palette.missing(item.missing);
 }
 
 /** The curated components and layout primitives (T3.1, PRD §9.1), by group. Drag one onto the canvas to place it. */
 export function PalettePanel({ palette, error, onStartDrag }: PalettePanelProps) {
   return (
-    <section aria-label="Palette" className="palette">
-      <h2>Palette</h2>
+    <section aria-label={copy.palette.title} className="palette">
+      <h2>{copy.palette.title}</h2>
       {error && <p className="error">{error}</p>}
       {palette?.groups.map((group) => {
         const items = palette.items.filter((i) => i.group === group.id);
         if (items.length === 0) return null;
         return (
           <div key={group.id} className="palette-group">
-            <h3>{group.label}</h3>
-            <ul role="list" aria-label={`${group.label} components`}>
+            <h3>{copy.palette.groupLabel(group.label)}</h3>
+            <ul role="list" aria-label={copy.palette.groupList(group.label)}>
               {items.map((item) => {
                 const why = unavailableReason(item);
                 return (
@@ -58,10 +59,10 @@ export function PalettePanel({ palette, error, onStartDrag }: PalettePanelProps)
                     data-testid={`palette-${item.id}`}
                     aria-disabled={why !== null}
                     className={`palette-item${why ? " is-disabled" : ""}`}
-                    title={why ?? item.description}
+                    title={why ?? copy.palette.itemDescription(item.description)}
                     onPointerDown={why === null ? (e) => onStartDrag(item, e) : undefined}
                   >
-                    {item.label}
+                    {copy.palette.itemLabel(item.label)}
                   </li>
                 );
               })}

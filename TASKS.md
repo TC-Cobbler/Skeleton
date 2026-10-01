@@ -278,7 +278,7 @@ See `docs/decisions/012-dogfood-fixes.md`.
 
 Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't know HTML or CSS. It covers the vocabulary, layout D, the Compact pro dark style and the plain messages. **On-screen presentation only:** no new features, no behaviour changes, and nothing different written into user projects. Every slice keeps the full unit suite and every e2e gate test green, with **the same steps and assertions** (spec §7).
 
-- [ ] **T8.1** **Copy files and test helpers: a pure refactor.**
+- [~] **T8.1** **Copy files and test helpers: a pure refactor.**
   - Move every on-screen string, unchanged, into the renderer's copy file and the overlay's own copy file.
   - Add the shared e2e helper file of lookups by role and visible name, including the project picker.
   - Switch every e2e and renderer test to the helpers and copy entries.

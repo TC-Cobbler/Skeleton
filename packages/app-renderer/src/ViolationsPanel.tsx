@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ViolationItem, ViolationReport } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
 
 /** The project's violations, re-read when files change. */
 export function useViolations(projectRoot: string, revision: number): { report: ViolationReport | null; error: string | null } {
@@ -23,15 +24,7 @@ export function useViolations(projectRoot: string, revision: number): { report: 
   return { report, error };
 }
 
-const PROPERTY: Record<ViolationItem["property"], string> = {
-  radius: "radius",
-  spacing: "spacing",
-  "font-size": "font size",
-  "border-width": "border width",
-  colour: "colour",
-  style: "inline style",
-  other: "arbitrary value",
-};
+const PROPERTY: Record<ViolationItem["property"], string> = copy.violations.property;
 
 const PROMOTE_PREFIX: Record<NonNullable<ViolationItem["promote"]>, string> = { radius: "--radius-", spacing: "--spacing-", text: "--text-", colour: "--" };
 
@@ -55,18 +48,18 @@ export function ViolationsPanel({ report, error, onSelect, onSnap, onPromote, on
   const kept = items.filter((v) => v.kept).length;
   const shown = items.filter((v) => showKept || !v.kept);
   return (
-    <section aria-label="Violations" className="violations" data-testid="violations">
-      <h2>Violations</h2>
+    <section aria-label={copy.violations.title} className="violations" data-testid="violations">
+      <h2>{copy.violations.title}</h2>
       {error && <p className="error">{error}</p>}
       {report?.errors.map((e) => (
         <p key={e} className="error small">
           {e}
         </p>
       ))}
-      {report && items.length - kept === 0 && <p className="muted">No overrides: everything is styled with tokens.</p>}
+      {report && items.length - kept === 0 && <p className="muted">{copy.violations.empty}</p>}
       {kept > 0 && (
         <label className="row small muted">
-          <input type="checkbox" checked={showKept} onChange={(e) => setShowKept(e.target.checked)} /> Show kept ({kept})
+          <input type="checkbox" checked={showKept} onChange={(e) => setShowKept(e.target.checked)} /> {copy.violations.showKept(kept)}
         </label>
       )}
       <ul role="list">
@@ -87,38 +80,38 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
     <li className={`violation${item.kept ? " is-kept" : ""}`} data-testid="violation">
       <div className="violation-head">
         <button type="button" className="link" title={`${item.file}:${item.line}`} onClick={() => onSelect(item)}>
-          {item.element ? `${item.element.name}${item.element.id ? ` #${item.element.id}` : ""}` : `${item.file}:${item.line}`}
+          {item.element ? copy.violations.element(item.element.name, item.element.id) : `${item.file}:${item.line}`}
         </button>
         <span className="muted small">{PROPERTY[item.property]}</span>
       </div>
       <code className="violation-value">{value}</code>
       {item.nearest && (
         <div className="muted small">
-          nearest: <code>{item.nearest.utility}</code> ({item.nearest.token} = {item.nearest.value})
+          {copy.violations.nearest} <code>{item.nearest.utility}</code> {copy.violations.nearestValue(item.nearest.token, item.nearest.value)}
         </div>
       )}
-      {!item.editable && !item.kept && <div className="muted small">In agent code: fix it in code, or keep it.</div>}
+      {!item.editable && !item.kept && <div className="muted small">{copy.violations.inAgentCode}</div>}
       {!item.kept && (
         <div className="row violation-actions">
           {item.editable && item.nearest && (
-            <button type="button" onClick={() => onSnap(item)} title={`Replace with ${item.nearest.utility}`}>
-              Snap
+            <button type="button" onClick={() => onSnap(item)} title={copy.violations.snapTitle(item.nearest.utility)}>
+              {copy.violations.snap}
             </button>
           )}
           {item.editable && item.promote && (
             <button type="button" aria-expanded={naming} onClick={() => setNaming((n) => !n)}>
-              Promote
+              {copy.violations.promote}
             </button>
           )}
-          <button type="button" onClick={() => onKeep(item)} title="Acknowledge it and leave it (skeleton/config.json)">
-            Keep
+          <button type="button" onClick={() => onKeep(item)} title={copy.violations.keepTitle}>
+            {copy.violations.keep}
           </button>
         </div>
       )}
       {naming && item.promote && (
         <form
           className="row"
-          aria-label="Promote to token"
+          aria-label={copy.violations.promoteForm}
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid) return;
@@ -127,9 +120,9 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
           }}
         >
           <span className="muted small">{PROMOTE_PREFIX[item.promote]}</span>
-          <input aria-label="Token name" placeholder="name" value={name} onChange={(e) => setName(e.target.value.trim())} />
+          <input aria-label={copy.violations.tokenName} placeholder={copy.violations.namePlaceholder} value={name} onChange={(e) => setName(e.target.value.trim())} />
           <button type="submit" disabled={!valid}>
-            Create
+            {copy.violations.create}
           </button>
         </form>
       )}

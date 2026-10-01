@@ -1,5 +1,6 @@
 import type { ElementSchema, PageTree, UiNode } from "@skeleton/app-main/ipc";
 import type { OverlayNode } from "@skeleton/overlay/protocol";
+import { copy } from "../copy.js";
 
 export interface KeyedNode {
   key: string;
@@ -75,9 +76,9 @@ export function agentLogicIn(node: UiNode): string[] {
   const label = (n: UiNode) => `${n.name}${n.id ? ` #${n.id}` : ""}`;
   const walk = (n: UiNode) => {
     if (n.kind === "locked") {
-      out.push(`🔒 ${n.element ? label(n) : n.name} (${n.lockReason ?? "locked"})`);
+      out.push(copy.nodes.lockedLogic(n.element ? label(n) : n.name, n.lockReason ?? copy.layers.locked));
     } else if (n.protectedProps.length > 0) {
-      out.push(`${n.protectedProps.join(", ")} on ${label(n)}`);
+      out.push(copy.nodes.protectedLogic(n.protectedProps, label(n)));
     }
     n.children.forEach(walk);
   };
@@ -96,14 +97,14 @@ export function refFor(nodes: KeyedNode[], key: string): { ref: NodeRef } | { re
   const node = nodes.find((n) => n.key === key)?.node;
   const parentKey = parentKeyOf(key);
   const parent = parentKey === null ? null : (nodes.find((n) => n.key === parentKey)?.node ?? null);
-  if (!node) return { reason: "It's no longer on the page." };
-  if (!parent) return { reason: "The page's root element can't be removed." };
+  if (!node) return { reason: copy.nodes.gone };
+  if (!parent) return { reason: copy.nodes.rootRemove };
   if (parent.kind === "locked" || !parent.element) {
-    return { reason: `It's inside 🔒 ${parent.name}, agent code that uses it: edit it in place, or delete the whole block.` };
+    return { reason: copy.nodes.insideLockedRemove(parent.name) };
   }
   if (node.id) return { ref: { id: node.id } };
   if (parent.id) return { ref: { parentId: parent.id, index: Number(key.slice(key.lastIndexOf(".") + 1)) } };
-  return { reason: "Neither it nor its parent has a data-ui-id." };
+  return { reason: copy.nodes.noIds };
 }
 
 /**
@@ -115,12 +116,12 @@ export function reorderTarget(nodes: KeyedNode[], key: string, direction: "up" |
   const node = nodes.find((n) => n.key === key)?.node;
   const parentKey = parentKeyOf(key);
   const parent = parentKey === null ? null : (nodes.find((n) => n.key === parentKey)?.node ?? null);
-  if (!node || parentKey === null || !parent) return { reason: "The page's root element can't be moved." };
-  if (!canMove(node, parent)) return { reason: `It's inside 🔒 ${parent.name}: edit it in place.` };
-  if (!parent.id) return { reason: `${parent.name} has no data-ui-id.` };
+  if (!node || parentKey === null || !parent) return { reason: copy.nodes.rootMove };
+  if (!canMove(node, parent)) return { reason: copy.nodes.insideLockedMove(parent.name) };
+  if (!parent.id) return { reason: copy.nodes.noId(parent.name) };
   const from = Number(key.slice(key.lastIndexOf(".") + 1));
-  if (direction === "up") return from > 0 ? { parentKey, index: from - 1 } : { reason: "It's already first." };
-  return from < parent.children.length - 1 ? { parentKey, index: from + 1 } : { reason: "It's already last." };
+  if (direction === "up") return from > 0 ? { parentKey, index: from - 1 } : { reason: copy.nodes.first };
+  return from < parent.children.length - 1 ? { parentKey, index: from + 1 } : { reason: copy.nodes.last };
 }
 
 /** Palette overlays whose content isn't on the canvas while they're closed (F-6). */

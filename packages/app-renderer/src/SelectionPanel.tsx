@@ -1,5 +1,6 @@
 import type { UiNode } from "@skeleton/app-main/ipc";
 import { ViewSource } from "./ViewSource.js";
+import { copy } from "./copy.js";
 
 export interface SelectionPanelProps {
   projectRoot: string;
@@ -24,42 +25,42 @@ export interface SelectionPanelProps {
 /** The selected element: what it is, its agent logic, reordering it (F-2) and deleting it (T3.4). */
 export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete, confirming, onDelete, cannotMove, onMove, openable, onToggleOpen, onConfirm, onCancel }: SelectionPanelProps) {
   return (
-    <section aria-label="Selection" data-testid="selection">
-      <h2>Selection</h2>
+    <section aria-label={copy.selection.title} data-testid="selection">
+      <h2>{copy.selection.title}</h2>
       {node ? (
         <dl className="inspector">
-          <dt>Element</dt>
+          <dt>{copy.selection.element}</dt>
           <dd data-testid="selection-name">{node.name}</dd>
-          <dt>Kind</dt>
+          <dt>{copy.selection.kind}</dt>
           <dd data-testid="selection-kind">{node.kind}</dd>
-          <dt>ID</dt>
-          <dd data-testid="selection-id">{node.id ?? "none"}</dd>
+          <dt>{copy.selection.id}</dt>
+          <dd data-testid="selection-id">{node.id ?? copy.selection.noId}</dd>
           {node.lockReason && (
             <>
-              <dt>Locked</dt>
+              <dt>{copy.selection.locked}</dt>
               <dd data-testid="selection-lock">{node.lockReason}</dd>
             </>
           )}
           {node.protectedProps.length > 0 && (
             <>
-              <dt>Agent logic</dt>
+              <dt>{copy.selection.agentLogic}</dt>
               <dd>{node.protectedProps.join(", ")}</dd>
             </>
           )}
         </dl>
       ) : (
-        <p className="muted">{hovered ? "Click to select." : "Nothing selected."}</p>
+        <p className="muted">{hovered ? copy.selection.clickToSelect : copy.selection.nothing}</p>
       )}
       {node && (
         <div className="row actions">
-          <button type="button" onClick={() => onMove("up")} disabled={cannotMove.up !== null} title={cannotMove.up ?? "Move up (Alt+↑)"} data-testid="move-up">
-            Move up
+          <button type="button" onClick={() => onMove("up")} disabled={cannotMove.up !== null} title={cannotMove.up ?? copy.selection.moveUpTitle} data-testid="move-up">
+            {copy.selection.moveUp}
           </button>
-          <button type="button" onClick={() => onMove("down")} disabled={cannotMove.down !== null} title={cannotMove.down ?? "Move down (Alt+↓)"} data-testid="move-down">
-            Move down
+          <button type="button" onClick={() => onMove("down")} disabled={cannotMove.down !== null} title={cannotMove.down ?? copy.selection.moveDownTitle} data-testid="move-down">
+            {copy.selection.moveDown}
           </button>
-          <button type="button" onClick={onDelete} disabled={cannotDelete !== null} title={cannotDelete ?? "Delete (Del)"}>
-            Delete
+          <button type="button" onClick={onDelete} disabled={cannotDelete !== null} title={cannotDelete ?? copy.selection.deleteTitle}>
+            {copy.common.delete}
           </button>
         </div>
       )}
@@ -69,18 +70,18 @@ export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete,
             type="button"
             aria-pressed={openable.open === true}
             disabled={openable.open === null}
-            title={openable.open === null ? `Its trigger isn't on the canvas: the app opens this ${openable.name} some other way.` : "Opens it the way the app does, by its trigger; the code doesn't change."}
+            title={openable.open === null ? copy.selection.noTrigger(openable.name) : copy.selection.openTitle}
             onClick={onToggleOpen}
             data-testid="open-in-canvas"
           >
-            {openable.open ? `Close ${openable.name}` : `Open ${openable.name} in canvas`}
+            {openable.open ? copy.selection.close(openable.name) : copy.selection.open(openable.name)}
           </button>
         </div>
       )}
       {node && confirming && (
-        <div className="confirm" role="alertdialog" aria-label="Confirm delete" data-testid="confirm-delete">
+        <div className="confirm" role="alertdialog" aria-label={copy.selection.confirmDelete} data-testid="confirm-delete">
           <p>
-            <strong>This deletes agent code too:</strong>
+            <strong>{copy.selection.deletesAgentCode}</strong>
           </p>
           <ul>
             {confirming.map((item) => (
@@ -89,10 +90,10 @@ export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete,
           </ul>
           <div className="row">
             <button type="button" className="danger" onClick={onConfirm}>
-              Delete anyway
+              {copy.selection.deleteAnyway}
             </button>
             <button type="button" onClick={onCancel} autoFocus>
-              Cancel
+              {copy.common.cancel}
             </button>
           </div>
         </div>

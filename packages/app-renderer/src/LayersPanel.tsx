@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyedNode } from "./canvas/nodes.js";
+import { copy } from "./copy.js";
 
 export interface LayersPanelProps {
   nodes: KeyedNode[];
@@ -45,9 +46,9 @@ export function LayersPanel({ nodes, selected, hovered, onScreen, onSelect, onHo
     });
 
   return (
-    <section aria-label="Layers" className="layers">
-      <h2>Layers</h2>
-      <ul ref={list} role="tree" aria-label="Layers tree" onMouseLeave={() => onHover(null)}>
+    <section aria-label={copy.layers.title} className="layers">
+      <h2>{copy.layers.title}</h2>
+      <ul ref={list} role="tree" aria-label={copy.layers.tree} onMouseLeave={() => onHover(null)}>
         {nodes.map(({ key, node, depth }, i) =>
           hidden(key) ? null : (
             <li
@@ -67,13 +68,13 @@ export function LayersPanel({ nodes, selected, hovered, onScreen, onSelect, onHo
               style={{ paddingLeft: 8 + depth * 14 }}
               onClick={() => onSelect(key)}
               onMouseEnter={() => onHover(key)}
-              title={onScreen && !onScreen.has(key) ? "Not rendered on the canvas right now" : undefined}
+              title={onScreen && !onScreen.has(key) ? copy.layers.offscreen : undefined}
             >
               {hasChildren(i) ? (
                 <button
                   type="button"
                   className="twisty"
-                  aria-label={collapsed.has(key) ? "Expand" : "Collapse"}
+                  aria-label={collapsed.has(key) ? copy.layers.expand : copy.layers.collapse}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggle(key);
@@ -84,7 +85,7 @@ export function LayersPanel({ nodes, selected, hovered, onScreen, onSelect, onHo
               ) : (
                 <span className="twisty" />
               )}
-              {node.kind === "locked" && <span aria-label="locked">🔒</span>}
+              {node.kind === "locked" && <span aria-label={copy.layers.locked}>🔒</span>}
               <span className="layer-name">{node.name}</span>
               {node.id && <code className="layer-id">{node.id}</code>}
             </li>

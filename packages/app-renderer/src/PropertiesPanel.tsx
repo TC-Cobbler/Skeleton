@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ClassGroup, EditIntent, ElementSchema, PropSchema, UiNode } from "@skeleton/app-main/ipc";
 import { textEditable } from "./canvas/nodes.js";
+import { copy } from "./copy.js";
 
 type PropValue = string | number | boolean | null;
 
@@ -21,9 +22,9 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
   const id = node.id;
   if (!id) {
     return (
-      <section aria-label="Properties" className="properties">
-        <h2>Properties</h2>
-        <p className="muted">This element has no data-ui-id, so Skeleton can't edit it.</p>
+      <section aria-label={copy.properties.title} className="properties">
+        <h2>{copy.properties.title}</h2>
+        <p className="muted">{copy.properties.noId}</p>
       </section>
     );
   }
@@ -33,19 +34,19 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
   const classes = typeof node.props["className"] === "string" ? node.props["className"].split(/\s+/).filter(Boolean) : [];
 
   return (
-    <section aria-label="Properties" className="properties" data-testid="properties">
-      <h2>Properties</h2>
+    <section aria-label={copy.properties.title} className="properties" data-testid="properties">
+      <h2>{copy.properties.title}</h2>
       {schema && schema.props.length > 0 && (
         <div className="prop-grid">
           {schema.props.map((prop) =>
             node.protectedProps.includes(prop.name) ? (
-              <Row key={prop.name} label={prop.name}>
-                <span className="muted" title="Set by agent code; edit it in code">
-                  set by agent code
+              <Row key={prop.name} label={copy.properties.propLabel(prop.name)}>
+                <span className="muted" title={copy.properties.agentSetTitle}>
+                  {copy.properties.agentSet}
                 </span>
               </Row>
             ) : (
-              <Row key={prop.name} label={prop.name}>
+              <Row key={prop.name} label={copy.properties.propLabel(prop.name)}>
                 <PropControl prop={prop} value={node.props[prop.name]} onChange={(value) => onEdit({ op: "setProp", id, key: prop.name, value })} />
               </Row>
             ),
@@ -54,20 +55,20 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
       )}
       {hasText && (
         <div className="prop-grid">
-          <Row label="Text">
-            <TextInput label="Text" value={node.text ?? ""} onCommit={(text) => onEdit({ op: "setText", id, text })} />
+          <Row label={copy.properties.text}>
+            <TextInput label={copy.properties.text} value={node.text ?? ""} onCommit={(text) => onEdit({ op: "setText", id, text })} />
           </Row>
         </div>
       )}
       {groups && (
         <>
-          <h3>{schema?.layout === "grid" ? "Grid" : "Stack"}</h3>
+          <h3>{schema?.layout === "grid" ? copy.properties.grid : copy.properties.stack}</h3>
           {classNameProtected ? (
-            <p className="muted">Its classes are set by agent code, so layout is edited in code.</p>
+            <p className="muted">{copy.properties.agentLayout}</p>
           ) : (
             <div className="prop-grid">
               {groups.map((group) => (
-                <Row key={group.id} label={group.label}>
+                <Row key={group.id} label={copy.properties.classGroupLabel(group.label)}>
                   <ClassControl group={group} classes={classes} onChange={(add, remove) => onEdit({ op: "setClass", id, add, remove })} />
                 </Row>
               ))}
@@ -75,7 +76,7 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
           )}
         </>
       )}
-      {!schema && !textEditable && !groups && <p className="muted">No properties to edit here.</p>}
+      {!schema && !textEditable && !groups && <p className="muted">{copy.properties.empty}</p>}
     </section>
   );
 }
@@ -96,22 +97,22 @@ function PropControl({ prop, value, onChange }: { prop: PropSchema; value: PropV
     case "enum": {
       const current = typeof value === "string" ? value : prop.default;
       return (
-        <select aria-label={prop.name} value={current} onChange={(e) => set(e.target.value)}>
-          {!prop.options.includes(current) && <option value={current}>{current} (custom)</option>}
+        <select aria-label={copy.properties.propLabel(prop.name)} value={current} onChange={(e) => set(e.target.value)}>
+          {!prop.options.includes(current) && <option value={current}>{copy.properties.custom(current)}</option>}
           {prop.options.map((o) => (
             <option key={o} value={o}>
-              {o}
+              {copy.properties.optionLabel(prop.name, o)}
             </option>
           ))}
         </select>
       );
     }
     case "boolean":
-      return <input type="checkbox" aria-label={prop.name} checked={typeof value === "boolean" ? value : prop.default} onChange={(e) => set(e.target.checked)} />;
+      return <input type="checkbox" aria-label={copy.properties.propLabel(prop.name)} checked={typeof value === "boolean" ? value : prop.default} onChange={(e) => set(e.target.checked)} />;
     case "string":
       return (
         <TextInput
-          label={prop.name}
+          label={copy.properties.propLabel(prop.name)}
           value={typeof value === "string" ? value : (prop.default ?? "")}
           // Clearing an optional prop removes it; a required one (non-null default) is never removed.
           onCommit={(text) => onChange(text === "" && prop.default === null ? null : text)}
@@ -120,7 +121,7 @@ function PropControl({ prop, value, onChange }: { prop: PropSchema; value: PropV
     case "number":
       return (
         <TextInput
-          label={prop.name}
+          label={copy.properties.propLabel(prop.name)}
           type="number"
           value={typeof value === "number" ? String(value) : prop.default === null ? "" : String(prop.default)}
           onCommit={(text) => {
@@ -165,14 +166,14 @@ function ClassControl({ group, classes, onChange }: { group: ClassGroup; classes
   const listed = group.options.some((o) => (o.class ?? "") === selected);
   return (
     <select
-      aria-label={group.label}
+      aria-label={copy.properties.classGroupLabel(group.label)}
       value={selected}
       onChange={(e) => onChange(e.target.value ? [e.target.value] : [], current)}
     >
-      {!listed && <option value={selected}>{selected} (custom)</option>}
+      {!listed && <option value={selected}>{copy.properties.custom(selected)}</option>}
       {group.options.map((o) => (
         <option key={o.class ?? ""} value={o.class ?? ""}>
-          {o.label}
+          {copy.properties.classOptionLabel(o.label)}
         </option>
       ))}
     </select>

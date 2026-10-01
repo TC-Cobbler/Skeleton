@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { NoteOp, NoteType, NoteView, NotesView, Reply } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
 import { filterNotes, looseReplies, repliesFor, TYPE_LABEL, type NoteFilter } from "./notes.js";
 
 /** The project's notes and replies, re-read when files change. */
@@ -52,35 +53,35 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
   const loose = view ? looseReplies(view) : [];
   const canPin = selected?.id ?? null;
   return (
-    <section aria-label="Notes" className="notes" data-testid="notes">
-      <h2>Notes</h2>
+    <section aria-label={copy.notes.title} className="notes" data-testid="notes">
+      <h2>{copy.notes.title}</h2>
       {error && <p className="error">{error}</p>}
-      {readOnly && <p className="muted small">With the agent: notes can be changed again after Take back.</p>}
-      {!readOnly && selected && (canPin ? <AddNote target={canPin} name={selected.name} onWrite={onWrite} /> : <p className="muted small">{selected.name} has no data-ui-id, so notes can't be pinned to it.</p>)}
-      {!readOnly && !selected && <p className="muted small">Select an element to pin a note to it.</p>}
-      <div className="segmented" role="group" aria-label="Note type">
+      {readOnly && <p className="muted small">{copy.notes.readOnly}</p>}
+      {!readOnly && selected && (canPin ? <AddNote target={canPin} name={selected.name} onWrite={onWrite} /> : <p className="muted small">{copy.notes.cantPin(selected.name)}</p>)}
+      {!readOnly && !selected && <p className="muted small">{copy.notes.selectToPin}</p>}
+      <div className="segmented" role="group" aria-label={copy.notes.type}>
         {(["all", ...TYPES] as const).map((t) => (
           <button key={t} type="button" aria-pressed={filter.type === t} onClick={() => setFilter((f) => ({ ...f, type: t }))}>
-            {t === "all" ? "All" : TYPE_LABEL[t]}
+            {t === "all" ? copy.notes.all : TYPE_LABEL[t]}
           </button>
         ))}
       </div>
-      <div className="segmented" role="group" aria-label="Note status">
+      <div className="segmented" role="group" aria-label={copy.notes.status}>
         {(["open", "resolved", "all"] as const).map((s) => (
           <button key={s} type="button" aria-pressed={filter.status === s} onClick={() => setFilter((f) => ({ ...f, status: s }))}>
-            {s === "all" ? "All" : s === "open" ? "Open" : "Resolved"}
+            {copy.notes.statusFilter[s]}
           </button>
         ))}
       </div>
       {focus && (
         <p className="row small">
-          On <code>{focus}</code> only
-          <button type="button" className="quiet" aria-label="Show every element's notes" onClick={() => onFocus(null)}>
+          {copy.notes.focusOn} <code>{focus}</code> {copy.notes.focusOnly}
+          <button type="button" className="quiet" aria-label={copy.notes.showAll} onClick={() => onFocus(null)}>
             ×
           </button>
         </p>
       )}
-      {view && notes.length === 0 && <p className="muted small">No notes here.</p>}
+      {view && notes.length === 0 && <p className="muted small">{copy.notes.empty}</p>}
       <ul role="list" className="note-list">
         {notes.map((n) => (
           <NoteRow key={n.id} note={n} replies={view ? repliesFor(view.replies, n.target) : []} readOnly={readOnly} onWrite={onWrite} onSelectTarget={onSelectTarget} />
@@ -88,11 +89,11 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
       </ul>
       {loose.length > 0 && (
         <>
-          <h3>Other agent replies</h3>
+          <h3>{copy.notes.otherReplies}</h3>
           <ul role="list" className="note-list">
             {loose.map((r, i) => (
               <li key={i} className="note-reply" data-testid="loose-reply">
-                {r.target && <code>{r.target}</code>} {r.text} <span className="muted">(pass {r.pass})</span>
+                {r.target && <code>{r.target}</code>} {r.text} <span className="muted">{copy.notes.replyPass(r.pass)}</span>
               </li>
             ))}
           </ul>
@@ -100,23 +101,23 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
       )}
       {orphans.length > 0 && (
         <div className="orphans" data-testid="orphan-tray">
-          <h3>Orphaned ({orphans.length})</h3>
-          <p className="muted small">Their elements are gone. Attach each to another element, or discard it.</p>
+          <h3>{copy.notes.orphaned(orphans.length)}</h3>
+          <p className="muted small">{copy.notes.orphanedHint}</p>
           <ul role="list" className="note-list">
             {orphans.map((n) => (
               <li key={n.id} className="note" data-testid="orphan">
                 <div className="note-head">
                   <span className={`note-type note-${n.type}`}>{TYPE_LABEL[n.type]}</span>
-                  <span className="muted small">was on {n.target}</span>
+                  <span className="muted small">{copy.notes.wasOn(n.target)}</span>
                 </div>
                 <div>{n.text}</div>
                 {!readOnly && (
                   <div className="row note-actions">
-                    <button type="button" disabled={!canPin} title={canPin ? `Attach to ${selected?.name} #${canPin}` : "Select an element with a data-ui-id first"} onClick={() => canPin && void onWrite({ op: "update", id: n.id, target: canPin })}>
-                      Attach to selected
+                    <button type="button" disabled={!canPin} title={canPin ? copy.notes.attachTitle(selected?.name, canPin) : copy.notes.attachNeedsId} onClick={() => canPin && void onWrite({ op: "update", id: n.id, target: canPin })}>
+                      {copy.notes.attach}
                     </button>
                     <button type="button" className="danger" onClick={() => void onWrite({ op: "delete", id: n.id })}>
-                      Discard
+                      {copy.notes.discard}
                     </button>
                   </div>
                 )}
@@ -135,7 +136,7 @@ function AddNote({ target, name, onWrite }: { target: string; name: string; onWr
   return (
     <form
       className="note-form"
-      aria-label="Add a note"
+      aria-label={copy.notes.addForm}
       onSubmit={(e) => {
         e.preventDefault();
         if (text.trim() === "") return;
@@ -146,19 +147,19 @@ function AddNote({ target, name, onWrite }: { target: string; name: string; onWr
       }}
     >
       <label className="small muted">
-        Note on {name} #{target}
+        {copy.notes.noteOn(name, target)}
       </label>
       <div className="row">
-        <select aria-label="Note type" value={type} onChange={(e) => setType(e.target.value as NoteType)}>
+        <select aria-label={copy.notes.type} value={type} onChange={(e) => setType(e.target.value as NoteType)}>
           {TYPES.map((t) => (
             <option key={t} value={t}>
               {TYPE_LABEL[t]}
             </option>
           ))}
         </select>
-        <input aria-label="Note text" placeholder={type === "question" ? "Ask the agent…" : "What should the agent do?"} value={text} onChange={(e) => setText(e.target.value)} />
+        <input aria-label={copy.notes.text} placeholder={type === "question" ? copy.notes.askPlaceholder : copy.notes.taskPlaceholder} value={text} onChange={(e) => setText(e.target.value)} />
         <button type="submit" disabled={text.trim() === ""}>
-          Add
+          {copy.notes.add}
         </button>
       </div>
     </form>
@@ -171,25 +172,25 @@ function NoteRow({ note, replies, readOnly, onWrite, onSelectTarget }: { note: N
       <div className="note-head">
         <span className={`note-type note-${note.type}`}>{TYPE_LABEL[note.type]}</span>
         <button type="button" className="link" onClick={() => onSelectTarget(note)} title={note.file ?? undefined}>
-          {note.element ?? "element"} #{note.target}
+          {copy.pass.elementRef(note.element ?? copy.notes.element, note.target)}
         </button>
         <span className="muted small" data-testid="note-status">
-          {note.status === "resolved" ? "resolved" : note.handoff ? `sent in #${note.handoff}` : "open"}
+          {note.status === "resolved" ? copy.notes.resolvedStatus : note.handoff ? copy.notes.sentIn(note.handoff) : copy.notes.openStatus}
         </span>
       </div>
       <div className="note-text">{note.text}</div>
       {replies.map((r, i) => (
         <div key={i} className="note-reply" data-testid="note-reply">
-          <span className="muted">Agent, pass {r.pass}:</span> {r.text}
+          <span className="muted">{copy.notes.agentReply(r.pass)}</span> {r.text}
         </div>
       ))}
       {!readOnly && (
         <div className="row note-actions">
           <button type="button" onClick={() => void onWrite({ op: "update", id: note.id, status: note.status === "open" ? "resolved" : "open" })}>
-            {note.status === "open" ? "Resolve" : "Reopen"}
+            {note.status === "open" ? copy.notes.resolve : copy.notes.reopen}
           </button>
           <button type="button" className="quiet" onClick={() => void onWrite({ op: "delete", id: note.id })}>
-            Delete
+            {copy.common.delete}
           </button>
         </div>
       )}

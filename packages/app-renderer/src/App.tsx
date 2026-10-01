@@ -26,6 +26,7 @@ import { LoopPanel, PassPanel, useLoop } from "./LoopPanel.js";
 import { NotesPanel, useNotes } from "./NotesPanel.js";
 import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
+import { copy } from "./copy.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
@@ -54,20 +55,19 @@ export function App() {
   return (
     <main>
       <header className="row">
-        <h1>{project ? project.name : "Skeleton"}</h1>
+        <h1>{project ? project.name : copy.app.name}</h1>
         {project && (
           <>
             <code className="muted" data-testid="project-root">{project.projectRoot}</code>
             <button type="button" onClick={() => void close()}>
-              Close project
+              {copy.app.closeProject}
             </button>
           </>
         )}
       </header>
       {info && (
         <p className="muted" data-testid="app-info">
-          v{info.appVersion} · Electron {info.electron} · Node {info.node} ·{" "}
-          {info.platform}
+          {copy.app.info(info)}
         </p>
       )}
       {error && <p className="error">{error}</p>}
@@ -82,9 +82,9 @@ export function App() {
 
 /** Why gizmos can't edit an element's classes (instance overrides, scale steps), or null when they can. */
 function classEditsBlocked(node: UiNode): string | null {
-  if (node.kind === "locked") return "it's a locked block: its classes are agent code";
-  if (!node.id) return "it has no data-ui-id";
-  if (node.protectedProps.includes("className")) return "its className is set by agent code";
+  if (node.kind === "locked") return copy.app.classEdits.locked;
+  if (!node.id) return copy.app.classEdits.noId;
+  if (node.protectedProps.includes("className")) return copy.app.classEdits.agentClassName;
   return null;
 }
 
@@ -135,7 +135,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     (reason: string | null) => {
       if (reason === null || warnedUnchecked.current) return;
       warnedUnchecked.current = true;
-      pushToast("warning", `Edits aren't being typechecked: ${reason}`);
+      pushToast("warning", copy.app.unchecked(reason));
     },
     [pushToast],
   );
@@ -222,9 +222,9 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   /** Replace the element's classes matching `remove` (a regex source) with `add`. */
   const setClassFor = (key: string, remove: string, add: string) => {
     const node = page.nodes.find((n) => n.key === key)?.node;
-    const blocked = node ? classEditsBlocked(node) : "it isn't on the page any more";
+    const blocked = node ? classEditsBlocked(node) : copy.app.classEdits.gone;
     if (!node?.id || blocked) {
-      setEditError(`Can't change this element: ${blocked ?? "it has no data-ui-id"}`);
+      setEditError(copy.app.cantChange(blocked ?? copy.app.classEdits.noId));
       done(false);
       return;
     }
@@ -281,13 +281,13 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     const dest = page.nodes.find((n) => n.key === target.parentKey)?.node;
     const from = Number(key.slice(key.lastIndexOf(".") + 1));
     if (!moved || !parent || !dest?.id) {
-      setEditError(`Can't move there: ${dest?.name ?? "that element"} has no data-ui-id.`);
+      setEditError(copy.app.cantMoveThere(dest?.name ?? copy.app.thatElement));
       return;
     }
     if (parentKey === target.parentKey && from === target.index) return; // dropped where it was
     const r = refFor(page.nodes, key);
     if ("reason" in r) {
-      setEditError(`Can't move ${moved.name}: ${r.reason}`);
+      setEditError(copy.app.cantMove(moved.name, r.reason));
       return;
     }
     edit({ op: "move", ref: r.ref, newParentId: dest.id, index: target.index });
@@ -318,7 +318,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     const { ref, reason } = deletion(key);
     setConfirmDelete(null);
     if (!ref) {
-      setEditError(`Can't delete: ${reason}`);
+      setEditError(copy.app.cantDelete(reason));
       return;
     }
     const parent = page.nodes.find((n) => n.key === parentKeyOf(key))?.node;
@@ -328,7 +328,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     const node = page.nodes.find((n) => n.key === key)?.node;
     const { reason } = deletion(key);
     if (!node || reason) {
-      setEditError(`Can't delete: ${reason ?? "nothing selected"}`);
+      setEditError(copy.app.cantDelete(reason ?? copy.app.nothingSelected));
       return;
     }
     const logic = agentLogicIn(node);
@@ -402,7 +402,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const canvasDrag = useCanvasDrag((source, target) => {
     const parent = page.nodes.find((n) => n.key === target.parentKey)?.node;
     if (!parent?.id) {
-      setEditError(`Can't drop there: ${parent?.name ?? "that element"} has no data-ui-id.`);
+      setEditError(copy.app.cantDropThere(parent?.name ?? copy.app.thatElement));
       return;
     }
     if (source.kind === "palette") edit({ op: "insert", parentId: parent.id, index: target.index, paletteId: source.paletteId });
@@ -443,37 +443,37 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     <div className="project">
       <aside className="sidebar">
         <div className="row">
-          <strong>Canvas</strong>
+          <strong>{copy.app.canvas}</strong>
           <button
             type="button"
             aria-pressed={mode === "interact"}
             onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
           >
-            {mode === "select" ? "Select mode" : "Interact mode"}
+            {mode === "select" ? copy.app.selectMode : copy.app.interactMode}
           </button>
         </div>
         <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
-        <div className="row history" role="group" aria-label="History">
-          <button type="button" disabled={!history.undo || withAgent} title={history.undo ? `Undo ${history.undo} (Ctrl+Z)` : "Nothing to undo"} onClick={() => historyStep("undo")}>
-            Undo
+        <div className="row history" role="group" aria-label={copy.app.history}>
+          <button type="button" disabled={!history.undo || withAgent} title={history.undo ? copy.app.undoTitle(history.undo) : copy.app.nothingToUndo} onClick={() => historyStep("undo")}>
+            {copy.app.undo}
           </button>
-          <button type="button" disabled={!history.redo || withAgent} title={history.redo ? `Redo ${history.redo} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={() => historyStep("redo")}>
-            Redo
+          <button type="button" disabled={!history.redo || withAgent} title={history.redo ? copy.app.redoTitle(history.redo) : copy.app.nothingToRedo} onClick={() => historyStep("redo")}>
+            {copy.app.redo}
           </button>
         </div>
-        <div className="segmented" role="group" aria-label="Preview width">
+        <div className="segmented" role="group" aria-label={copy.app.previewWidth}>
           {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
             <button key={l} type="button" aria-pressed={layout === l} onClick={() => setLayout(l)}>
-              {l === "side-by-side" ? "Side by side" : l[0]?.toUpperCase() + l.slice(1)}
+              {copy.app.layouts[l]}
             </button>
           ))}
         </div>
-        <div className="segmented" role="group" aria-label="Colour mode">
+        <div className="segmented" role="group" aria-label={copy.app.colourMode}>
           <button type="button" aria-pressed={!dark} onClick={() => setDark(false)}>
-            Light
+            {copy.app.light}
           </button>
           <button type="button" aria-pressed={dark} onClick={() => setDark(true)}>
-            Dark
+            {copy.app.dark}
           </button>
         </div>
         {page.error && <p className="error">{page.error}</p>}
@@ -502,7 +502,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             }
           }}
         />
-        {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
+        {!file && pages.list && <p className="muted">{copy.app.noPageFile(pathname)}</p>}
         <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
           <PalettePanel
             palette={palette.palette}
@@ -519,19 +519,11 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           onHover={setTreeHover}
         />
       </aside>
-      <aside className="inspector-panel" aria-label="Inspector">
-        <div className="segmented tabs" role="tablist" aria-label="Inspector">
+      <aside className="inspector-panel" aria-label={copy.app.inspector}>
+        <div className="segmented tabs" role="tablist" aria-label={copy.app.inspector}>
           {(["element", "tokens", "violations", "notes", "pass"] as const).map((tab) => (
             <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
-              {tab === "element"
-                ? "Element"
-                : tab === "tokens"
-                  ? "Tokens"
-                  : tab === "violations"
-                    ? `Violations${activeViolations > 0 ? ` (${activeViolations})` : ""}`
-                    : tab === "notes"
-                      ? `Notes${openNotes > 0 ? ` (${openNotes})` : ""}`
-                      : "Pass"}
+              {copy.app.tabs[tab](tab === "violations" ? activeViolations : tab === "notes" ? openNotes : 0)}
             </button>
           ))}
         </div>
@@ -562,7 +554,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
                 chip={colourChip}
                 token={tokens.sheet?.tokens.find((t) => t.name === colourChip.token) ?? null}
                 dark={dark}
-                classEdits={gizmos ? gizmos.classEdits : "nothing selected"}
+                classEdits={gizmos ? gizmos.classEdits : copy.app.nothingSelected}
                 onPreview={setPreview}
                 onToken={(value) => {
                   const token = tokens.sheet?.tokens.find((t) => t.name === colourChip.token);
@@ -591,7 +583,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
               onDelete={() => selected && requestDelete(selected)}
               cannotMove={selected ? { up: reorder(selected, "up"), down: reorder(selected, "down") } : { up: null, down: null }}
               onMove={(direction) => selected && reorderNode(selected, direction)}
-              openable={openable ? { name: page.nodes.find((n) => n.key === openable)?.node.name ?? "Dialog", open: openableOpen } : null}
+              openable={openable ? { name: page.nodes.find((n) => n.key === openable)?.node.name ?? copy.app.dialogFallback, open: openableOpen } : null}
               onToggleOpen={() => openable && setOpenRequest({ key: openable, open: openableOpen !== true })}
               onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
               onCancel={() => setConfirmDelete(null)}

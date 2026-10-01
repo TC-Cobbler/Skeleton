@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PageEntry, PageIntent, PageList } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
 
 /** The project's pages, read from its router; refreshed when the app updates. */
 export function usePages(projectRoot: string, revision: number): { list: PageList | null; error: string | null } {
@@ -61,13 +62,13 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
   };
   const editable = current !== null && !current.dynamic && current.exists;
   const unavailable = (p: PageEntry) =>
-    p.dynamic ? "Needs route parameters; open it by navigating in the app" : !p.file ? "Not a page file Skeleton can read" : !p.exists ? `${p.file} is missing` : null;
+    p.dynamic ? copy.pages.dynamic : !p.file ? copy.pages.unreadable : !p.exists ? copy.pages.missing(p.file) : null;
   return (
-    <section aria-label="Pages" className="pages">
-      <h2>Pages</h2>
+    <section aria-label={copy.pages.title} className="pages">
+      <h2>{copy.pages.title}</h2>
       {error && <p className="error">{error}</p>}
       {list?.error && <p className="error">{list.error}</p>}
-      <ul role="listbox" aria-label="Pages list">
+      <ul role="listbox" aria-label={copy.pages.list}>
         {list?.pages.map((p, i) => {
           const why = unavailable(p);
           const isCurrent = current !== null && p.path === current.path && p.file === current.file;
@@ -89,24 +90,24 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
       {form === null && (
         <div className="row page-actions">
           <button type="button" onClick={() => setForm({ kind: "add", name: "", path: "", pathEdited: false })}>
-            Add page
+            {copy.pages.add}
           </button>
           <button
             type="button"
             disabled={!editable}
             onClick={() => current?.component && setForm({ kind: "rename", name: nameForComponent(current.component), path: current.path, pathEdited: true })}
           >
-            Rename
+            {copy.pages.rename}
           </button>
           <button type="button" disabled={!editable || (list?.pages.filter((p) => p.exists).length ?? 0) < 2} onClick={() => setForm({ kind: "delete" })}>
-            Delete
+            {copy.common.delete}
           </button>
         </div>
       )}
       {form && form.kind !== "delete" && (
         <form
           className="page-form"
-          aria-label={form.kind === "add" ? "Add page" : "Rename page"}
+          aria-label={form.kind === "add" ? copy.pages.add : copy.pages.renameForm}
           onSubmit={(e) => {
             e.preventDefault();
             if (form.kind === "add") run({ op: "addPage", name: form.name, path: form.path });
@@ -117,7 +118,7 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
           }}
         >
           <label>
-            Name
+            {copy.pages.name}
             <input
               autoFocus
               value={form.name}
@@ -125,30 +126,30 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
             />
           </label>
           <label>
-            Path
+            {copy.pages.path}
             <input value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value, pathEdited: true })} />
           </label>
           <div className="row">
             <button type="submit" disabled={busy || form.name.trim() === "" || form.path === ""}>
-              {form.kind === "add" ? "Add" : "Rename"}
+              {form.kind === "add" ? copy.pages.submitAdd : copy.pages.rename}
             </button>
             <button type="button" onClick={() => setForm(null)}>
-              Cancel
+              {copy.common.cancel}
             </button>
           </div>
         </form>
       )}
       {form?.kind === "delete" && current && (
-        <div className="confirm" role="alertdialog" aria-label="Confirm delete page">
+        <div className="confirm" role="alertdialog" aria-label={copy.pages.confirmDeleteTitle}>
           <p>
-            Delete <code>{current.path}</code> and <code>{current.file}</code>?
+            {copy.pages.confirmDelete} <code>{current.path}</code> {copy.pages.confirmAnd} <code>{current.file}</code>?
           </p>
           <div className="row">
             <button type="button" className="danger" disabled={busy} onClick={() => run({ op: "deletePage", path: current.path })}>
-              Delete page
+              {copy.pages.deletePage}
             </button>
             <button type="button" onClick={() => setForm(null)} autoFocus>
-              Cancel
+              {copy.common.cancel}
             </button>
           </div>
         </div>

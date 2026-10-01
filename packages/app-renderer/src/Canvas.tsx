@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DevServerStatus } from "@skeleton/app-main/ipc";
+import { copy } from "./copy.js";
 import {
   isOverlayMessage,
   type DropTarget,
@@ -117,13 +118,7 @@ export function Canvas(props: CanvasProps) {
 
   if (!url) {
     const state = status?.state ?? "stopped";
-    const message: Record<string, string> = {
-      starting: "Starting the dev server…",
-      installing: "Installing dependencies…",
-      stopped: "The dev server isn't running.",
-      crashed: "The dev server stopped unexpectedly. See the log below.",
-      failed: "The dev server couldn't start. See the log below.",
-    };
+    const message: Record<string, string> = copy.canvas.server;
     return (
       <div className="canvas canvas-empty" data-testid="canvas-empty">
         <p className={state === "crashed" || state === "failed" ? "error" : "muted"}>{message[state]}</p>
@@ -138,8 +133,8 @@ export function Canvas(props: CanvasProps) {
       {props.withAgent !== null && (
         <div className="agent-veil" data-testid="agent-veil">
           <div>
-            <strong>With agent · handoff #{props.withAgent}</strong>
-            <p>The canvas is locked while your agent works. Press Take back when it's done.</p>
+            <strong>{copy.canvas.withAgent(props.withAgent)}</strong>
+            <p>{copy.canvas.veil}</p>
           </div>
         </div>
       )}
@@ -377,12 +372,12 @@ function CanvasFrame(props: FrameProps) {
       style={{ width: pixels * scale }}
     >
       <div className="frame-label muted">
-        {width} · {pixels}px{scale < 1 ? ` · ${Math.round(scale * 100)}%` : ""}
-        {!props.synced && " · updating…"}
+        {copy.canvas.frameLabel(width, pixels, scale)}
+        {!props.synced && copy.canvas.updating}
       </div>
       <iframe
         ref={frame}
-        title={`Preview (${width})`}
+        title={copy.canvas.frameTitle(width)}
         data-testid={props.primary ? "canvas-frame" : `canvas-frame-${width}`}
         src={url}
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"

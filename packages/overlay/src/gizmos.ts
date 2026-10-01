@@ -4,6 +4,7 @@
 // See docs/decisions/010-tokens-and-gizmos.md.
 
 import type { GizmoCommit, GizmoToken } from "./protocol.js";
+import { copy } from "./copy.js";
 
 export type GizmoKind = "radius" | "gap" | "padding" | "type" | "border";
 
@@ -126,7 +127,7 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
   const needsClasses = () => (data.classEdits ? { unavailable: data.classEdits } : null);
   const instance = (group: string, prop: string, utility: (v: number) => string, start: number, axis: Axis, min = 0): Drag | { unavailable: string } =>
     needsClasses() ?? {
-      label: "this element only",
+      label: copy.gizmos.instance,
       token: null,
       valueAt: linear(start, axis, min),
       at: (v) => ({ css: `${TARGET}{${prop}:${v}px!important}`, commit: { kind: "class", remove: group, add: utility(v) }, text: utility(v) }),
@@ -142,28 +143,28 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const factor = comp ? factorOf(comp.value) : null;
       if (scope === "instance") return instance(RADIUS_GROUP, "border-radius", (v) => `rounded-[${v}px]`, m.radius, axis);
       if (scope === "global") {
-        if (base === null) return { unavailable: "--radius isn't a length" };
+        if (base === null) return { unavailable: copy.gizmos.notLength("--radius") };
         return {
-          label: "--radius (every radius derived from it)",
+          label: copy.gizmos.radiusGlobal,
           token: "--radius",
           valueAt: linear(m.radius, axis, 0),
           at: (v) => {
             // Keep this element under the pointer: the base it would need, through its own factor.
             const next = factor !== null && factor > 0 ? v / factor : base + (v - m.radius);
             const value = rem(Math.max(0, next));
-            return { css: `:root{--radius:${value}!important}`, commit: tokenCommit("--radius", value), text: `--radius: ${value}` };
+            return { css: `:root{--radius:${value}!important}`, commit: tokenCommit("--radius", value), text: copy.gizmos.readout("--radius", value) };
           },
         };
       }
-      if (!compName || !comp) return { unavailable: "it has no radius token (rounded-button, rounded-card…)" };
+      if (!compName || !comp) return { unavailable: copy.gizmos.noRadiusToken };
       return {
-        label: `${compName} (every ${own})`,
+        label: copy.gizmos.radiusComponent(compName, own),
         token: compName,
         valueAt: linear(m.radius, axis, 0),
         at: (v) => {
           // An attached token keeps following --radius: only its factor changes.
           const value = factor !== null && base !== null && base > 0 ? `calc(var(--radius) * ${round(v / base, 3)})` : rem(v);
-          return { css: `.${cssEscape(`rounded-${own}`)}{border-radius:${v}px!important}`, commit: tokenCommit(compName, value), text: `${compName}: ${value}` };
+          return { css: `.${cssEscape(`rounded-${own}`)}{border-radius:${v}px!important}`, commit: tokenCommit(compName, value), text: copy.gizmos.readout(compName, value) };
         },
       };
     }
@@ -181,24 +182,24 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const spacing = px("--spacing");
       const what = edge === null ? "gap" : "padding";
       if (scope === "instance") return instance(group, prop, (v) => `${prefix}-[${v}px]`, start, axis);
-      if (spacing === null || spacing <= 0) return { unavailable: "--spacing isn't a length" };
+      if (spacing === null || spacing <= 0) return { unavailable: copy.gizmos.notLength("--spacing") };
       if (scope === "global") {
         const n = step === undefined ? 0 : Number(step);
-        if (n <= 0) return { unavailable: `its ${what} isn't a step of the spacing scale` };
+        if (n <= 0) return { unavailable: copy.gizmos.notSpacingStep(what) };
         return {
-          label: "--spacing (the whole spacing scale)",
+          label: copy.gizmos.spacingGlobal,
           token: "--spacing",
           valueAt: linear(start, axis, 0),
           at: (v) => {
             const value = rem(Math.max(0.25, v / n));
-            return { css: `:root{--spacing:${value}!important}`, commit: tokenCommit("--spacing", value), text: `--spacing: ${value}` };
+            return { css: `:root{--spacing:${value}!important}`, commit: tokenCommit("--spacing", value), text: copy.gizmos.readout("--spacing", value) };
           },
         };
       }
       const blocked = needsClasses();
       if (blocked) return blocked;
       return {
-        label: `${what}: spacing scale`,
+        label: copy.gizmos.spacingComponent(what),
         token: null,
         valueAt: linear(start, axis, 0),
         at: (v) => {
@@ -214,23 +215,23 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const base = px("--type-base");
       if (scope === "instance") return instance(TEXT_GROUP, "font-size", (v) => `text-[${v}px]`, m.fontSize, axis, 6);
       if (scope === "global") {
-        if (base === null || m.fontSize <= 0) return { unavailable: "--type-base isn't a length" };
+        if (base === null || m.fontSize <= 0) return { unavailable: copy.gizmos.notLength("--type-base") };
         return {
-          label: "--type-base (the whole type scale)",
+          label: copy.gizmos.typeGlobal,
           token: "--type-base",
           valueAt: linear(m.fontSize, axis, 6),
           at: (v) => {
             const value = rem(round((base * v) / m.fontSize, 2));
-            return { css: `:root{--type-base:${value}!important}`, commit: tokenCommit("--type-base", value), text: `--type-base: ${value}` };
+            return { css: `:root{--type-base:${value}!important}`, commit: tokenCommit("--type-base", value), text: copy.gizmos.readout("--type-base", value) };
           },
         };
       }
       const blocked = needsClasses();
       if (blocked) return blocked;
-      if (scale.length === 0) return { unavailable: "the project has no type scale" };
+      if (scale.length === 0) return { unavailable: copy.gizmos.noTypeScale };
       const current = scale.reduce((best, s, i) => (Math.abs(s.px - m.fontSize) < Math.abs((scale[best]?.px ?? 0) - m.fontSize) ? i : best), 0);
       return {
-        label: "type scale step",
+        label: copy.gizmos.typeComponent,
         token: null,
         // Each 12px of vertical drag is one step; the value is the step's size.
         valueAt: (_dx, dy) => scale[clamp(current + Math.round(-dy / 12), 0, scale.length - 1)]?.px ?? m.fontSize,
@@ -245,12 +246,12 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const axis = { dx: 0.25, dy: 0 };
       if (scope === "instance") return instance(BORDER_GROUP, "border-width", (v) => `border-[${v}px]`, m.borderWidth, axis);
       // There are no per-component border widths: plain and Shift both set the token.
-      if (!m.classes.some((c) => /^(border|border-[xytrblse])$/.test(c))) return { unavailable: "its border width isn't the token (plain `border`)" };
+      if (!m.classes.some((c) => /^(border|border-[xytrblse])$/.test(c))) return { unavailable: copy.gizmos.borderNotToken };
       return {
-        label: "--border-width (every default border)",
+        label: copy.gizmos.borderGlobal,
         token: "--border-width",
         valueAt: linear(m.borderWidth, axis, 0),
-        at: (v) => ({ css: `:root{--border-width:${v}px!important}`, commit: tokenCommit("--border-width", `${v}px`), text: `--border-width: ${v}px` }),
+        at: (v) => ({ css: `:root{--border-width:${v}px!important}`, commit: tokenCommit("--border-width", `${v}px`), text: copy.gizmos.readout("--border-width", `${v}px`) }),
       };
     }
   }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GitDiff, LoopStatus, PassSummary } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
 
 export type LoopAction = "handoff" | "takeBack" | "revert";
 
@@ -40,11 +41,7 @@ export function useLoop(projectRoot: string, revision: number) {
   return { status, error, busy, run };
 }
 
-const BUSY: Record<LoopAction, string> = {
-  handoff: "Handing off… (checking the build)",
-  takeBack: "Taking back… (analysing and building)",
-  revert: "Reverting the pass…",
-};
+const BUSY: Record<LoopAction, string> = copy.loop.busy;
 
 /** Hand off and Take back (T5.2, T5.3), with where the loop stands. */
 export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBack }: {
@@ -58,26 +55,26 @@ export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBac
 }) {
   const withAgent = status?.state === "with-agent";
   return (
-    <section aria-label="Handoff" className={`loop${withAgent ? " is-with-agent" : ""}`} data-testid="loop">
+    <section aria-label={copy.loop.title} className={`loop${withAgent ? " is-with-agent" : ""}`} data-testid="loop">
       <div className="row">
-        <strong data-testid="loop-state">{withAgent ? `With agent · handoff #${status?.handoff?.number}` : "With you"}</strong>
+        <strong data-testid="loop-state">{withAgent ? copy.loop.withAgent(status?.handoff?.number) : copy.loop.withYou}</strong>
       </div>
       {status && !withAgent && (
         <>
           <button type="button" className="primary" disabled={busy !== null} onClick={onHandoff}>
-            Hand off
+            {copy.loop.handOff}
           </button>
           <p className="muted small">
-            Handoff #{status.next}: {openNotes} open note{openNotes === 1 ? "" : "s"} go{openNotes === 1 ? "es" : ""} to the agent as tasks in HANDOFF.md.
+            {copy.loop.handOffHint(status.next, openNotes)}
           </p>
         </>
       )}
       {withAgent && (
         <>
           <button type="button" className="primary" disabled={busy !== null} onClick={onTakeBack}>
-            Take back
+            {copy.loop.takeBack}
           </button>
-          <p className="muted small">Run your agent on the project (its tasks are in HANDOFF.md), then take it back here.</p>
+          <p className="muted small">{copy.loop.takeBackHint}</p>
         </>
       )}
       {busy && <p className="muted small" role="status">{BUSY[busy]}</p>}
@@ -107,33 +104,33 @@ export function PassPanel({ projectRoot, status, busy, onRevert, onSelectId }: {
   useEffect(() => setConfirming(false), [pass?.commit]);
   if (!pass) {
     return (
-      <section aria-label="Pass" className="pass" data-testid="pass">
-        <h2>Pass</h2>
-        <p className="muted">{status?.state === "with-agent" ? "The agent's pass shows here after Take back." : "No pass to review: take one back first."}</p>
+      <section aria-label={copy.pass.title} className="pass" data-testid="pass">
+        <h2>{copy.pass.title}</h2>
+        <p className="muted">{status?.state === "with-agent" ? copy.pass.emptyWithAgent : copy.pass.empty}</p>
       </section>
     );
   }
   return (
-    <section aria-label="Pass" className="pass" data-testid="pass">
-      <h2>Pass #{pass.number}</h2>
-      {summary ? <Summary summary={summary} onSelectId={onSelectId} /> : <p className="muted small">Taken back in an earlier session: the summary isn't kept, but the diff is.</p>}
+    <section aria-label={copy.pass.title} className="pass" data-testid="pass">
+      <h2>{copy.pass.numbered(pass.number)}</h2>
+      {summary ? <Summary summary={summary} onSelectId={onSelectId} /> : <p className="muted small">{copy.pass.noSummary}</p>}
       <Diffs projectRoot={projectRoot} from={pass.handoffCommit} to={pass.commit} />
       <div className="pass-revert">
         {!confirming ? (
           <button type="button" className="danger" disabled={busy !== null} onClick={() => setConfirming(true)}>
-            Revert pass #{pass.number}…
+            {copy.pass.revertButton(pass.number)}
           </button>
         ) : (
-          <div className="confirm" role="alertdialog" aria-label="Revert pass">
+          <div className="confirm" role="alertdialog" aria-label={copy.pass.revertTitle}>
             <p>
-              Put the project back as it was at handoff #{pass.number}? The agent's work and your edits since take-back are committed first, so they stay in git history.
+              {copy.pass.revertConfirm(pass.number)}
             </p>
             <div className="row">
               <button type="button" className="danger" onClick={onRevert}>
-                Revert
+                {copy.pass.revert}
               </button>
               <button type="button" onClick={() => setConfirming(false)}>
-                Cancel
+                {copy.common.cancel}
               </button>
             </div>
           </div>
@@ -146,63 +143,63 @@ export function PassPanel({ projectRoot, status, busy, onRevert, onSelectId }: {
 function Summary({ summary: s, onSelectId }: { summary: PassSummary; onSelectId: (id: string, file: string) => void }) {
   const idLink = (id: string, element: string, file: string) => (
     <button type="button" className="link" onClick={() => onSelectId(id, file)}>
-      {element} #{id}
+      {copy.pass.elementRef(element, id)}
     </button>
   );
   return (
     <div className="pass-summary" data-testid="pass-summary">
       <p className={s.build.ok ? "small" : "error small"} data-testid="pass-build">
-        {s.build.ok ? `Build passes (${(s.build.ms / 1000).toFixed(1)} s)` : "Build fails"}
+        {s.build.ok ? copy.pass.buildPasses(s.build.ms) : copy.pass.buildFails}
       </p>
       {!s.build.ok && <pre className="loop-error">{s.build.output}</pre>}
       <p className="small" data-testid="pass-tasks">
-        Tasks: {s.tasks.resolved} of {s.tasks.sent} done{s.tasks.unmatched.length ? `; ${s.tasks.unmatched.length} ticked task${s.tasks.unmatched.length === 1 ? "" : "s"} matched no note` : ""}
-        {s.replies.length ? ` · ${s.replies.length} repl${s.replies.length === 1 ? "y" : "ies"}` : ""}
+        {copy.pass.tasks(s.tasks.resolved, s.tasks.sent, s.tasks.unmatched.length)}
+        {copy.pass.replies(s.replies.length)}
       </p>
-      <Group title="Contract breaches" count={s.breaches.length} testid="pass-breaches">
+      <Group title={copy.pass.groups.breaches} count={s.breaches.length} testid="pass-breaches">
         {s.breaches.map((b, i) => (
           <li key={i}>
-            <span className="muted">Rule {b.rule}:</span> {b.text}
+            <span className="muted">{copy.pass.rule(b.rule)}</span> {b.text}
             {b.file && <span className="muted"> · {b.file}{b.line ? `:${b.line}` : ""}</span>}
           </li>
         ))}
       </Group>
-      <Group title="Repaired" count={s.repairs.length} testid="pass-repairs">
+      <Group title={copy.pass.groups.repaired} count={s.repairs.length} testid="pass-repairs">
         {s.repairs.map((r, i) => (
           <li key={i}>
-            {r.kind === "reminted" ? `Re-minted duplicate ${r.was} → ` : "Gave an ID: "}
+            {r.kind === "reminted" ? copy.pass.reminted(r.was) : copy.pass.gaveId}
             {idLink(r.id, r.element, r.file)}
           </li>
         ))}
       </Group>
-      <Group title="Files changed" count={s.files.length} testid="pass-files">
+      <Group title={copy.pass.groups.files} count={s.files.length} testid="pass-files">
         {s.files.map((f) => (
           <li key={f.path}>
-            <code>{f.path}</code> <span className="muted">{f.status === "modified" ? "" : `${f.status} `}+{f.additions} −{f.deletions}</span>
+            <code>{f.path}</code> <span className="muted">{copy.pass.fileChange(f.status, f.additions, f.deletions)}</span>
           </li>
         ))}
       </Group>
-      <Group title="Elements added" count={s.elementsAdded.length} testid="pass-added">
+      <Group title={copy.pass.groups.added} count={s.elementsAdded.length} testid="pass-added">
         {s.elementsAdded.map((e) => (
           <li key={e.id}>{idLink(e.id, e.element, e.file)}</li>
         ))}
       </Group>
-      <Group title="Elements removed" count={s.elementsRemoved.length} testid="pass-removed">
+      <Group title={copy.pass.groups.removed} count={s.elementsRemoved.length} testid="pass-removed">
         {s.elementsRemoved.map((e) => (
           <li key={e.id}>
-            {e.element} #{e.id} <span className="muted">({e.file})</span>
+            {copy.pass.elementRef(e.element, e.id)} <span className="muted">({e.file})</span>
           </li>
         ))}
       </Group>
-      {s.orphanedNotes > 0 && <p className="error small">{s.orphanedNotes} note{s.orphanedNotes === 1 ? " is" : "s are"} orphaned: see the tray in Notes.</p>}
-      <Group title="New violations" count={s.newViolations.length} testid="pass-violations">
+      {s.orphanedNotes > 0 && <p className="error small">{copy.pass.orphaned(s.orphanedNotes)}</p>}
+      <Group title={copy.pass.groups.violations} count={s.newViolations.length} testid="pass-violations">
         {s.newViolations.map((v, i) => (
           <li key={i}>
-            <code>{v.kind === "inline-style" ? "style={…}" : v.value}</code> <span className="muted">{v.file}:{v.line}</span>
+            <code>{v.kind === "inline-style" ? copy.pass.inlineStyle : v.value}</code> <span className="muted">{v.file}:{v.line}</span>
           </li>
         ))}
       </Group>
-      <Group title="New locked blocks" count={s.newLockedBlocks.length} testid="pass-locked">
+      <Group title={copy.pass.groups.locked} count={s.newLockedBlocks.length} testid="pass-locked">
         {s.newLockedBlocks.map((b, i) => (
           <li key={i}>
             🔒 {b.element} <span className="muted">({b.reason}, {b.file}:{b.line})</span>
@@ -210,7 +207,7 @@ function Summary({ summary: s, onSelectId }: { summary: PassSummary; onSelectId:
         ))}
       </Group>
       {s.parseErrors.length > 0 && (
-        <Group title="Files that don't parse" count={s.parseErrors.length} testid="pass-parse-errors">
+        <Group title={copy.pass.groups.parseErrors} count={s.parseErrors.length} testid="pass-parse-errors">
           {s.parseErrors.map((e) => (
             <li key={e.file} className="error">
               {e.file}: {e.message}
@@ -251,9 +248,9 @@ function Diffs({ projectRoot, from, to }: { projectRoot: string; from: string; t
   }, [projectRoot, from, to]);
   return (
     <div className="diffs" data-testid="pass-diffs">
-      <h3>Diff against the handoff</h3>
+      <h3>{copy.pass.diffTitle}</h3>
       {error && <p className="error small">{error}</p>}
-      {diff && diff.files.length === 0 && <p className="muted small">The agent changed nothing.</p>}
+      {diff && diff.files.length === 0 && <p className="muted small">{copy.pass.noChanges}</p>}
       <ul role="list">
         {diff?.files.map((f) => (
           <li key={f.path}>
@@ -261,7 +258,7 @@ function Diffs({ projectRoot, from, to }: { projectRoot: string; from: string; t
               {f.path}
             </button>{" "}
             <span className="muted small">
-              +{f.additions} −{f.deletions}
+              {copy.pass.lineCounts(f.additions, f.deletions)}
             </span>
             {open === f.path && (
               <pre className="patch" data-testid="patch">
