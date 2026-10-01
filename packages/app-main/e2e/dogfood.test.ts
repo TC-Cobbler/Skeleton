@@ -165,7 +165,7 @@ async function token(name: string, value: string, dark = false) {
 }
 
 async function addPage(name: string): Promise<string> {
-  const pages = ui(page).pages();
+  const pages = await ui(page).openPages();
   await pages.getByRole("button", { name: copy.pages.add }).click();
   const form = pages.getByRole("form", { name: copy.pages.add });
   await form.getByLabel(copy.pages.name).fill(name);
@@ -177,7 +177,7 @@ async function addPage(name: string): Promise<string> {
 }
 
 async function goToPage(label: RegExp, f: string) {
-  await ui(page).pages().getByRole("option", { name: label }).click();
+  await (await ui(page).openPages()).getByRole("option", { name: label }).click();
   file = f;
   await waitForCanvas(page, sourceVersion(read(f)), "canvas-desktop").catch(() => undefined);
   await page.waitForTimeout(800);

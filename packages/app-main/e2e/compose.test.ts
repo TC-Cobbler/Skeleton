@@ -391,6 +391,7 @@ describe("page ops (T3.6)", () => {
   };
 
   it("adds a page: file, route, and the canvas shows it", async () => {
+    await ui(page).openPages();
     await pages().getByRole("button", { name: copy.pages.add }).click();
     const form = pages().getByRole("form", { name: copy.pages.add });
     await form.getByLabel(copy.pages.name).fill("Order history");
@@ -403,6 +404,7 @@ describe("page ops (T3.6)", () => {
   });
 
   it("renames the path, then the name (component and file)", async () => {
+    await ui(page).openPages();
     await pages().getByRole("button", { name: copy.pages.rename }).click();
     let form = pages().getByRole("form", { name: copy.pages.renameForm });
     await form.getByLabel(copy.pages.path).fill("/orders");
@@ -424,6 +426,7 @@ describe("page ops (T3.6)", () => {
   });
 
   it("deletes a page after confirming, and shows another one", async () => {
+    await ui(page).openPages();
     const router = file("src/router.tsx");
     await pages().getByRole("button", { name: copy.common.delete }).click();
     await pages().getByRole("alertdialog").getByRole("button", { name: copy.common.cancel }).click();
@@ -504,7 +507,7 @@ describe("undo and redo (T3.8)", () => {
   });
 
   it("undoes adding a page: the file goes, and the canvas moves to a page that exists", async () => {
-    const pages = ui(page).pages();
+    const pages = await ui(page).openPages();
     await pages.getByRole("button", { name: copy.pages.add }).click();
     await pages.getByRole("form", { name: copy.pages.add }).getByLabel(copy.pages.name).fill("Scratch");
     await pages.getByRole("form", { name: copy.pages.add }).getByRole("button", { name: copy.pages.submitAdd }).click();

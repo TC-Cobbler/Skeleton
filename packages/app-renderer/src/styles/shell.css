@@ -7,7 +7,13 @@ main {
   flex-direction: column;
   overflow: auto;
 }
-/* The top bar. */
+/* The top bar: project name, page picker, undo and redo, the ⋯ menu (T8.6). */
+.topbar {
+  gap: 4px;
+}
+.spacer {
+  flex: 1;
+}
 main > header {
   flex: none;
   min-height: var(--sk-size-bar);
@@ -25,10 +31,88 @@ main > header code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-main > p[data-testid="app-info"] {
-  margin: 0;
-  padding: 2px 12px;
+.history {
+  gap: 2px;
+}
+.page-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+}
+
+/* Pop-overs that open from the top bar: the pages list and the ⋯ menu. */
+.popover-anchor {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.5);
+}
+.page-menu {
+  left: 0;
+  width: 300px;
+}
+.more-menu {
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.menu[hidden] {
+  display: none;
+}
+.more-menu > button {
+  justify-content: flex-start;
+  text-align: left;
+  background: none;
+}
+.more-menu > button:hover:not(:disabled),
+.more-menu > button[aria-checked="true"] {
+  background: var(--sk-colour-control-hover);
+}
+.about {
+  padding: 4px 6px 0;
+}
+.about p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+/* The status bar: only what Skeleton already knows (spec §2). */
+.statusbar {
+  flex: none;
+  min-height: 24px;
+  padding: 0 12px;
+  gap: 6px;
   background: var(--sk-colour-panel);
+  border-top: 1px solid var(--sk-colour-separator);
+  color: var(--sk-colour-secondary);
+  font-size: var(--sk-type-small);
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sk-colour-secondary);
+}
+.status-running {
+  background: var(--sk-colour-success);
+}
+.status-starting,
+.status-installing {
+  background: var(--sk-colour-warning);
+}
+.status-crashed,
+.status-failed {
+  background: var(--sk-colour-danger);
 }
 
 /* The start screen: new project, open, recent. */
@@ -85,6 +169,9 @@ main > p[data-testid="app-info"] {
 }
 .inspector-panel section + section {
   margin-top: 16px;
+}
+.bottom[hidden] {
+  display: none;
 }
 .bottom {
   grid-area: bottom;

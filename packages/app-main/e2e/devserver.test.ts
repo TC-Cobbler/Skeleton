@@ -54,10 +54,10 @@ describe("new project → running dev server (PRD F1)", () => {
     await expect.poll(() => page.getByTestId("parent-dir").textContent()).toBe(copy.picker.inFolder(parentDir));
     await ui(page).picker.projectName().fill("E2E App");
     await ui(page).picker.create().click();
-    await page.getByTestId("project-root").waitFor({ timeout: 120_000 });
+    await page.getByTestId("project-root").waitFor({ state: "attached", timeout: 120_000 });
     expect(await page.getByTestId("project-root").textContent()).toBe(projectRoot);
 
-    await page.getByTestId("devserver-url").waitFor({ timeout: 30_000 });
+    await page.getByTestId("devserver-url").waitFor({ state: "attached", timeout: 30_000 });
     expect(await page.getByTestId("devserver-state").textContent()).toBe(copy.devServer.state("running"));
     url = (await page.getByTestId("devserver-url").textContent()) ?? "";
     expect(await (await fetch(url)).text()).toContain("<title>E2E App</title>");
@@ -158,6 +158,7 @@ export default function OrdersPage() {
         .replace('{ path: "/", element: <HomePage /> },', '{ path: "/", element: <HomePage /> },\n  { path: "/orders", element: <OrdersPage /> },'),
     );
     const list = ui(page).pagesList();
+    await ui(page).openPages();
     await list.getByRole("option", { name: /\/orders/ }).waitFor({ timeout: 15_000 });
     expect(await list.getByRole("option", { name: /^\/ HomePage/ }).getAttribute("aria-selected")).toBe("true");
 
@@ -179,6 +180,7 @@ export default function OrdersPage() {
   }, 60_000);
 
   it("re-parses external changes even with the dev server stopped (T2.6)", async () => {
+    await ui(page).openAppPreview();
     await ui(page).devServer.stop().click();
     await page.getByTestId("canvas-empty").waitFor();
     const file = path.join(projectRoot, "src/pages/HomePage.tsx");
@@ -188,12 +190,12 @@ export default function OrdersPage() {
     writeFileSync(file, source);
     await expect.poll(() => page.getByTestId("layer-ui_ext01").count(), { timeout: 10_000 }).toBe(0);
     await ui(page).devServer.start().click();
-    await page.getByTestId("devserver-url").waitFor({ timeout: 30_000 });
+    await page.getByTestId("devserver-url").waitFor({ state: "attached", timeout: 30_000 });
     url = (await page.getByTestId("devserver-url").textContent()) ?? "";
   }, 60_000);
 
   it("closing the project stops its server and lists it as recent", async () => {
-    await ui(page).closeProject().click();
+    await ui(page).closeProject();
     await ui(page).picker.newProject().waitFor();
     await expect(fetch(url)).rejects.toThrow();
     const recent = ui(page).picker.recent();
@@ -203,7 +205,7 @@ export default function OrdersPage() {
   it("reopens from the recent list", async () => {
     await page.getByRole("button", { name: /^E2E App/ }).click();
     expect(await page.getByTestId("project-root").textContent()).toBe(projectRoot);
-    await page.getByTestId("devserver-url").waitFor({ timeout: 30_000 });
+    await page.getByTestId("devserver-url").waitFor({ state: "attached", timeout: 30_000 });
   }, 60_000);
 
   it("stops running dev servers when the app quits, and remembers recents", async () => {

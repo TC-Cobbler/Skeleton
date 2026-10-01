@@ -145,6 +145,7 @@ describe("light/dark toggle (T2.8)", () => {
     await expect.poll(() => html.getAttribute("class")).toContain("dark");
     await expect.poll(bg).not.toBe(light);
     // Survives a reload of the app (sent again when the overlay reconnects).
+    await ui(page).openPages();
     await ui(page).pagesList().getByRole("option").first().click();
     await expect.poll(() => html.getAttribute("class")).toContain("dark");
     await ui(page).light().click();

@@ -47,9 +47,9 @@ describe(`Gate 1 (${cold ? "cold" : "warm"} pnpm store)`, () => {
 
     const started = Date.now();
     await ui(page).picker.create().click();
-    await page.getByTestId("project-root").waitFor({ timeout: 60_000 });
+    await page.getByTestId("project-root").waitFor({ state: "attached", timeout: 60_000 });
     const created = Date.now();
-    await page.getByTestId("devserver-url").waitFor({ timeout: 60_000 });
+    await page.getByTestId("devserver-url").waitFor({ state: "attached", timeout: 60_000 });
     const serving = Date.now();
     const url = (await page.getByTestId("devserver-url").textContent()) ?? "";
 

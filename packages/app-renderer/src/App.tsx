@@ -30,6 +30,7 @@ import { copy } from "./copy.js";
 import { messageFor } from "./messages.js";
 import { Columns3, Hand, Monitor, Moon, MousePointer2, Redo2, Smartphone, Sun, Tablet, Undo2 } from "lucide-react";
 import { IconButton } from "./Tooltip.js";
+import { About, MoreMenu, PagePicker } from "./TopBar.js";
 import { MessageText } from "./Toasts.js";
 import type { Message } from "./messages.js";
 
@@ -57,25 +58,16 @@ export function App() {
 
   return (
     <main>
-      <header className="row">
-        <h1>{project ? project.name : copy.app.name}</h1>
-        {project && (
-          <>
-            <code className="muted" data-testid="project-root">{project.projectRoot}</code>
-            <button type="button" onClick={() => void close()}>
-              {copy.app.closeProject}
-            </button>
-          </>
-        )}
-      </header>
-      {info && (
-        <p className="muted" data-testid="app-info">
-          {copy.app.info(info)} · {copy.app.licences}
-        </p>
+      {!project && (
+        <header className="topbar row">
+          <h1>{copy.app.name}</h1>
+          <span className="spacer" />
+          <MoreMenu about={<About info={info} projectRoot={null} />} />
+        </header>
       )}
       {error && <MessageText message={error} />}
       {project ? (
-        <ProjectView project={project} />
+        <ProjectView project={project} info={info} onClose={() => void close()} />
       ) : (
         <ProjectPicker onOpen={setProject} />
       )}
@@ -97,7 +89,7 @@ const LAYOUT_ICONS = { desktop: Monitor, tablet: Tablet, mobile: Smartphone, "si
 /** Shown until the router has been read. */
 const DEFAULT_PAGE = "src/pages/HomePage.tsx";
 
-function ProjectView({ project }: { project: ProjectInfo }) {
+function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: AppInfo | null; onClose: () => void }) {
   const server = useDevServer(project.projectRoot, true);
   const [revision, setRevision] = useState(0);
   const pages = usePages(project.projectRoot, revision);
@@ -465,19 +457,42 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const onScreen = mapped !== null && mapped.version === page.tree?.version ? mapped.keys : null;
   const selectedNode = page.nodes.find((n) => n.key === selected) ?? null;
 
+  // The app preview and its log, from the ⋯ menu (T8.6).
+  const [appPreview, setAppPreview] = useState(false);
+
   return (
-    <div className="project">
-      <aside className="sidebar">
-        <div className="row">
-          <strong>{copy.app.canvas}</strong>
-          <IconButton
-            label={mode === "select" ? copy.app.selectMode : copy.app.interactMode}
-            icon={mode === "select" ? MousePointer2 : Hand}
-            aria-pressed={mode === "interact"}
-            onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
-          />
-        </div>
-        <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
+    <>
+      <header className="topbar row">
+        <h1>{project.name}</h1>
+        <PagePicker current={current?.component ? copy.named.pageComponent(current.component) : null}>
+          {(close) => (
+            <PagesPanel
+              list={pages.list}
+              error={pages.error}
+              current={current}
+              onOpen={(p) => {
+                setPathname(p.path);
+                setNavigate({ path: p.path });
+                close();
+              }}
+              onPageOp={async (op) => {
+                try {
+                  const result = await call("project:page", { projectRoot: project.projectRoot, page: op });
+                  setRevision((r) => r + 1);
+                  if (result.path) {
+                    setPathname(result.path);
+                    setNavigate({ path: result.path });
+                  }
+                } catch (err) {
+                  setRevision((r) => r + 1);
+                  setEditError(err);
+                  throw err;
+                }
+              }}
+            />
+          )}
+        </PagePicker>
+        <span className="spacer" />
         <div className="row history" role="group" aria-label={copy.app.history}>
           <IconButton
             label={copy.app.undo}
@@ -494,6 +509,20 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             onClick={() => historyStep("redo")}
           />
         </div>
+        <MoreMenu appPreview={appPreview} onAppPreview={() => setAppPreview((o) => !o)} onClose={onClose} about={<About info={info} projectRoot={project.projectRoot} />} />
+      </header>
+      <div className="project">
+      <aside className="sidebar">
+        <div className="row">
+          <strong>{copy.app.canvas}</strong>
+          <IconButton
+            label={mode === "select" ? copy.app.selectMode : copy.app.interactMode}
+            icon={mode === "select" ? MousePointer2 : Hand}
+            aria-pressed={mode === "interact"}
+            onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
+          />
+        </div>
+        <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
         <div className="segmented" role="group" aria-label={copy.app.previewWidth}>
           {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
             <IconButton key={l} label={copy.app.layouts[l]} icon={LAYOUT_ICONS[l]} aria-pressed={layout === l} onClick={() => setLayout(l)} />
@@ -506,29 +535,6 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         {page.error && <MessageText message={page.error} />}
         {fsRevision.error && <MessageText message={fsRevision.error} />}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
-        <PagesPanel
-          list={pages.list}
-          error={pages.error}
-          current={current}
-          onOpen={(p) => {
-            setPathname(p.path);
-            setNavigate({ path: p.path });
-          }}
-          onPageOp={async (op) => {
-            try {
-              const result = await call("project:page", { projectRoot: project.projectRoot, page: op });
-              setRevision((r) => r + 1);
-              if (result.path) {
-                setPathname(result.path);
-                setNavigate({ path: result.path });
-              }
-            } catch (err) {
-              setRevision((r) => r + 1);
-              setEditError(err);
-              throw err;
-            }
-          }}
-        />
         {!file && pages.list && <p className="muted">{copy.app.noPageFile(pathname)}</p>}
         <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
           <PalettePanel
@@ -688,9 +694,14 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           {canvasDrag.drag.source.label}
         </div>
       )}
-      <footer className="bottom">
+      <div className="bottom" hidden={!appPreview}>
         <DevServerPanel server={server} />
+      </div>
+      </div>
+      <footer className="statusbar row" data-testid="status">
+        <span className={`status-dot status-${server.status?.state ?? "stopped"}`} aria-hidden="true" />
+        <span>{copy.status.app(server.status?.state ?? "stopped")}</span>
       </footer>
-    </div>
+    </>
   );
 }

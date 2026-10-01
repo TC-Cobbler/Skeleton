@@ -174,6 +174,25 @@ export const copy = {
     },
     dialogFallback: "Dialog",
   },
+  topBar: {
+    page: (name: string) => `Page: ${name}`,
+    noPage: "none",
+    more: "More",
+    appPreview: "App preview",
+    about: "About Skeleton",
+  },
+  status: {
+    /** The app's state, in the status bar. */
+    app: (state: string): string =>
+      ({
+        running: "Your app is running",
+        starting: "Starting your app…",
+        installing: "Getting your app ready…",
+        stopped: "Your app isn't running",
+        crashed: "Your app stopped",
+        failed: "Your app couldn't start",
+      })[state] ?? "Your app isn't running",
+  },
   picker: {
     open: "Open",
     openFolder: "Open…",

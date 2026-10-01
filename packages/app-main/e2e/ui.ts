@@ -26,6 +26,10 @@ export type PreviewWidth = keyof typeof copy.app.layouts;
 export function ui(page: Page) {
   const button = (name: string) => page.getByRole("button", { name, exact: true });
   const region = (name: string) => page.getByRole("region", { name, exact: true });
+  const openMore = async () => {
+    const more = button(copy.topBar.more);
+    if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+  };
   return {
     // The project picker (T1.4).
     picker: {
@@ -42,7 +46,11 @@ export function ui(page: Page) {
       await page.getByLabel(copy.picker.projectName).fill(name);
       await button(copy.picker.create).click();
     },
-    closeProject: () => button(copy.app.closeProject),
+    /** Opens the ⋯ menu (if it isn't open) and closes the project. */
+    closeProject: async () => {
+      await openMore();
+      await page.getByRole("menuitem", { name: copy.app.closeProject }).click();
+    },
 
     // The canvas toolbar.
     selectMode: () => button(copy.app.selectMode),
@@ -76,6 +84,20 @@ export function ui(page: Page) {
     devServer: {
       start: () => button(copy.devServer.start),
       stop: () => button(copy.devServer.stop),
+    },
+    /** Opens the app preview panel from the ⋯ menu, if it isn't showing. */
+    openAppPreview: async () => {
+      if (await region(copy.devServer.title).isVisible()) return;
+      await openMore();
+      await page.getByRole("menuitemcheckbox", { name: copy.topBar.appPreview }).click();
+      await region(copy.devServer.title).waitFor();
+    },
+    /** Opens the page picker, if it isn't open, and returns the pages list's panel. */
+    openPages: async () => {
+      const pages = region(copy.pages.title);
+      if (!(await pages.isVisible())) await page.getByRole("button", { name: startsWith(copy.topBar.page("")) }).click();
+      await pages.waitFor();
+      return pages;
     },
 
     /** The latest error message's sentence (Details aside). */
