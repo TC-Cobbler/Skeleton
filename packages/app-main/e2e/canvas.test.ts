@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Frame, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clickOnCanvas } from "./canvas-click.js";
-import { canvasCopy, ui } from "./ui.js";
+import { canvasCopy, STYLE, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const work = mkdtempSync(path.join(tmpdir(), "skeleton-canvas-"));
@@ -58,7 +58,7 @@ describe("locked blocks on the canvas (T2.4)", () => {
     const html = await overlayHtml();
     expect(html).toContain(canvasCopy.overlay.lockedLabel(canvasCopy.overlay.lockedKinds["map"] ?? "", ""));
     expect(html).toContain(canvasCopy.overlay.lockedLabel(canvasCopy.overlay.lockedKinds["conditional"] ?? "", ""));
-    expect(html).toMatch(/border:1px dashed #ea580c/);
+    expect(html).toContain(`border:1px dashed ${STYLE.colour.agent}`);
   });
 
   it("hides the markers in interact mode", async () => {

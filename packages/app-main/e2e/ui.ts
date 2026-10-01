@@ -7,9 +7,10 @@ import type { Page } from "playwright-core";
 import { copy } from "../../app-renderer/src/copy.js";
 import { say } from "../../app-renderer/src/messages.js";
 import { copy as canvasCopy } from "../../overlay/src/copy.js";
+import { STYLE } from "../../overlay/src/style.js";
 
 /** The renderer's words, the overlay's words on the canvas, and a reason's plain sentence. */
-export { canvasCopy, copy, say };
+export { canvasCopy, copy, say, STYLE };
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** A name that starts with `text`: tabs and toggles that add a count, e.g. "Notes (2)". */

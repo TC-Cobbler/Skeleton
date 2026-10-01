@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Frame, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ui } from "./ui.js";
+import { STYLE, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FILE = "src/pages/HomePage.tsx";
@@ -110,7 +110,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
       const labels = [...html.matchAll(/<div class="label"[^>]*>🔒 ([^<]+)<\/div>/g)].map((m) => m[1]);
       expect(locked.length).toBeGreaterThan(0);
       expect(labels.length).toBeGreaterThanOrEqual(locked.length);
-      expect(html).toMatch(/dashed #ea580c/);
+      expect(html).toContain(`dashed ${STYLE.colour.agent}`);
       report.push(`locked: ${locked.length} rendered locked blocks, ${labels.length} 🔒 labels drawn`);
     });
 

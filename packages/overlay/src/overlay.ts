@@ -6,6 +6,7 @@ import { besideSide, dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, ty
 import { handlesFor, LIVE_TARGET, planDrag, scopeOf, type Drag, type GizmoData, type Handle, type Measured, type Scope } from "./gizmos.js";
 import { NodeIndex } from "./mapping.js";
 import { copy } from "./copy.js";
+import { STYLE, styleVariables } from "./style.js";
 import { stripVariants, TokenMatcher } from "./tokens.js";
 import {
   isHostMessage,
@@ -24,13 +25,17 @@ type Rect = NodeBox["rects"][number];
 /** Pointer travel before a press on the canvas becomes a move drag. */
 const MOVE_THRESHOLD = 4;
 
+/** Skeleton's style values, declared in the overlay's shadow root only. */
+const CHROME_VARIABLES = styleVariables(":host");
+
+/** What the overlay draws in, from Skeleton's shared style values (T8.4). */
 const COLORS = {
-  hover: "#3b82f6",
-  selected: "#2563eb",
-  locked: "#ea580c",
-  drop: "#2563eb",
-  token: "#9333ea",
-  gizmo: "#db2777",
+  hover: STYLE.colour.accent,
+  selected: STYLE.colour.accent,
+  locked: STYLE.colour.agent,
+  drop: STYLE.colour.accent,
+  token: STYLE.colour.themeUse,
+  gizmo: STYLE.colour.accent,
 };
 
 /** How long a released gizmo's preview may wait for the page to update before it goes anyway. */
@@ -192,7 +197,23 @@ export class Overlay {
     );
     // A gizmo drag captures the pointer (see startGizmo): losing the capture is its
     // release, even when the button came up outside the frame.
-    this.doc.documentElement.addEventListener("lostpointercapture", () => this.gizmo && this.releaseGizmo(), { signal });
+    // A capture lost while the button is still held (KI-2) isn't a release: take it back.
+    this.doc.documentElement.addEventListener(
+      "lostpointercapture",
+      (event) => {
+        if (!this.gizmo) return;
+        if (event.buttons !== 0) {
+          try {
+            this.doc.documentElement.setPointerCapture(event.pointerId);
+            return;
+          } catch (error) {
+            console.warn("[skeleton overlay] couldn't take the pointer back", error);
+          }
+        }
+        this.releaseGizmo();
+      },
+      { signal },
+    );
     this.doc.addEventListener("mouseleave", () => this.setHover(null), { signal });
     this.observer = new MutationObserver(() => {
       this.index?.invalidate();
@@ -1033,7 +1054,7 @@ export class Overlay {
       parts.push(
         `<div class="box" style="left:${c.x}px;top:${c.y}px;width:${c.width}px;height:${c.height}px;border:1px dashed ${COLORS.drop}"></div>`,
         `<div class="box" data-drop-indicator style="left:${i.x}px;top:${i.y}px;width:${i.width}px;height:${i.height}px;` +
-          `background:${drop.fill ? "rgb(37 99 235 / 0.15)" : COLORS.drop}"></div>`,
+          `background:${drop.fill ? STYLE.colour.selectedRow : COLORS.drop}"></div>`,
       );
       const moved = this.node(this.moving);
       const besideNode = drop.beside ? this.node(drop.beside.key) : null;
@@ -1045,15 +1066,15 @@ export class Overlay {
     }
     this.placeTextEditor();
     this.drawn.innerHTML =
-      `<style>.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
-      `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}` +
+      `<style>${CHROME_VARIABLES}.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
+      `.label{position:fixed;font:11px/18px var(--sk-type-font);color:var(--sk-colour-white);padding:0 6px;border-radius:var(--sk-size-radius);white-space:nowrap}` +
       `.label[data-grab]{pointer-events:auto;cursor:grab}` +
-      `.gz{position:fixed;box-sizing:border-box;pointer-events:auto;background:#fff;border:2px solid ${COLORS.gizmo};border-radius:3px}` +
+      `.gz{position:fixed;box-sizing:border-box;pointer-events:auto;background:var(--sk-colour-white);border:2px solid ${COLORS.gizmo};border-radius:var(--sk-size-radius)}` +
       `.gz[data-kind=radius]{border-radius:50%;cursor:nwse-resize}.gz[data-kind=gap],.gz[data-kind=padding]{cursor:move}` +
       `.gz[data-kind=type]{cursor:ns-resize}.gz[data-kind=border]{cursor:ew-resize}` +
-      `.pin{position:fixed;box-sizing:border-box;min-width:18px;height:18px;padding:0 5px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:9px 9px 9px 2px;` +
-      `font:bold 10px/14px system-ui,sans-serif;color:#fff;text-align:center;box-shadow:0 1px 3px rgb(0 0 0/.3)}` +
-      `.chip{position:fixed;box-sizing:border-box;width:14px;height:14px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px ${COLORS.gizmo}}</style>` +
+      `.pin{position:fixed;box-sizing:border-box;min-width:18px;height:18px;padding:0 5px;pointer-events:auto;cursor:pointer;border:2px solid var(--sk-colour-white);border-radius:9px 9px 9px 2px;` +
+      `font:bold 10px/14px var(--sk-type-font);color:var(--sk-colour-white);text-align:center;box-shadow:0 1px 3px rgb(0 0 0/.3)}` +
+      `.chip{position:fixed;box-sizing:border-box;width:14px;height:14px;pointer-events:auto;cursor:pointer;border:2px solid var(--sk-colour-white);border-radius:50%;box-shadow:0 0 0 1px ${COLORS.gizmo}}</style>` +
       parts.join("");
   }
 
@@ -1144,7 +1165,7 @@ export class Overlay {
 /** What Radix renders a Dialog's or Sheet's trigger as. */
 const DIALOG_TRIGGER = '[aria-haspopup="dialog"][aria-expanded]';
 
-const PIN_COLOURS = { build: "#2563eb", behaviour: "#16a34a", question: "#d97706", resolved: "#71717a" };
+const PIN_COLOURS = { build: STYLE.colour.notes, behaviour: STYLE.colour.notes, question: STYLE.colour.notes, resolved: STYLE.colour.secondary };
 
 /** How the hover label names each scope (PRD §10.3). */
 const SCOPE_NAMES: Record<Scope, string> = copy.gizmos.scopes;

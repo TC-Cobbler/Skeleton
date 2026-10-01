@@ -52,6 +52,10 @@ Result: 5 of 5 runs, 350 canvas clicks, none missed. The elements selected from 
 - **A gizmo press can be lost** (`dragGizmo` retries it). The handle race in (2) is a likely cause.
 Neither was reproduced in this investigation.
 
-## KI-2: Gate 4's Alt-drag label sometimes isn't found (open, intermittent)
+## KI-2: a handle drag's label sometimes went missing (fixed)
 
-Seen once in 5 runs (2026-10-01, before T8.1 changed anything): during the Alt-drag in `gate4.test.ts`, the drag started (its live preview was there), but `label()` found no handle label within 2 s and returned null. The following 4 runs passed, and so did `tokens.test.ts`'s Alt-drag. It's not caused by the UI refresh. It's worth a look if it recurs: the label may be redrawn away while Alt is held.
+Seen twice in about 7 full e2e runs (2026-10-01): mid-drag, the drag had started (its live preview was on the page) but no handle label was drawn. It happened once each in `gate4.test.ts` (Alt-drag) and `tokens.test.ts` (plain drag). It wasn't caused by the UI refresh.
+
+- **Cause (likely):** the overlay treated any `lostpointercapture` as the drag's release, which is meant for a button let go outside the frame. When the capture was lost while the button was still held, the drag ended early: its commit was sent and its label disappeared, while the preview waited for the page to update.
+- **Fix:** a lost capture with a button still held (`event.buttons !== 0`) takes the capture back, so the drag goes on. Only a lost capture with no button held releases.
+- **Check:** `tokens.test.ts` and `gate4.test.ts` together, 4 runs after the fix: no missing label. Watch for it in later full runs.

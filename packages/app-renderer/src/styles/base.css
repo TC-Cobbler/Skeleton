@@ -1,0 +1,263 @@
+/* Base: type, controls and shared bits (T8.4, docs/ui-refresh-spec.md §3, "Compact pro").
+   Every colour and size is a --sk-* value from @skeleton/overlay/style, declared on
+   :root by main.tsx. Skeleton's chrome is dark only. */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--sk-colour-surround);
+  color: var(--sk-colour-text);
+  font: var(--sk-type-body) / 1.4 var(--sk-type-font);
+  /* Skeleton's chrome is controls, not a document: a drag that starts outside the
+     canvas mustn't select its headings and buttons (F-3). */
+  user-select: none;
+}
+/* What's worth copying stays selectable: text fields, code and diffs, the dev-server
+   log, and error messages. */
+input,
+textarea,
+[contenteditable],
+code,
+pre,
+.log,
+.error {
+  user-select: text;
+}
+h1,
+h2,
+h3 {
+  color: var(--sk-colour-heading);
+}
+/* Panel headings: small, uppercase, letter-spaced. */
+h2 {
+  margin: 0 0 6px;
+  font-size: var(--sk-type-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sk-colour-secondary);
+}
+h3 {
+  margin: 10px 0 4px;
+  font-size: var(--sk-type-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sk-colour-secondary);
+}
+code,
+pre {
+  font-family: var(--sk-type-mono);
+  font-size: var(--sk-type-small);
+}
+.muted {
+  color: var(--sk-colour-secondary);
+}
+.error {
+  color: var(--sk-colour-danger);
+}
+.small {
+  font-size: var(--sk-type-small);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stack {
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 560px;
+}
+section {
+  margin-top: 16px;
+}
+form {
+  display: flex;
+  gap: 6px;
+}
+
+/* Controls: compact, about 24px tall. */
+button {
+  min-height: var(--sk-size-control);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-control);
+  color: var(--sk-colour-text);
+  font: inherit;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: var(--sk-colour-control-hover);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button[aria-pressed="true"] {
+  background: var(--sk-colour-control-on);
+  color: var(--sk-colour-heading);
+}
+button.primary {
+  background: var(--sk-colour-accent);
+  color: var(--sk-colour-white);
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) {
+  background: var(--sk-colour-accent-hover);
+}
+button.danger {
+  color: var(--sk-colour-danger);
+}
+button.link {
+  min-height: 0;
+  padding: 2px 0;
+  background: none;
+  color: var(--sk-colour-text);
+  text-align: left;
+}
+button.link:hover:not(:disabled) {
+  background: none;
+  color: var(--sk-colour-heading);
+  text-decoration: underline;
+}
+button.quiet {
+  min-height: 0;
+  padding: 0 4px;
+  background: none;
+  color: var(--sk-colour-secondary);
+}
+button.quiet:hover:not(:disabled) {
+  background: none;
+  color: var(--sk-colour-heading);
+}
+input,
+select,
+textarea {
+  box-sizing: border-box;
+  min-height: var(--sk-size-control);
+  padding: 2px 6px;
+  border: 1px solid var(--sk-colour-input-border);
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-input);
+  color: var(--sk-colour-heading);
+  font: inherit;
+}
+input {
+  flex: 1;
+}
+input[type="checkbox"] {
+  flex: none;
+  min-height: 0;
+  accent-color: var(--sk-colour-accent);
+}
+input::placeholder {
+  color: var(--sk-colour-secondary);
+}
+/* The focus ring: 2px of the one blue, 2px off the control. */
+:focus-visible {
+  outline: var(--sk-size-focus-ring) solid var(--sk-colour-accent);
+  outline-offset: var(--sk-size-focus-gap);
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+  border-color: var(--sk-colour-accent);
+}
+details > summary {
+  cursor: pointer;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--sk-colour-control-hover) padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* A row of toggles; the one that's on is grey (blue is for selection). */
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 6px 0 10px;
+}
+.segmented button {
+  padding: 0 8px;
+}
+/* Tabs: words in a row, the selected one underlined in blue. */
+.segmented.tabs {
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 0 0 10px;
+  border-bottom: 1px solid var(--sk-colour-separator);
+}
+.segmented.tabs button {
+  min-height: 30px;
+  padding: 0 8px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--sk-colour-secondary);
+  font-size: var(--sk-type-tab);
+  white-space: nowrap;
+}
+.segmented.tabs button[aria-selected="true"] {
+  border-bottom-color: var(--sk-colour-accent);
+  color: var(--sk-colour-heading);
+}
+.segmented.tabs button:hover:not(:disabled) {
+  background: none;
+  color: var(--sk-colour-heading);
+}
+
+/* A question before something that can't be undone. */
+.confirm {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--sk-colour-danger);
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+}
+.confirm p {
+  margin: 0;
+}
+.confirm ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+}
+.actions {
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* A message shown in place, with its Details (T8.3). */
+.message-details {
+  margin-top: 2px;
+}
+.message-details summary {
+  font-size: var(--sk-type-small);
+  color: var(--sk-colour-secondary);
+}
+.message-details pre {
+  margin: 4px 0;
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--sk-colour-text);
+}
+div.error p {
+  margin: 0;
+}

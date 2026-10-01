@@ -288,13 +288,14 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Add a unit test that fails on any glossary *Avoid* word in the copy files, with the allowed exceptions from spec §7.
   - It starts with a **pending list** of today's jargon. Each later slice shrinks the list, and it must be empty by the gate.
   - Done: `app-renderer/tests/plain-words.ts` (reads both copy files with the TypeScript parser and the _Avoid_ lists in GLOSSARY.md), its test, and `plain-words.pending.ts`, with 100 entries today. Words that are ordinary English in Skeleton's sense (select, send, drag, Light/Dark, Wrap onto new lines, the approved "Direction" label) are exempt, and so are copy entries named `details`, `copyDetails`, the page code view and the app preview log. Theme values written by their code name (`--primary`) count as jargon too.
-- [~] **T8.3** **Reason codes and the message table.**
+- [x] **T8.3** **Reason codes and the message table.**
   - Core and app-main errors Johnny can meet carry a reason code and facts alongside their unchanged technical message, and IPC passes these through.
   - Add the renderer message table: tier 1 and 2 sentences, plus the catch-all for Skeleton faults.
   - Messages get Details and Copy details, and opening Details stops auto-dismiss.
   - Add the "every code has a sentence" test.
   - Record ADR 013.
-- [ ] **T8.4** **Style foundation.**
+  - Done: `core/src/reasons.ts` (51 codes), reasons on core and main errors, `IpcError.reason`, `copy.messages` (typed to cover every code) and `app-renderer/src/messages.ts`. Notices and in-panel errors show the sentence, with Details and Copy details. The plain-words check covers the sentences. ADR 013.
+- [~] **T8.4** **Style foundation.**
   - Add the shared style values file (spec §3) and split `styles.css` into area files that use only those values.
   - The overlay injects the values file into its shadow root and drops its hard-coded colours.
   - Set the native window frame to dark.
