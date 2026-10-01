@@ -284,9 +284,10 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Switch every e2e and renderer test to the helpers and copy entries.
   - Nothing visible changes.
   - Done: `app-renderer/src/copy.ts`, `overlay/src/copy.ts` and `app-main/e2e/ui.ts`. Labels that come from the palette data (entries, groups, setting names, layout groups, token names) go through identity hooks in the copy file (`propLabel`, `itemLabel`, `tokenName`…), so T8.8 renames them there. The unit suite and every e2e test pass; a pre-existing Gate 4 flake is KI-2.
-- [ ] **T8.2** **Plain-words check.**
+- [x] **T8.2** **Plain-words check.**
   - Add a unit test that fails on any glossary *Avoid* word in the copy files, with the allowed exceptions from spec §7.
   - It starts with a **pending list** of today's jargon. Each later slice shrinks the list, and it must be empty by the gate.
+  - Done: `app-renderer/tests/plain-words.ts` (reads both copy files with the TypeScript parser and the _Avoid_ lists in GLOSSARY.md), its test, and `plain-words.pending.ts`, with 100 entries today. Words that are ordinary English in Skeleton's sense (select, send, drag, Light/Dark, Wrap onto new lines, the approved "Direction" label) are exempt, and so are copy entries named `details`, `copyDetails`, the page code view and the app preview log. Theme values written by their code name (`--primary`) count as jargon too.
 - [ ] **T8.3** **Reason codes and the message table.**
   - Core and app-main errors Johnny can meet carry a reason code and facts alongside their unchanged technical message, and IPC passes these through.
   - Add the renderer message table: tier 1 and 2 sentences, plus the catch-all for Skeleton faults.
