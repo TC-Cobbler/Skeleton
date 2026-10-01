@@ -22,6 +22,22 @@ _Avoid_: Pass, handoff #, turn, iteration
 What the agent changed in a round, as reviewed after Take back.
 _Avoid_: Pass, diff, changeset
 
+**Rules the agent broke**:
+Changes in the agent's work that go against the project's rules for agents, such as editing the theme.
+_Avoid_: Contract breaches, violations
+
+**Fixed by Skeleton**:
+Problems Skeleton corrected on Take back so it can keep telling every element apart.
+_Avoid_: Repaired, re-minted, auto-repair
+
+**New agent code**:
+Agent code that appeared in a round.
+_Avoid_: New locked blocks
+
+**Undo the agent's work**:
+Putting the project back as it was when it was handed off in that round.
+_Avoid_: Revert pass
+
 **Agent is working**:
 The state between Hand off and Take back, when the canvas can't be edited.
 _Avoid_: Locked, with agent
@@ -36,6 +52,10 @@ _Avoid_: Node, component, tag
 Part of a page the agent wrote as code, such as a repeated list or something that only shows sometimes. You can move or delete it whole, and style what's inside it, but Skeleton won't rewrite it.
 _Avoid_: Locked block, locked, protected, logic-bearing
 
+**Agent controls**:
+The parts of an element the agent's code decides, such as what happens on click. Shown in plain words and read-only.
+_Avoid_: Agent logic, protected props, onClick
+
 **Element name**:
 How an element is named on screen: its kind plus its visible text when that tells it apart, e.g. Button "Add game".
 _Avoid_: ID, data-ui-id, `#ui_…`
@@ -49,6 +69,38 @@ _Avoid_: Tokens, design tokens, CSS variables, swatches
 **Theme value**:
 One entry in the theme, such as a theme colour or a theme size.
 _Avoid_: Token, variable
+
+**Theme value name**:
+The plain name a theme value is shown under, e.g. Main colour, Text on main colour, Card corners.
+_Avoid_: CSS variable name, `--primary`
+
+**Follows**:
+A theme value that is worked out from another one, e.g. Card corners follows Corner radius.
+_Avoid_: Derived, formula, linked
+
+**Own value**:
+A theme value set directly rather than following another.
+_Avoid_: Detached
+
+**Off-theme**:
+A colour or size set by hand on an element instead of coming from the theme.
+_Avoid_: Violation, override, arbitrary value
+
+**Closest theme value**:
+The theme value nearest to an off-theme one, offered as its replacement.
+_Avoid_: Nearest token, snap target
+
+**Add to theme**:
+Turning an off-theme value into a new theme value.
+_Avoid_: Promote
+
+**Leave as is**:
+Accepting an off-theme value, so it stops being listed.
+_Avoid_: Keep, acknowledge
+
+**Reach**:
+How far a handle drag's change spreads: All buttons (every element of that kind), Whole theme, or Just this one.
+_Avoid_: Scope, component/global/instance, Drag/Shift/Alt
 
 **App theme**:
 Whether the app being built is shown in light mode or dark mode. Skeleton's own interface is always dark.
@@ -67,6 +119,24 @@ _Avoid_: Select mode
 **Try it**:
 The canvas mode where the app behaves as it will for its users: buttons work and menus open.
 _Avoid_: Interact mode, preview mode
+
+**Your app**:
+The app being built, as it runs inside the canvas.
+_Avoid_: Dev server, Vite, preview server
+
+**App preview**:
+The running copy of your app that the canvas shows, with its start and stop controls and its log.
+_Avoid_: Dev server
+
+## Notes
+
+**Note**:
+A request or question for the agent, pinned to an element. Its type is Build, Behaviour or Question.
+_Avoid_: Comment, task (on screen), intent note
+
+**Notes without an element**:
+Notes whose element was deleted, waiting to be attached to another element or deleted.
+_Avoid_: Orphaned notes, orphans
 
 ## Layout
 
@@ -112,6 +182,12 @@ _Avoid_: Justify, justify-content
 **Wrap onto new lines**:
 Whether a Row's items move onto a new line when they don't fit.
 _Avoid_: Wrap, flex-wrap
+
+## Adding elements
+
+**Add**:
+The panel of elements you can drag onto the canvas, grouped as Layout, Inputs, Display, Overlays and Navigation.
+_Avoid_: Palette, components
 
 ## Element settings
 
