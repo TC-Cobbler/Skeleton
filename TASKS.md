@@ -295,12 +295,13 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Add the "every code has a sentence" test.
   - Record ADR 013.
   - Done: `core/src/reasons.ts` (51 codes), reasons on core and main errors, `IpcError.reason`, `copy.messages` (typed to cover every code) and `app-renderer/src/messages.ts`. Notices and in-panel errors show the sentence, with Details and Copy details. The plain-words check covers the sentences. ADR 013.
-- [~] **T8.4** **Style foundation.**
+- [x] **T8.4** **Style foundation.**
   - Add the shared style values file (spec §3) and split `styles.css` into area files that use only those values.
   - The overlay injects the values file into its shadow root and drops its hard-coded colours.
   - Set the native window frame to dark.
   - The result is today's layout in Compact pro.
-- [ ] **T8.5** **Icons and tooltips.**
+  - Done: `overlay/src/style.ts` (exported as `@skeleton/overlay/style`); `app-renderer/src/styles/` holds `base.css`, `shell.css`, `canvas.css` and `panels.css`. The overlay draws in the shared colours. The window is dark. Also fixed along the way: KI-2, a handle drag's label going missing. Full unit and e2e suites pass.
+- [~] **T8.5** **Icons and tooltips.**
   - Add Lucide (1.5px stroke, 20/16px), IconButton (label required) and Tooltip (hover and focus, Escape to close).
   - Remove `title=` throughout.
   - Add the "icon-only buttons use IconButton" test and the tooltip behaviour tests.
