@@ -52,6 +52,30 @@ _Avoid_: Node, component, tag
 Part of a page the agent wrote as code, such as a repeated list or something that only shows sometimes. You can move or delete it whole, and style what's inside it, but Skeleton won't rewrite it.
 _Avoid_: Locked block, locked, protected, logic-bearing
 
+**Repeated list**:
+Agent code that shows one element once per item, such as a card per game.
+_Avoid_: Map, `.map()`, loop
+
+**Shows sometimes**:
+Agent code that shows its content only in some situations, such as an empty-list message.
+_Avoid_: Conditional, `&&`, ternary
+
+**Agent value**:
+Text or a value the agent's code fills in, such as a game's title.
+_Avoid_: Expression, `{…}`, binding
+
+**Agent component**:
+An element the agent built as its own piece, shown by its name, e.g. Agent component: SiteNav.
+_Avoid_: Custom component
+
+**Group**:
+Agent code that wraps several elements without adding one of its own.
+_Avoid_: Fragment, `<>…</>`
+
+**Agent element**:
+An element whose settings come partly from agent code in ways Skeleton can't read.
+_Avoid_: Spread props, member element
+
 **Agent controls**:
 The parts of an element the agent's code decides, such as what happens on click. Shown in plain words and read-only.
 _Avoid_: Agent logic, protected props, onClick
@@ -127,6 +151,20 @@ _Avoid_: Dev server, Vite, preview server
 **App preview**:
 The running copy of your app that the canvas shows, with its start and stop controls and its log.
 _Avoid_: Dev server
+
+## Pages
+
+**Page**:
+One screen of the app, with a page name and a web address.
+_Avoid_: Route, page component, page file
+
+**Web address**:
+The part of the app's address that opens a page, e.g. /stats.
+_Avoid_: Path, route, URL path
+
+**Page code**:
+A page's code, which can be shown read-only.
+_Avoid_: Source, view source
 
 ## Notes
 
