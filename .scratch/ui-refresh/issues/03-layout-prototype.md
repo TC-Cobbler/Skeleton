@@ -1,7 +1,7 @@
 # Prototype the regrouped Adobe-style layout
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 01
 Part of: [UI refresh map](../map.md)
 
