@@ -1,7 +1,7 @@
 # Decide how the restyle is built: style structure and icon set
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: none
 Part of: [UI refresh map](../map.md)
 
