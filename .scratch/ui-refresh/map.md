@@ -24,6 +24,8 @@ A written **UI refresh spec** for Skeleton's own app (renderer + overlay chrome)
 
 ## Decisions so far
 
+- [Research Adobe's public design conventions for dark desktop apps](issues/05-adobe-spectrum-research.md): Spectrum 2 dark greys (#111 canvas, #1B1B1B panels), single blue accent #4069FD, system font at 14px, 32px controls, 260px panels, icon buttons need tooltips; on-screen text says what a control does.
+
 ## Not yet specified
 
 - **How the restyle is built**: whether the renderer keeps plain `styles.css` with a token layer of its own, or adopts something else; icon source. Hangs on the visual style.
