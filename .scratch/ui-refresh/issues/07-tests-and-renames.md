@@ -1,7 +1,7 @@
 # Decide how tests keep up with renamed text
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: none
 Part of: [UI refresh map](../map.md)
 
