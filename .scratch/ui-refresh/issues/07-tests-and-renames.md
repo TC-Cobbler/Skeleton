@@ -14,3 +14,7 @@ The inventory finds 140 UI texts that tests use to find or check things, across 
 - **Option 3:** a mix: text for the words that matter to Johnny, test IDs for the rest.
 
 The decision shapes how the build phase is sliced and how big each slice's test diff is.
+
+## Context from other tickets
+
+- [Rewrite messages and empty states in plain language](06-plain-messages.md): core and app-main messages stay technical (reason codes are added alongside them), so their unit tests aren't affected. Only renderer and e2e tests meet the new sentences.

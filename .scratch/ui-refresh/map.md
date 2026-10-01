@@ -29,6 +29,7 @@ A written **UI refresh spec** for Skeleton's own app (renderer + overlay chrome)
 - [Prototype the regrouped Adobe-style layout](issues/03-layout-prototype.md): approved layout D. Build | Style | Hand off workspaces with a per-workspace left panel, a page picker, a tabbed inspector (Element / Theme / Off-theme / Agent's work) with element notes inline, a hand-off bar under the canvas, Advanced in a ⋯ menu, and a status bar.
 - [Settle the dark visual style](issues/04-visual-style.md): Compact pro. 12px system text, small uppercase panel headings, near-black separators, #1B1B1B panels, one blue (#4069FD) for selection, focus and the active workspace; icon-only toolbar buttons with tooltips on hover and focus, words kept for workspaces and anything to do with the agent or project.
 - [Research Adobe's public design conventions for dark desktop apps](issues/05-adobe-spectrum-research.md): Spectrum 2 dark greys (#111 canvas, #1B1B1B panels), single blue accent #4069FD, system font at 14px, 32px controls, 260px panels, icon buttons need tooltips; on-screen text says what a control does.
+- [Rewrite messages and empty states in plain language](issues/06-plain-messages.md): core and main keep technical messages and add reason codes; the renderer turns them into plain sentences from one table, with Details and Copy details (for the agent). Three tiers: refusal, problem with an action, and a catch-all for Skeleton faults. Disabled controls reuse the same sentence. Six tone rules and approved rewrites per family.
 
 ## Not yet specified
 
