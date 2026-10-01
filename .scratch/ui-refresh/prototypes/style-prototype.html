@@ -1,0 +1,545 @@
+<title>Skeleton Style Prototype</title>
+<style>
+/* PROTOTYPE, throwaway. Answers: what visual style makes the approved layout (D) feel like a professional Adobe-style app?
+   Three radically different styles on the same layout, switchable from the bottom bar (or #compact / #regular / #darkest).
+   Layout concept: a fixed 1440×900 desktop "app window" scaled to fit the viewer, so the arrangement reads at any size. */
+:root {
+  color-scheme: dark;
+  --pasteboard: #111111;   /* behind the canvas */
+  --frame: #1b1b1b;        /* panels, app frame */
+  --raised: #222222;       /* toolbars, pop-overs */
+  --line: #393939;         /* dividers */
+  --control: #2c2c2c;      /* control fill */
+  --text: #dbdbdb;
+  --strong: #f2f2f2;
+  --muted: #8a8a8a;
+  --accent: #4069fd;       /* the one accent */
+  --agent: #e8833a;        /* agent code */
+  --ok: #3fa66b;
+  --note: #c084fc;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--pasteboard); color: var(--text); font: 13px/1.4 var(--font); overflow: hidden; }
+button { font: inherit; color: inherit; }
+#stage { position: absolute; inset: 0 0 64px 0; display: grid; place-items: center; overflow: hidden; padding-inline: 16px; }
+#win { width: 1440px; height: 900px; transform-origin: center center; background: var(--frame); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; position: relative; flex: none; }
+
+/* switcher (not part of the design) */
+#switch { position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 4px; background: #fafafa; color: #111; border-radius: 999px; padding: 4px; box-shadow: 0 6px 24px #0008; z-index: 99; max-width: calc(100vw - 32px); }
+#switch button { border: 0; background: none; color: #111; padding: 8px 12px; border-radius: 999px; cursor: pointer; font-weight: 600; }
+#switch button:hover { background: #e7e7e7; }
+#switch .lbl { padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+#hint { position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px; text-align: center; color: var(--muted); font-size: 12px; }
+
+/* shared chrome pieces */
+.bar { display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--frame); border-bottom: 1px solid var(--line); min-height: 44px; }
+.bar.slim { min-height: 36px; }
+.grow { flex: 1; }
+.title { color: var(--strong); font-weight: 600; font-size: 14px; }
+.sub { color: var(--muted); }
+.btn { background: var(--control); border: 1px solid transparent; border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: #393939; }
+.btn.primary { background: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { background: #5a7dff; }
+.btn.ghost { background: none; }
+.btn:disabled { opacity: .4; cursor: default; }
+.seg { display: inline-flex; background: var(--control); border-radius: 6px; padding: 2px; gap: 2px; }
+.seg button { border: 0; background: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: var(--muted); }
+.seg button.on { background: #444; color: var(--strong); }
+.sep { width: 1px; align-self: stretch; background: var(--line); margin: 8px 2px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--control); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.dot.agent { background: var(--agent); }
+.panel { background: var(--frame); display: flex; flex-direction: column; min-height: 0; }
+.panel h3 { margin: 0; padding: 10px 12px 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.scroll { overflow: auto; min-height: 0; }
+.tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 7px 7px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; font-size: 12px; }
+.tabs button.on { color: var(--strong); border-bottom-color: var(--accent); }
+.count { color: var(--muted); }
+.row { display: flex; align-items: center; gap: 8px; padding: 5px 12px; flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; padding: 4px 12px 10px; align-items: center; }
+.kv label { color: var(--muted); }
+.field { background: var(--control); border-radius: 5px; padding: 4px 8px; min-height: 26px; display: flex; align-items: center; justify-content: space-between; }
+.field.ro { background: none; border: 1px dashed var(--line); color: var(--muted); }
+.hint { color: var(--muted); padding: 4px 12px 10px; font-size: 12px; }
+.divider { height: 1px; background: var(--line); margin: 6px 0; }
+.empty { color: var(--muted); padding: 16px 12px; }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #3a2a1c; color: var(--agent); white-space: nowrap; }
+.swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #fff3; flex: none; }
+
+/* layers */
+.layer { display: flex; align-items: center; gap: 6px; padding: 4px 12px; cursor: pointer; white-space: nowrap; }
+.layer:hover { background: #262626; }
+.layer.on { background: #24346f; color: var(--strong); }
+.layer.agent { color: var(--agent); }
+
+/* palette */
+.pal { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 12px 10px; }
+.pal div { background: var(--control); border-radius: 6px; padding: 8px; cursor: grab; display: flex; gap: 8px; align-items: center; }
+.pal i { width: 22px; height: 16px; border: 1.5px solid #8a8a8a; border-radius: 3px; flex: none; }
+
+/* canvas */
+.canvas { flex: 1; background: var(--pasteboard); position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.canvasbar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--raised); border-bottom: 1px solid var(--line); }
+.frames { flex: 1; display: flex; justify-content: center; align-items: flex-start; gap: 16px; padding: 20px; overflow: hidden; }
+.frame { background: #fff; color: #1f1f1f; border-radius: 6px; overflow: hidden; position: relative; box-shadow: 0 0 0 1px #000, 0 10px 30px #0006; transform-origin: top left; flex: none; }
+.frame.dark { background: #161616; color: #eee; }
+.framecap { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.app { padding: 22px 28px; display: flex; flex-direction: column; gap: 14px; font-size: 13px; }
+.app .nav { display: flex; gap: 6px; }
+.app .nav span { padding: 4px 10px; border-radius: 6px; }
+.app .nav span.on { background: #6d4bd6; color: #fff; }
+.app h1 { margin: 0; font-size: 24px; }
+.app .tool { display: flex; gap: 10px; align-items: center; }
+.app .input { flex: 1; border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; color: #888; }
+.frame.dark .app .input, .frame.dark .app .sel, .frame.dark .app .card { border-color: #444; }
+.app .sel { border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; width: 110px; }
+.app .cta { background: #6d4bd6; color: #fff; border-radius: 6px; padding: 7px 12px; font-weight: 600; }
+.app .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+.frame.narrow .app .grid { grid-template-columns: 1fr 1fr; }
+.frame.tiny .app .grid { grid-template-columns: 1fr; }
+.frame.tiny .app .tool { flex-wrap: wrap; }
+.app .card { border: 1px solid #e3e3e3; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.app .card b { font-size: 13px; }
+.app .card small { color: #888; }
+.app .tag { align-self: flex-start; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #6d4bd6; color: #fff; }
+.app .tag.alt { background: #ddd; color: #333; }
+[data-el] { position: relative; cursor: pointer; }
+.editing [data-el]:hover { outline: 1px solid #4069fd88; outline-offset: 2px; }
+.sel-on { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+.elabel { position: absolute; left: -2px; top: -22px; background: var(--accent); color: #fff; font: 600 11px var(--font); padding: 2px 6px; border-radius: 3px; white-space: nowrap; z-index: 3; pointer-events: none; }
+.handle { position: absolute; width: 8px; height: 8px; background: #fff; border: 1.5px solid var(--accent); border-radius: 50%; z-index: 3; pointer-events: none; }
+.agentbox { outline: 1.5px dashed var(--agent); outline-offset: 4px; }
+.alabel { position: absolute; left: -4px; top: -24px; background: var(--agent); color: #fff; font: 600 11px var(--font); padding: 2px 6px; border-radius: 3px; z-index: 2; white-space: nowrap; }
+.pin { position: absolute; right: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; background: var(--note); color: #fff; font: 700 11px var(--font); display: grid; place-items: center; z-index: 4; box-shadow: 0 2px 6px #0006; }
+.veil { position: absolute; inset: 0; background: #111c; display: grid; place-items: center; z-index: 10; }
+.veil div { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 18px 24px; text-align: center; max-width: 360px; }
+.veil b { display: block; color: var(--strong); font-size: 15px; margin-bottom: 4px; }
+
+/* drawer / popover / status */
+.drawer { position: absolute; left: 0; right: 0; bottom: 0; height: 240px; background: var(--raised); border-top: 1px solid var(--line); z-index: 20; display: flex; flex-direction: column; box-shadow: 0 -10px 30px #0006; }
+.log { font: 12px/1.6 var(--mono); color: #b9b9b9; padding: 8px 12px; overflow: auto; flex: 1; }
+.pop { position: absolute; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px #0008; z-index: 15; }
+.status { display: flex; align-items: center; gap: 14px; padding: 0 10px; height: 26px; background: var(--frame); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.status button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.status button:hover { color: var(--strong); }
+.toast { position: absolute; right: 16px; bottom: 40px; background: var(--raised); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; padding: 8px 12px; z-index: 30; box-shadow: 0 8px 24px #0008; }
+
+/* A: rail */
+.rail { width: 48px; background: var(--frame); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px; }
+.rail button { width: 38px; height: 38px; border: 0; background: none; border-radius: 6px; cursor: pointer; color: var(--muted); display: grid; place-items: center; font-size: 10px; line-height: 1.1; }
+.rail button.on { background: #2c2c2c; color: var(--strong); box-shadow: inset 2px 0 0 var(--accent); }
+.rail svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+/* C: workspaces */
+.ws { display: inline-flex; gap: 2px; background: #111; border-radius: 8px; padding: 3px; }
+.ws button { border: 0; background: none; color: var(--muted); padding: 6px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.ws button.on { background: var(--accent); color: #fff; }
+.task { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #262626; }
+.bigcta { margin: 12px; padding: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--raised); }
+
+
+/* ---------- icons, focus, tooltips ---------- */
+.ic { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; }
+.ic svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tb { display: inline-flex; align-items: center; gap: 6px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[data-tip] { position: relative; }
+[data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); background: var(--tipbg); color: #fff; font: 12px/16px var(--font); padding: 4px 9px; border-radius: 4px; white-space: nowrap; z-index: 50; pointer-events: none; }
+
+/* ---------- Style 1: compact pro ---------- */
+.st-compact { --frame: #1b1b1b; --raised: #222222; --pasteboard: #111111; --line: #111111; --control: #2c2c2c; --text: #dbdbdb; --strong: #f2f2f2; --muted: #8a8a8a; --accent: #4069fd; --tipbg: #6d6d6d; --selrow: rgba(64,105,253,.16); font-size: 12px; }
+.st-compact .bar { min-height: 34px; }
+.st-compact .btn, .st-compact .seg button { padding: 3px 7px; font-size: 12px; }
+.st-compact .tb .lbl { display: none; }              /* icon-only, label in tooltip */
+.st-compact .ws button { padding: 4px 10px; }
+.st-compact .ws .tb .lbl { display: inline; }        /* workspaces keep their words */
+.st-compact .panel h3 { font-size: 10px; padding: 8px 10px 4px; }
+.st-compact .tabs button { font-size: 11px; padding: 6px 6px; }
+.st-compact .kv { grid-template-columns: 110px 1fr; gap: 4px 8px; }
+.st-compact .field { min-height: 22px; padding: 2px 6px; border-radius: 3px; background: #111; border: 1px solid #444; }
+.st-compact .layer { padding-block: 2px; }
+.st-compact .layer.on { background: var(--selrow); color: var(--strong); box-shadow: inset 2px 0 0 var(--accent); }
+.st-compact .pal div { padding: 5px 6px; }
+.st-compact .canvas, .st-compact .panel { border-color: #111 !important; }
+
+/* ---------- Style 2: Spectrum 2 regular ---------- */
+.st-regular { --frame: #1b1b1b; --raised: #222222; --pasteboard: #111111; --line: #2c2c2c; --control: #2c2c2c; --text: #dbdbdb; --strong: #f2f2f2; --muted: #afafaf; --accent: #4069fd; --tipbg: #6d6d6d; --selrow: #2c2c2c; font-size: 14px; }
+.st-regular .bar { min-height: 52px; padding: 0 14px; gap: 10px; }
+.st-regular .btn { padding: 6px 14px; border-radius: 8px; min-height: 32px; display: inline-flex; align-items: center; gap: 6px; }
+.st-regular .seg { border-radius: 8px; padding: 3px; }
+.st-regular .seg button { padding: 5px 10px; border-radius: 6px; min-height: 26px; display: inline-flex; align-items: center; gap: 6px; }
+.st-regular .seg button.on { background: #dbdbdb; color: #1b1b1b; }          /* S2 non-emphasized selection */
+.st-regular .ws button.on { background: #dbdbdb; color: #1b1b1b; }
+.st-regular .panel h3 { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 700; color: var(--strong); padding: 16px 14px 8px; }
+.st-regular .tabs { padding: 4px 14px 0; gap: 18px; border-color: #323232; }
+.st-regular .tabs button { font-size: 14px; padding: 10px 0; }
+.st-regular .tabs button.on { border-bottom-color: #dbdbdb; }                /* gray indicator, not blue */
+.st-regular .kv { grid-template-columns: 130px 1fr; gap: 10px 12px; padding: 4px 14px 14px; }
+.st-regular .field { min-height: 32px; border-radius: 4px; background: #111; border: 1px solid #6d6d6d; }
+.st-regular .layer { padding-block: 8px; border-radius: 6px; margin: 0 6px; }
+.st-regular .layer.on { background: rgba(64,105,253,.12); color: var(--strong); }
+.st-regular .divider { height: 0; margin: 10px 0; }                           /* spacing instead of rules */
+.st-regular .pal { gap: 8px; padding: 4px 14px 14px; }
+.st-regular .pal div { padding: 10px; border-radius: 8px; }
+.st-regular .pop { box-shadow: 0 4px 12px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.12), 0 0 2px rgba(0,0,0,.36); border-color: #444; }
+.st-regular .status { height: 30px; padding: 0 14px; }
+.st-regular .lbl, .st-regular .pill, .st-regular .sub { white-space: nowrap; }
+.st-regular [data-seg="width"] .lbl { display: none; }          /* universally understood: icon-only + tooltip */
+.st-regular .canvasbar .crumb { display: none; }
+.st-regular .tabs { gap: 12px; padding-inline: 12px; }
+
+/* ---------- Style 3: darkest, high contrast ---------- */
+.st-darkest { --frame: #0e0e0e; --raised: #1d1d1d; --pasteboard: #000000; --line: #000000; --control: #303030; --text: #d0d0d0; --strong: #ffffff; --muted: #8d8d8d; --accent: #4096f3; --tipbg: #4b4b4b; --selrow: rgba(64,150,243,.22); font-size: 13px; }
+.st-darkest #win, .st-darkest { border-color: #000; }
+.st-darkest .bar { min-height: 46px; background: #1d1d1d; }
+.st-darkest .tb { flex-direction: column; gap: 1px; font-size: 10px; line-height: 1.1; }   /* icon above label */
+.st-darkest .seg button, .st-darkest .btn { padding: 4px 9px; }
+.st-darkest .seg button.on { background: var(--accent); color: #fff; }
+.st-darkest .ws button { padding: 4px 14px; }
+.st-darkest .panel { gap: 1px; }
+.st-darkest .panel h3 { background: #1d1d1d; color: var(--strong); font-size: 11px; letter-spacing: .08em; padding: 7px 10px; margin-bottom: 4px; }
+.st-darkest .tabs { background: #1d1d1d; }
+.st-darkest .tabs button.on { color: #fff; border-bottom-color: var(--accent); }
+.st-darkest .field { background: #000; border: 1px solid #303030; }
+.st-darkest .layer.on { background: var(--selrow); color: #fff; }
+.st-darkest .canvas, .st-darkest .panel { border-color: #000 !important; border-width: 2px !important; }
+.st-darkest .sel-on { outline-color: #4096f3 !important; }
+
+@media (prefers-reduced-motion: no-preference) { .pop, .drawer, .toast { animation: rise .14s ease-out; } @keyframes rise { from { transform: translateY(6px); opacity: .6; } } }
+</style>
+
+<div id="hint">Style prototype on the approved layout · on a phone, turn it sideways or pinch to zoom · hover an icon for its tooltip.</div>
+<div id="stage"><div id="win"></div></div>
+<div id="switch" role="group" aria-label="Variant">
+  <button id="prev" aria-label="Previous variant">←</button>
+  <span class="lbl" id="vlbl"></span>
+  <button id="next" aria-label="Next variant">→</button>
+</div>
+
+<script>
+// ---------- shared state (in memory only) ----------
+const S = { style: 'regular', variant: 'D', sel: 'add', mode: 'edit', width: 'desktop', appTheme: 'light', round: 2, withAgent: false, reviewed: true,
+  railA: 'layers', tabA: 'element', drawer: false, addPop: false, themePop: false, ws: 'build', wsLeft: 'add', tabD: 'element', menuD: false, toast: null };
+const STYLES = { compact: '1 · Compact pro: small text, icon-only tools', regular: '2 · Spectrum 2 regular: 14px, roomy, icon + label', darkest: '3 · Darkest: near-black, high contrast, stacked icons' };
+const VARIANTS = { D: 'D · Approved: workspaces + tabbed inspector + hand-off bar', A: 'A · Classic editor (rail + tabbed inspector + status bar)', B: 'B · Docks and a hand-off bar', C: 'C · Workspaces: Build / Style / Hand off' };
+
+// The example project: the Game Library from the dogfood run.
+const EL = {
+  heading: { name: 'Heading "My library"', settings: [['Text', 'My library', 'edit']], layout: null },
+  toolbar: { name: 'Row (toolbar)', settings: [], layout: [['Arrange', 'Across'], ['Space between items', '16'], ['Inner space', '16'], ['Line up', 'Centre'], ['Spread', 'Space between'], ['Wrap onto new lines', 'No']] },
+  status: { name: 'Select "All statuses"', settings: [['Size', 'Default']], agent: ['The current choice', 'What happens when it changes'] },
+  search: { name: 'Text field "Filter by title"', settings: [['Placeholder', 'Filter by title', 'edit']], agent: ['The current text', 'What happens as you type'] },
+  add: { name: 'Button "Add game"', settings: [['Style', 'Main'], ['Size', 'Default'], ['Text', 'Add game', 'edit']], note: 1, opens: 'Dialog "Add a game"' },
+  grid: { name: 'Grid (library)', settings: [], layout: [['Columns', '4'], ['Space between items', '16'], ['Inner space', '16']], holds: 'Repeated list: one Card per game' },
+  card: { name: 'Card (one per game)', inside: 'Repeated list', settings: [['Style', 'Default']], layout: [['Inner space', '12']], values: ['Title', 'Platform', 'Hours played', 'Status'] },
+};
+const LAYERS = [
+  [0, 'Page width', null], [1, 'Column (page)', null], [2, 'Agent component: SiteNav', null, 'agent'], [2, 'Heading "My library"', 'heading'],
+  [2, 'Row (toolbar)', 'toolbar'], [3, 'Select "All statuses"', 'status'], [3, 'Text field "Filter by title"', 'search'], [3, 'Button "Add game"', 'add'],
+  [3, 'Dialog "Add a game"', null], [2, 'Grid (library)', 'grid'], [3, '🔒 Shows sometimes: "Nothing here yet"', null, 'agent'],
+  [3, '🔒 Repeated list', null, 'agent'], [4, 'Card (one per game)', 'card'], [5, 'Title · Agent value', null, 'agent'],
+];
+const GAMES = [['Hades', 'PC', 62, 'Completed'], ['The Legend of Zelda: TotK', 'Switch', 110, 'Playing'], ['Elden Ring', 'PS5', 145, 'Completed'], ['Celeste', 'Switch', 14, 'Completed'],
+  ["Baldur's Gate 3", 'PC', 38, 'Playing'], ['Starfield', 'Xbox', 9, 'Dropped'], ['Hollow Knight', 'PC', 0, 'Backlog'], ['God of War Ragnarök', 'PS5', 3, 'Backlog']];
+const THEME = [
+  ['Colours', [['Main colour', '#6d4bd6', '#a78bfa'], ['Text on main colour', '#ffffff', '#1b1b1b'], ['Background', '#ffffff', '#161616'], ['Text', '#1f1f1f', '#eeeeee'], ['Card background', '#ffffff', '#1f1f1f'], ['Muted text', '#888888', '#9a9a9a'], ['Danger', '#d93636', '#f06060']]],
+  ['Sizes', [['Corner radius', '0.5rem'], ['Card corners', 'Follows Corner radius'], ['Button corners', 'Follows Corner radius'], ['Spacing step', '0.25rem'], ['Base text size', '1rem'], ['Border width', '1px']]],
+];
+const NOTES = [['Build', 'Grid (library)', 'Show my games from mock data, one card each', 'Done in round 1'], ['Behaviour', 'Button "Add game"', 'Opens the Add a game form', 'Open'], ['Question', 'Grid (stats)', 'Should the stats count Dropped games?', 'Open']];
+
+// ---------- small renderers shared by variants ----------
+
+const IC = {
+  build: '<path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM14 11v6M11 14h6"/>',
+  style: '<path d="M4 16c3 0 3-3 5-5l6-6 2 2-6 6c-2 2-2 5-5 5"/>',
+  handoff: '<path d="M3 10l14-6-5 14-3-6z M9 12l8-8"/>',
+  undo: '<path d="M7 7H13a4 4 0 010 8H8M7 7l3-3M7 7l3 3"/>',
+  redo: '<path d="M13 7H7a4 4 0 000 8h5M13 7l-3-3M13 7l-3 3"/>',
+  edit: '<path d="M5 3l10 6-4 1 3 5-2 1-3-5-3 3z"/>',
+  try: '<path d="M6 4l10 6-10 6z"/>',
+  desktop: '<path d="M3 4h14v9H3zM7 17h6M10 13v4"/>',
+  tablet: '<path d="M5 3h10v14H5zM9 15h2"/>',
+  mobile: '<path d="M7 3h6v14H7zM9.5 15h1"/>',
+  side: '<path d="M2 5h8v8H2zM12 5h4v7h-4zM17.5 6h1v5h-1"/>',
+  light: '<circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/>',
+  dark: '<path d="M15 12.5A6 6 0 017.5 5a6 6 0 107.5 7.5z"/>',
+  more: '<circle cx="5" cy="10" r=".8"/><circle cx="10" cy="10" r=".8"/><circle cx="15" cy="10" r=".8"/>',
+};
+const ic = (k) => `<span class="ic"><svg viewBox="0 0 20 20">${IC[k]}</svg></span>`;
+const tb = (k, label) => `<span class="tb">${ic(k)}<span class="lbl">${label}</span></span>`;
+
+const h = (s) => s; // template helper
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function seg(id, opts, cur) { return `<span class="seg" data-seg="${id}">${opts.map(([v, l, i]) => `<button data-act="${id}:${v}" class="${v === cur ? 'on' : ''}" ${i ? `data-tip="${l}" aria-label="${l}"` : ''}>${i ? tb(i, l) : l}</button>`).join('')}</span>`; }
+const openNotes = () => NOTES.filter((n) => n[3] === 'Open').length;
+
+function canvasBar(extra = '') {
+  return `<div class="canvasbar">
+    ${seg('mode', [['edit', 'Edit', 'edit'], ['try', 'Try it', 'try']], S.mode)}
+    <span class="sep"></span>
+    ${seg('width', [['desktop', 'Desktop', 'desktop'], ['tablet', 'Tablet', 'tablet'], ['mobile', 'Mobile', 'mobile'], ['all', 'Side by side', 'side']], S.width)}
+    <span class="sep"></span>
+    <span class="sub">App theme</span>${seg('apptheme', [['light', 'Light mode', 'light'], ['dark', 'Dark mode', 'dark']], S.appTheme)}
+    ${extra}<span class="grow"></span><span class="sub crumb">Library · /</span></div>`;
+}
+function appPage(w) {
+  const sel = (k) => (S.mode === 'edit' && S.sel === k ? ' sel-on' : '');
+  const lab = (k) => (S.mode === 'edit' && S.sel === k ? `<span class="elabel">${esc(EL[k].name)}</span><span class="handle" style="left:-5px;top:-5px"></span><span class="handle" style="right:-5px;bottom:-5px"></span>` : '');
+  const cards = GAMES.map(([t, p, hrs, st], i) => `<div class="card${i === 0 ? sel('card') : ''}" ${i === 0 ? 'data-el="card"' : 'data-el="card"'}>${i === 0 ? lab('card') : ''}<b>${esc(t)}</b><small>${p}</small><span>${hrs} hours played</span><span class="tag${st === 'Backlog' || st === 'Dropped' ? ' alt' : ''}">${st}</span></div>`).join('');
+  return `<div class="app">
+    <div class="nav"><span class="on">Library</span><span>Stats</span></div>
+    <h1 data-el="heading" class="${sel('heading')}">${lab('heading')}My library</h1>
+    <div class="tool${sel('toolbar')}" data-el="toolbar">${lab('toolbar')}
+      <div class="sel${sel('status')}" data-el="status">${lab('status')}All statuses ▾</div>
+      <div class="input${sel('search')}" data-el="search">${lab('search')}Filter by title</div>
+      <div class="cta${sel('add')}" data-el="add">${lab('add')}Add game${S.mode === 'edit' && w === 'desktop' ? '<span class="pin">1</span>' : ''}</div>
+    </div>
+    <div class="grid agentbox${sel('grid')}" data-el="grid">${S.sel === 'grid' && S.mode === 'edit' ? lab('grid') : '<span class="alabel">🔒 Repeated list</span>'}${cards}</div>
+  </div>`;
+}
+function frames(maxW, maxH) {
+  const sizes = { desktop: [1280, 'desktop · 1280px'], tablet: [768, 'tablet · 768px'], mobile: [390, 'mobile · 390px'] };
+  const list = S.width === 'all' ? ['desktop', 'tablet', 'mobile'] : [S.width];
+  const gap = 16, avail = maxW - gap * (list.length - 1);
+  const total = list.reduce((a, k) => a + sizes[k][0], 0);
+  const scale = Math.min(1, avail / total);
+  return `<div class="frames${S.mode === 'edit' ? ' editing' : ''}">${list.map((k) => {
+    const [w, cap] = sizes[k];
+    const sw = Math.round(w * scale);
+    return `<div style="width:${sw}px"><div class="framecap">${cap} · ${Math.round(scale * 100)}%</div>
+      <div style="width:${sw}px;height:${Math.round(maxH)}px;overflow:hidden">
+      <div class="frame${S.appTheme === 'dark' ? ' dark' : ''}${k === 'tablet' ? ' narrow' : ''}${k === 'mobile' ? ' tiny' : ''}" style="width:${w}px;min-height:${Math.round(maxH / scale)}px;transform:scale(${scale})">${appPage(k)}</div></div></div>`;
+  }).join('')}</div>`;
+}
+function veil() {
+  return S.withAgent ? `<div class="veil"><div><b>Agent is working · round ${S.round}</b>The canvas can't be edited while your agent works on the ${openNotes()} tasks. Press Take back when it's done.</div></div>` : '';
+}
+function layersList() {
+  return LAYERS.map(([d, label, key, cls]) => `<div class="layer${key && S.sel === key ? ' on' : ''}${cls === 'agent' ? ' agent' : ''}" ${key ? `data-sel="${key}"` : ''} style="padding-left:${12 + d * 14}px">${esc(label)}</div>`).join('');
+}
+function pagesList() {
+  return `<div class="layer on">Library <span class="sub">/</span></div><div class="layer">Stats <span class="sub">/stats</span></div>
+    <div class="row"><button class="btn">Add page</button><button class="btn ghost">Rename</button><button class="btn ghost">Delete</button></div>`;
+}
+function addPanel() {
+  const groups = [['Layout', ['Column', 'Row', 'Grid', 'Page width', 'Push apart']], ['Inputs', ['Button', 'Text field', 'Text box', 'Select', 'Checkbox', 'Switch', 'Form']], ['Display', ['Card', 'Badge', 'Avatar', 'Table', 'Tabs', 'Separator']], ['Overlays', ['Dialog', 'Side panel', 'Menu', 'Pop-up message']], ['Navigation', ['Sidebar']]];
+  return groups.map(([g, items]) => `<h3>${g}</h3><div class="pal">${items.map((i) => `<div title="Drag onto the canvas"><i></i>${i}</div>`).join('')}</div>`).join('');
+}
+function elementPanel() {
+  const e = EL[S.sel];
+  if (!e) return `<div class="empty">Click an element on the canvas to change it.</div>`;
+  const rows = (list) => list.map(([k, v, kind]) => `<label>${k}</label><div class="field">${esc(v)}${kind === 'edit' ? '' : ' <span class="sub">▾</span>'}</div>`).join('');
+  return `<div style="padding:12px 12px 4px"><div class="title">${esc(e.name)}</div>
+      ${e.inside ? `<div class="hint" style="padding:4px 0 0">Inside agent code (<span style="color:var(--agent)">🔒 ${e.inside}</span>): you can change how it looks; it can't be moved out or deleted.</div>` : ''}
+      ${e.holds ? `<div class="hint" style="padding:4px 0 0">Holds agent code: <span style="color:var(--agent)">🔒 ${e.holds}</span></div>` : ''}</div>
+    <div class="row"><button class="btn" ${e.inside ? 'disabled' : ''}>Move up</button><button class="btn" ${e.inside ? 'disabled' : ''}>Move down</button><button class="btn" ${e.inside ? 'disabled' : ''}>Delete</button>${e.opens ? '<button class="btn ghost">Open "Add a game"</button>' : ''}</div>
+    ${e.settings.length ? `<h3>Settings</h3><div class="kv">${rows(e.settings)}</div>` : ''}
+    ${e.layout ? `<h3>Layout</h3><div class="kv">${rows(e.layout)}</div>` : ''}
+    ${e.agent ? `<h3>Agent controls <span class="badge">set by agent code</span></h3><div class="kv">${e.agent.map((a) => `<label>${a}</label><div class="field ro">from agent code</div>`).join('')}</div>` : ''}
+    ${e.values ? `<h3>Agent values</h3><div class="hint">${e.values.join(' · ')} are filled in by agent code.</div>` : ''}`;
+}
+function notesFor(only) {
+  const list = only ? NOTES.filter((n) => n[1] === EL[S.sel]?.name) : NOTES;
+  return `${list.map(([t, on, text, st]) => `<div style="padding:8px 12px;border-bottom:1px solid #262626"><span class="pill" style="background:#3b2a52;color:#e5d4ff">${t}</span> <span class="sub">${esc(on)}</span><div style="margin-top:4px">${esc(text)}</div><div class="sub" style="font-size:12px">${st}</div></div>`).join('') || '<div class="empty">No notes on this element.</div>'}
+    <div style="padding:10px 12px"><div class="sub" style="margin-bottom:6px">New note on ${esc(EL[S.sel]?.name ?? 'the selected element')}</div>
+    <div class="field" style="margin-bottom:6px">Build ▾</div><div class="field ro" style="margin-bottom:6px">What should the agent do?</div><button class="btn">Add note</button></div>
+    ${only ? '' : `<h3>Notes without an element (1)</h3><div class="hint">It was on Button "Add game (old)". <button class="btn ghost">Attach to selected element</button> <button class="btn ghost">Delete</button></div>`}`;
+}
+function themePanel() {
+  return THEME.map(([g, list]) => `<h3>${g}${g === 'Colours' ? '<span class="grow"></span><span style="width:90px">Light mode</span><span style="width:84px">Dark mode</span>' : ''}</h3>${list.map(([n, a, b]) => g === 'Colours'
+    ? `<div class="row"><span class="grow">${n}</span><span style="width:90px;display:flex;gap:6px;align-items:center"><span class="swatch" style="background:${a}"></span>${a}</span><span style="width:84px;display:flex;gap:6px;align-items:center"><span class="swatch" style="background:${b}"></span>${b}</span></div>`
+    : `<div class="row"><span class="grow">${n}</span><span class="field" style="min-width:160px">${a}</span></div>`).join('')}`).join('') + '<div class="hint">Card corners follows Corner radius. <button class="btn ghost">Set its own value</button></div>';
+}
+function offThemePanel() {
+  return `<div style="padding:8px 12px;border-bottom:1px solid #262626"><div><b>Badge "Dropped"</b> <span class="sub">colour set by hand: #ff3b30</span></div>
+    <div class="sub">Closest theme value: Danger (#d93636)</div>
+    <div class="row" style="padding:6px 0 0"><button class="btn">Use theme value</button><button class="btn">Add to theme</button><button class="btn ghost">Leave as is</button></div></div>
+    <div class="hint">One value is set by hand instead of coming from the theme.</div>`;
+}
+function workPanel() {
+  if (S.withAgent) return `<div class="empty">The agent's work shows here after Take back.</div>`;
+  return `<div style="padding:12px"><div class="title">Agent's work · round ${S.round - 1}</div></div>
+    <div class="row"><span class="dot"></span>The app builds</div>
+    <div class="row">Tasks done: 3 of 3 · 2 replies from the agent</div>
+    <div class="row">Rules the agent broke: 0 · Fixed by Skeleton: 0</div>
+    <div class="row">Elements added: 6 · removed: 0</div>
+    <div class="row"><span class="badge">🔒 New agent code (2)</span> Shows sometimes, Repeated list</div>
+    <div class="row"><button class="btn">Undo the agent's work (round ${S.round - 1})…</button></div>
+    <div class="hint">Changed files and the exact code changes are under Advanced.</div>`;
+}
+function handoffBox(compact) {
+  if (S.withAgent) return `<span class="pill"><span class="dot agent"></span>Agent is working · round ${S.round}</span><button class="btn primary" data-act="takeback">Take back</button>`;
+  return `<span class="pill"><span class="dot"></span>With you · round ${S.round}</span>${compact ? '' : `<span class="sub">${openNotes()} open notes go to the agent as tasks</span>`}<button class="btn primary" data-act="handoff"><span class="tb">${ic('handoff')}<span>Hand off</span></span></button>`;
+}
+function advancedDrawer() {
+  if (!S.drawer) return '';
+  return `<div class="drawer"><div class="tabs"><button class="on">App preview</button><button>Show code</button><button>About</button><span class="grow"></span><button data-act="drawer">Close ✕</button></div>
+    <div class="row"><span class="dot"></span>Your app is running <span class="sub">http://127.0.0.1:41369/</span><span class="grow"></span><button class="btn">Stop</button><button class="btn">Restart</button></div>
+    <div class="log">Starting Vite on port 41369…<br>  ➜ Local: http://127.0.0.1:41369/<br>9:55:39 PM [vite] (client) hmr update /src/pages/HomePage.tsx<br>9:55:41 PM [vite] (client) hmr update /src/styles/globals.css</div></div>`;
+}
+function toast() { return S.toast ? `<div class="toast">${esc(S.toast)}</div>` : ''; }
+function undoRedo() { return `<button class="btn ghost" data-tip="Undo Change Style of Button 'Add game' (Ctrl+Z)">${tb('undo', 'Undo')}</button><button class="btn ghost" data-tip="Nothing to redo" disabled>${tb('redo', 'Redo')}</button>`; }
+const ICON = {
+  add: '<svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>',
+  layers: '<svg viewBox="0 0 20 20"><path d="M10 3l7 4-7 4-7-4zM3 11l7 4 7-4"/></svg>',
+  pages: '<svg viewBox="0 0 20 20"><path d="M5 3h7l3 3v11H5zM12 3v3h3"/></svg>',
+  notes: '<svg viewBox="0 0 20 20"><path d="M4 4h12v9H9l-4 3v-3H4z"/></svg>',
+};
+
+// ---------- Variant A: classic editor ----------
+function variantA() {
+  const left = { add: ['Add', addPanel()], layers: ['Layers', layersList()], pages: ['Pages', pagesList()], notes: ['Notes', notesFor(false)] }[S.railA];
+  const tab = { element: elementPanel(), theme: themePanel(), offtheme: offThemePanel(), work: workPanel() }[S.tabA];
+  return `
+  <div class="bar"><span class="title">Game Library</span><span class="sep"></span>${undoRedo()}<span class="grow"></span>${handoffBox(false)}</div>
+  <div style="flex:1;display:flex;min-height:0">
+    <div class="rail">${['add', 'layers', 'pages', 'notes'].map((k) => `<button data-act="railA:${k}" class="${S.railA === k ? 'on' : ''}" title="${k[0].toUpperCase() + k.slice(1)}">${ICON[k]}</button>`).join('')}</div>
+    <div class="panel" style="width:260px;border-right:1px solid var(--line)"><h3>${left[0]}</h3><div class="scroll">${left[1]}</div></div>
+    <div class="canvas">${canvasBar()}${frames(1440 - 48 - 260 - 300 - 40, 900 - 44 - 26 - 44 - 60)}${veil()}</div>
+    <div class="panel" style="width:300px;border-left:1px solid var(--line)">
+      <div class="tabs">${[['element', 'Element'], ['theme', 'Theme'], ['offtheme', 'Off-theme (1)'], ['work', "Agent's work"]].map(([k, l]) => `<button data-act="tabA:${k}" class="${S.tabA === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="scroll" style="flex:1">${tab}</div></div>
+  </div>
+  <div class="status"><span><span class="dot" style="display:inline-block"></span> Your app is running</span><span>${S.withAgent ? 'Agent is working' : 'With you'} · round ${S.round}</span><span>${openNotes()} open notes</span><span>1 off-theme value</span><span class="grow"></span><button data-act="drawer">Advanced ▴</button></div>
+  ${advancedDrawer()}${toast()}`;
+}
+
+// ---------- Variant B: docks + hand-off bar ----------
+function variantB() {
+  return `
+  <div class="bar"><span class="title">Game Library</span><span class="sep"></span>${undoRedo()}<span class="sep"></span>
+    <button class="btn${S.themePop ? ' primary' : ''}" data-act="themePop">Theme</button><span class="grow"></span><button class="btn ghost" data-act="drawer" title="App preview, code, about">⋯ Advanced</button></div>
+  <div style="flex:1;display:flex;min-height:0">
+    <div class="panel" style="width:250px;border-right:1px solid var(--line)">
+      <h3>Layers</h3><div class="scroll" style="flex:1">${layersList()}</div>
+      <div class="divider"></div><h3>Pages</h3>${pagesList()}</div>
+    <div class="canvas">
+      ${canvasBar(`<span class="sep"></span><button class="btn primary" data-act="addPop">＋ Add</button>`)}
+      ${frames(1440 - 250 - 320 - 40, 900 - 44 - 44 - 56 - 60)}
+      <div class="bar" style="border-top:1px solid var(--line);border-bottom:0;background:var(--raised);min-height:56px">${handoffBox(false)}<span class="grow"></span>${S.withAgent ? '' : `<button class="btn ghost">Review the agent's work (round ${S.round - 1})</button>`}</div>
+      ${veil()}
+      ${S.addPop ? `<div class="pop" style="left:20px;top:46px;width:330px;max-height:560px;overflow:auto"><div class="row"><b class="grow">Add</b><button class="btn ghost" data-act="addPop">✕</button></div>${addPanel()}</div>` : ''}
+      ${S.themePop ? `<div class="pop" style="left:20px;top:10px;width:420px;max-height:640px;overflow:auto"><div class="tabs"><button class="on">Theme</button><button>Off-theme (1)</button><span class="grow"></span><button data-act="themePop">✕</button></div>${themePanel()}<div class="divider"></div><h3>Off-theme</h3>${offThemePanel()}</div>` : ''}
+    </div>
+    <div class="panel" style="width:320px;border-left:1px solid var(--line)"><div class="scroll" style="flex:1">${elementPanel()}<div class="divider"></div><h3>Notes on this element</h3>${notesFor(true)}</div></div>
+  </div>
+  ${advancedDrawer()}${toast()}`;
+}
+
+// ---------- Variant C: workspaces ----------
+function variantC() {
+  let left, right;
+  if (S.ws === 'build') {
+    left = `<div class="tabs">${[['add', 'Add'], ['layers', 'Layers']].map(([k, l]) => `<button data-act="wsLeft:${k}" class="${S.wsLeft === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="scroll" style="flex:1">${S.wsLeft === 'add' ? addPanel() : layersList()}</div>`;
+    right = `<div class="scroll" style="flex:1">${elementPanel()}</div>`;
+  } else if (S.ws === 'style') {
+    left = `<h3>Theme</h3><div class="scroll" style="flex:1">${themePanel()}</div>`;
+    right = `<h3>Off-theme (1)</h3><div class="scroll" style="flex:1">${offThemePanel()}<div class="divider"></div><h3>Handles</h3><div class="hint">Drag a handle on the selected element. Reach: All buttons · hold Shift for the whole theme · Alt for just this one.</div></div>`;
+  } else {
+    left = `<h3>Notes · ${openNotes()} open</h3><div class="scroll" style="flex:1">${notesFor(false)}</div>`;
+    right = `<div class="bigcta">${S.withAgent ? `<div class="title">Agent is working · round ${S.round}</div><div class="sub" style="margin:4px 0 10px">Run your agent on the project, then take it back here.</div><button class="btn primary" data-act="takeback">Take back</button>` : `<div class="title">With you · round ${S.round}</div><div class="sub" style="margin:4px 0 10px">${openNotes()} open notes go to the agent as tasks.</div><button class="btn primary" data-act="handoff"><span class="tb">${ic('handoff')}<span>Hand off</span></span></button>`}</div><div class="scroll" style="flex:1">${workPanel()}</div>`;
+  }
+  return `
+  <div class="bar"><span class="title">Game Library</span><span class="pill">Page: Library ▾</span><span class="grow"></span>
+    <span class="ws">${[['build', 'Build'], ['style', 'Style'], ['handoff', 'Hand off']].map(([k, l]) => `<button data-act="ws:${k}" class="${S.ws === k ? 'on' : ''}">${l}</button>`).join('')}</span>
+    <span class="grow"></span>${undoRedo()}<span class="pill"><span class="dot${S.withAgent ? ' agent' : ''}"></span>${S.withAgent ? 'Agent is working' : 'With you'}</span></div>
+  <div style="flex:1;display:flex;min-height:0">
+    <div class="panel" style="width:280px;border-right:1px solid var(--line)">${left}</div>
+    <div class="canvas">${canvasBar()}${frames(1440 - 280 - 320 - 40, 900 - 44 - 26 - 44 - 60)}${veil()}</div>
+    <div class="panel" style="width:320px;border-left:1px solid var(--line)">${right}</div>
+  </div>
+  <div class="status"><span>${{ build: 'Build: add and arrange elements', style: 'Style: theme values and off-theme fixes', handoff: 'Hand off: notes, the agent, and its work' }[S.ws]}</span><span class="grow"></span><button data-act="drawer">Advanced ▴</button></div>
+  ${advancedDrawer()}${toast()}`;
+}
+
+
+// ---------- Variant D: C's workspaces + A's tabbed inspector + B's hand-off bar ----------
+function variantD() {
+  let left;
+  if (S.ws === 'build') left = `<div class="tabs">${[['add', 'Add'], ['layers', 'Layers']].map(([k, l]) => `<button data-act="wsLeft:${k}" class="${S.wsLeft === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="scroll" style="flex:1">${S.wsLeft === 'add' ? addPanel() : layersList()}</div>`;
+  else if (S.ws === 'style') left = `<h3>Layers</h3><div class="scroll" style="flex:1">${layersList()}</div><div class="divider"></div><div class="hint">Pick an element, then drag its handles on the canvas. Reach: All buttons · Shift for the whole theme · Alt for just this one.</div>`;
+  else left = `<h3>Notes · ${openNotes()} open</h3><div class="scroll" style="flex:1">${notesFor(false)}</div>`;
+  const tab = { element: elementPanel() + '<div class="divider"></div><h3>Notes on this element</h3>' + notesFor(true), theme: themePanel(), offtheme: offThemePanel(), work: workPanel() }[S.tabD];
+  return `
+  <div class="bar"><span class="title">Game Library</span><span class="pill">Page: Library ▾</span><span class="grow"></span>
+    <span class="ws">${[['build', 'Build'], ['style', 'Style'], ['handoff', 'Hand off']].map(([k, l]) => `<button data-act="wsD:${k}" class="${S.ws === k ? 'on' : ''}">${tb(k, l)}</button>`).join('')}</span>
+    <span class="grow"></span>${undoRedo()}<button class="btn ghost" data-act="menuD" data-tip="More: app preview, code, about" aria-label="More">${ic('more')}</button></div>
+  ${S.menuD ? `<div class="pop" style="right:10px;top:44px;width:220px;padding:6px"><div class="layer" data-act="drawer">App preview and log</div><div class="layer" data-act="drawer">Show code</div><div class="layer" data-act="drawer">About Skeleton</div></div>` : ''}
+  <div style="flex:1;display:flex;min-height:0">
+    <div class="panel" style="width:270px;border-right:1px solid var(--line)">${left}</div>
+    <div class="canvas">${canvasBar()}${frames(1440 - 270 - 330 - 40, 900 - 44 - 26 - 44 - 56 - 60)}
+      <div class="bar" style="border-top:1px solid var(--line);border-bottom:0;background:var(--raised);min-height:56px">${handoffBox(false)}<span class="grow"></span>${S.withAgent ? '' : `<button class="btn ghost" data-act="tabD:work">Review the agent's work (round ${S.round - 1})</button>`}</div>
+      ${veil()}</div>
+    <div class="panel" style="width:330px;border-left:1px solid var(--line)">
+      <div class="tabs">${[['element', 'Element'], ['theme', 'Theme'], ['offtheme', 'Off-theme (1)'], ['work', "Agent's work"]].map(([k, l]) => `<button data-act="tabD:${k}" class="${S.tabD === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="scroll" style="flex:1">${tab}</div></div>
+  </div>
+  <div class="status"><span><span class="dot" style="display:inline-block"></span> Your app is running</span><span>${{ build: 'Build: add and arrange elements', style: 'Style: theme values, handles and off-theme fixes', handoff: 'Hand off: notes for the agent, and reviewing its work' }[S.ws]}</span><span class="grow"></span><span>Advanced is under ⋯</span></div>
+  ${advancedDrawer()}${toast()}`;
+}
+
+// ---------- wiring ----------
+const win = document.getElementById('win');
+function render() {
+  win.className = 'st-' + S.style;
+  win.innerHTML = variantD();
+  document.getElementById('vlbl').textContent = STYLES[S.style];
+}
+function fit() {
+  const st = document.getElementById('stage');
+  const s = Math.min((st.clientWidth - 32) / 1440, (st.clientHeight - 40) / 900, 1.2);
+  win.style.transform = `scale(${s})`;
+}
+function setVariant(v) {
+  S.style = v; S.drawer = false; S.menuD = false;
+  try { history.replaceState(null, '', '#' + v); } catch (e) { /* hash is optional */ }
+  render();
+}
+function say(t) { S.toast = t; render(); clearTimeout(say.t); say.t = setTimeout(() => { S.toast = null; render(); }, 2200); }
+win.addEventListener('click', (ev) => {
+  const a = ev.target.closest('[data-act]');
+  if (a) {
+    const [k, v] = a.dataset.act.split(':');
+    if (k === 'mode') S.mode = v;
+    else if (k === 'width') S.width = v;
+    else if (k === 'apptheme') S.appTheme = v;
+    else if (k === 'railA') S.railA = v;
+    else if (k === 'tabA') S.tabA = v;
+    else if (k === 'ws') S.ws = v;
+    else if (k === 'wsD') { S.ws = v; S.tabD = { build: 'element', style: 'theme', handoff: 'work' }[v]; }
+    else if (k === 'tabD') S.tabD = v;
+    else if (k === 'wsLeft') S.wsLeft = v;
+    else if (k === 'drawer') { S.drawer = !S.drawer; S.menuD = false; }
+    else if (k === 'menuD') S.menuD = !S.menuD;
+    else if (k === 'addPop') { S.addPop = !S.addPop; S.themePop = false; }
+    else if (k === 'themePop') { S.themePop = !S.themePop; S.addPop = false; }
+    else if (k === 'handoff') { S.withAgent = true; return say(`Handed off: round ${S.round}, ${openNotes()} tasks for the agent`); }
+    else if (k === 'takeback') { S.withAgent = false; S.round += 1; if (S.variant === 'A') S.tabA = 'work'; if (S.variant === 'C') S.ws = 'handoff'; if (S.variant === 'D') S.tabD = 'work'; return say("Taken back. The agent's work is ready to review."); }
+    return render();
+  }
+  if (S.withAgent) return;
+  const pick = ev.target.closest('[data-sel], [data-el]');
+  if (!pick) return;
+  if (S.mode === 'try' && pick.dataset.el) return say('Try it: the app behaves as it will for its users. Switch to Edit to select.');
+  S.sel = pick.dataset.sel || pick.dataset.el;
+  if (S.variant === 'A') S.tabA = 'element';
+  if (S.variant === 'D') S.tabD = 'element';
+  render();
+});
+document.getElementById('prev').onclick = () => setVariant({ compact: 'darkest', regular: 'compact', darkest: 'regular' }[S.style]);
+document.getElementById('next').onclick = () => setVariant({ compact: 'regular', regular: 'darkest', darkest: 'compact' }[S.style]);
+addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('input, textarea, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+  if (e.key === 'ArrowRight') document.getElementById('next').click();
+});
+addEventListener('resize', fit);
+addEventListener('hashchange', () => { const v = location.hash.slice(1).toLowerCase(); if (STYLES[v] && v !== S.style) setVariant(v); });
+const start = (location.hash || '#compact').slice(1).toLowerCase();
+S.style = STYLES[start] ? start : 'compact';
+render(); fit();
+</script>
