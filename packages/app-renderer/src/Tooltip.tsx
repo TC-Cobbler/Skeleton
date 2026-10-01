@@ -75,7 +75,8 @@ export function useTooltip(text: string | null | undefined, describe = true) {
         className="tooltip"
         role="tooltip"
         id={id}
-        style={{ left: shown.x, top: shown.y }}
+        // From the element's left edge, never past the window's (it's at most 280px wide).
+        style={{ left: `clamp(8px, ${shown.x}px, calc(100vw - 288px))`, top: shown.y }}
       >
         {text}
       </span>
