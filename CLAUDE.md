@@ -16,7 +16,8 @@ Read these before starting any task:
 
 - The whole loop works in the app: compose, tokens and gizmos (`docs/decisions/007`–`010`), then notes, Hand off, Take back and review (`docs/decisions/011`).
 - Its state is read from git commit subjects, never stored.
-- The dogfood found no integrity failures. Its composing friction is triaged in ROADMAP.md under **v1.0.x — Dogfood fixes**. That is the next work, but don't start it (or v1.1) until asked.
+- The dogfood found no integrity failures. Its composing friction (ROADMAP.md, **v1.0.x — Dogfood fixes**) is fixed: T7.1–T7.5, `docs/decisions/012`.
+- Next is v1.1. Don't start it until asked.
 
 ---
 

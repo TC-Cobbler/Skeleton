@@ -51,6 +51,14 @@ interface GizmoDrag {
   count: number;
 }
 
+/** A container as rendered (see layoutOf). */
+interface Layout {
+  flow: Flow;
+  container: Rect;
+  placed: (PlacedChild & { key: string })[];
+  count: number;
+}
+
 interface DropState extends DropTarget {
   container: Rect;
   indicator: Rect;
@@ -104,6 +112,15 @@ export class Overlay {
   private live: { style: HTMLStyleElement; target: Element; pending: boolean; timer: number } | null = null;
   /** Note pins to draw (T5.1). */
   private pins: NotePin[] = [];
+  /** The Dialog or Sheet whose open state the host shows (F-6), and what was last reported. */
+  private openWatch: string | null = null;
+  private lastOpen = "";
+  /** A click the overlay sends to the app itself (opening a Dialog): select mode lets it through. */
+  private passClick = false;
+  /** The text being edited on the canvas (F-5): a field over the element, outside the redrawn layer. */
+  private textEditor: { key: string; input: HTMLInputElement; original: string } | null = null;
+  /** Everything drawn per frame; the text editor sits beside it so redrawing keeps its focus. */
+  private readonly drawn: HTMLElement;
   private readonly layer: HTMLElement;
   private readonly shadow: ShadowRoot;
   private frame = 0;
@@ -117,6 +134,8 @@ export class Overlay {
     this.layer.setAttribute("aria-hidden", "true");
     this.layer.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483647;";
     this.shadow = this.layer.attachShadow({ mode: "open" });
+    this.drawn = this.doc.createElement("div");
+    this.shadow.appendChild(this.drawn);
   }
 
   start(): void {
@@ -131,6 +150,18 @@ export class Overlay {
     // suppresses mouse events until release, so a move drag would see no mousemoves.
     win.addEventListener("pointermove", (e) => this.onMove(e), { capture: true, signal });
     win.addEventListener("keydown", (e) => this.onKey(e), { capture: true, signal });
+    // Focus moving into or out of the text editor is Skeleton's, not the app's: an open
+    // modal's focus trap (Radix) would otherwise take it straight back (F-5 in F-6).
+    for (const type of ["focusin", "focusout"] as const) {
+      win.addEventListener(
+        type,
+        (e) => {
+          const input = this.textEditor?.input;
+          if (input && (e.composedPath().includes(input) || e.relatedTarget === this.layer)) e.stopImmediatePropagation();
+        },
+        { capture: true, signal },
+      );
+    }
     win.addEventListener(
       "keyup",
       (e) => {
@@ -202,7 +233,10 @@ export class Overlay {
       case "tree":
         this.index = new NodeIndex(msg.file, msg.version, msg.nodes);
         if (this.selected && !msg.nodes.some((n) => n.key === this.selected)) this.selected = null;
+        // The edited element is gone or the page changed under it: the edit is off.
+        if (this.textEditor) this.closeTextEditor(false);
         this.reportMapped(true);
+        this.reportOpen();
         break;
       case "select":
         // An echo of this frame's own click must not scroll the page under the cursor;
@@ -217,7 +251,10 @@ export class Overlay {
         break;
       case "mode":
         this.mode = msg.mode;
-        if (msg.mode === "interact") this.setHover(null);
+        if (msg.mode === "interact") {
+          this.setHover(null);
+          this.closeTextEditor(false);
+        }
         break;
       case "theme":
         this.doc.documentElement.classList.toggle("dark", msg.dark);
@@ -251,6 +288,15 @@ export class Overlay {
       case "pins":
         this.pins = msg.pins;
         break;
+      case "text-editor":
+        if (this.mode === "select") this.openTextEditor(msg.key, msg.text);
+        break;
+      case "open":
+        this.openWatch = msg.key;
+        this.lastOpen = "";
+        if (msg.key !== null && msg.open !== null) this.setOpen(msg.key, msg.open);
+        this.reportOpen();
+        break;
       case "gizmo-done":
         if (!msg.ok) this.clearLive();
         else if (this.live) {
@@ -276,7 +322,7 @@ export class Overlay {
    * the node being moved or anything inside it), and the index among its children
    * from their rendered positions along the container's flow. Near that container's
    * edge, along its parent's flow, the drop goes beside it in the parent instead
-   * (F-1, F-4), if the parent takes drops too.
+   * (F-1, F-4, see besideAt), if the parent takes drops too.
    */
   private dropAt(x: number, y: number, moving: string | null): DropState | null {
     if (!this.index || !this.doc.body) return null;
@@ -289,16 +335,8 @@ export class Overlay {
       if (!node?.drop || inMoving(key)) continue;
       const inside = this.layoutOf(node, moving);
       if (!inside) continue;
-      const parentKey = parentKeyOf(key);
-      const parent = this.node(parentKey);
-      const outside = parent?.drop && parentKey !== null && !inMoving(parentKey) ? this.layoutOf(parent, moving) : null;
-      const own = outside?.placed.find((c) => c.key === key);
-      const side = outside && own ? besideSide(outside.flow, inside.container, x, y) : null;
-      if (outside && own && side && parentKey !== null) {
-        const index = own.index + (side === "after" ? 1 : 0);
-        const { rect } = indicatorRect(outside.flow, outside.container, outside.placed, index);
-        return { parentKey, index, container: outside.container, indicator: rect, fill: false, beside: { key, side } };
-      }
+      const beside = this.besideAt(key, inside, x, y, moving);
+      if (beside) return beside;
       const index = dropIndex(inside.flow, inside.placed, x, y, inside.count);
       const { rect, fill } = indicatorRect(inside.flow, inside.container, inside.placed, index);
       return { parentKey: key, index, container: inside.container, indicator: rect, fill, beside: null };
@@ -307,10 +345,37 @@ export class Overlay {
   }
 
   /**
+   * A drop beside the container at `key`, or beside one of its ancestors, innermost
+   * first: their edges often coincide (a Card's header spans the Card's width, so its
+   * right edge is the Card's). Each is judged in its own parent, which must take drops.
+   */
+  private besideAt(key: string, layout: Layout, x: number, y: number, moving: string | null): DropState | null {
+    const inMoving = (k: string) => moving !== null && (k === moving || k.startsWith(`${moving}.`));
+    let at = key;
+    let own = layout;
+    for (;;) {
+      const parentKey = parentKeyOf(at);
+      const parent = this.node(parentKey);
+      if (parentKey === null || !parent?.drop || inMoving(parentKey)) return null;
+      const outside = this.layoutOf(parent, moving);
+      const child = outside?.placed.find((c) => c.key === at);
+      if (!outside || !child) return null;
+      const side = besideSide(outside.flow, { rect: own.container, flow: own.flow, children: own.placed.map((c) => c.rect) }, x, y);
+      if (side) {
+        const index = child.index + (side === "after" ? 1 : 0);
+        const { rect } = indicatorRect(outside.flow, outside.container, outside.placed, index);
+        return { parentKey, index, container: outside.container, indicator: rect, fill: false, beside: { key: at, side } };
+      }
+      at = parentKey;
+      own = outside;
+    }
+  }
+
+  /**
    * A drop container as rendered: its flow, its box, and its children's boxes. Indexes
    * count the children as they'll be once the moved node is taken out.
    */
-  private layoutOf(node: OverlayNode, moving: string | null): { flow: Flow; container: Rect; placed: (PlacedChild & { key: string })[]; count: number } | null {
+  private layoutOf(node: OverlayNode, moving: string | null): Layout | null {
     if (!this.index || !this.doc.body) return null;
     const elements = this.index.elementsOf(node, this.doc.body, this.layer);
     const container = unionRect(elements.map(rectOf));
@@ -384,6 +449,8 @@ export class Overlay {
    * (focus can be in this frame after a click), and never to the app.
    */
   private onKey(event: KeyboardEvent): void {
+    // Typing in the text editor is text, not shortcuts (it handles Enter and Escape).
+    if (this.textEditor && event.composedPath().includes(this.textEditor.input)) return;
     if (event.key === "Escape") {
       this.cancelMove();
       this.cancelGizmo();
@@ -395,10 +462,10 @@ export class Overlay {
     }
     if (this.mode !== "select") return;
     const mod = event.ctrlKey || event.metaKey;
-    if (!isShortcut(event.key, mod)) return;
+    if (!isShortcut(event.key, mod, event.altKey)) return;
     event.preventDefault();
     event.stopPropagation();
-    this.post({ source: "skeleton-overlay", type: "key", key: event.key, mod, shift: event.shiftKey });
+    this.post({ source: "skeleton-overlay", type: "key", key: event.key, mod, shift: event.shiftKey, alt: event.altKey });
   }
 
   /** The nearest node at or above `node` that can be moved (a drag on a wrapped element moves its block). */
@@ -456,7 +523,9 @@ export class Overlay {
   }
 
   private onPointer(event: Event): void {
-    if (this.mode !== "select") return;
+    if (this.mode !== "select" || this.passClick) return;
+    // The text editor is Skeleton's own field: it takes its clicks (caret, selection).
+    if (this.textEditor && event.composedPath().includes(this.textEditor.input)) return;
     // In select mode the app never sees the pointer (so buttons don't fire and
     // menus don't open); a click selects instead.
     event.preventDefault();
@@ -491,6 +560,11 @@ export class Overlay {
       this.press = null;
       this.moving = null;
       this.endDrag();
+      return;
+    }
+    if (event.type === "dblclick") {
+      const node = this.target(event);
+      if (node) this.post({ source: "skeleton-overlay", type: "text-request", key: node.key });
       return;
     }
     if (event.type !== "click") return;
@@ -785,6 +859,101 @@ export class Overlay {
     this.post({ source: "skeleton-overlay", type: "mapped", version: this.index.version, boxes });
   }
 
+  /**
+   * Edit the node's text in place (F-5): a field over the element, in its font, so the
+   * app's own DOM is never touched (React owns it). Enter or leaving the field commits,
+   * Escape cancels; the host writes it with setText.
+   */
+  private openTextEditor(key: string, text: string): void {
+    this.closeTextEditor(false);
+    const node = this.node(key);
+    const el = node && this.index && this.doc.body ? this.index.elementsOf(node, this.doc.body, this.layer)[0] : undefined;
+    if (!node || !el) return;
+    const cs = this.options.win.getComputedStyle(el);
+    const input = this.doc.createElement("input");
+    input.type = "text";
+    input.value = text;
+    input.setAttribute("data-text-editor", "");
+    input.setAttribute("aria-label", `Text of ${labelOf(node)}`);
+    input.style.cssText =
+      `position:fixed;box-sizing:border-box;margin:0;pointer-events:auto;z-index:1;` +
+      `font:${cs.font};letter-spacing:${cs.letterSpacing};text-align:${cs.textAlign};color:${cs.color};` +
+      `padding:${cs.padding};background:Canvas;border:0;border-radius:2px;outline:2px solid ${COLORS.selected};outline-offset:0`;
+    this.textEditor = { key, input, original: text };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.closeTextEditor(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.closeTextEditor(false);
+      }
+    });
+    input.addEventListener("blur", () => this.closeTextEditor(true));
+    this.shadow.appendChild(input);
+    this.placeTextEditor();
+    input.focus();
+    input.select();
+  }
+
+  /** Keep the editor over its element as the page scrolls or reflows. */
+  private placeTextEditor(): void {
+    const editor = this.textEditor;
+    if (!editor) return;
+    const node = this.node(editor.key);
+    const rect = node ? unionRect(this.rects(node)) : null;
+    if (!rect) return;
+    const s = editor.input.style;
+    s.left = `${rect.x}px`;
+    s.top = `${rect.y}px`;
+    s.width = `${Math.max(rect.width, 80)}px`;
+    s.height = `${rect.height}px`;
+  }
+
+  private closeTextEditor(commit: boolean): void {
+    const editor = this.textEditor;
+    if (!editor) return;
+    this.textEditor = null;
+    const text = editor.input.value;
+    editor.input.remove();
+    if (commit && text !== editor.original) this.post({ source: "skeleton-overlay", type: "text-commit", key: editor.key, text });
+  }
+
+  /** The trigger of the Dialog or Sheet at `key` (Radix marks it), if it's on screen. */
+  private triggerOf(key: string): HTMLElement | null {
+    const node = this.node(key);
+    if (!node || !this.index || !this.doc.body) return null;
+    for (const el of this.index.elementsOf(node, this.doc.body, this.layer)) {
+      const trigger = el.matches(DIALOG_TRIGGER) ? el : el.querySelector(DIALOG_TRIGGER);
+      if (trigger instanceof HTMLElement) return trigger;
+    }
+    return null;
+  }
+
+  /** Open or close a Dialog or Sheet the way the app would: by clicking its trigger (F-6). */
+  private setOpen(key: string, open: boolean): void {
+    const trigger = this.triggerOf(key);
+    if (!trigger || (trigger.getAttribute("aria-expanded") === "true") === open) return;
+    this.passClick = true;
+    try {
+      trigger.click();
+    } finally {
+      this.passClick = false;
+    }
+  }
+
+  /** Tell the host whether the watched Dialog or Sheet is open, if that changed. */
+  private reportOpen(): void {
+    const key = this.openWatch;
+    if (key === null || !this.index) return;
+    const trigger = this.triggerOf(key);
+    const open = trigger ? trigger.getAttribute("aria-expanded") === "true" : null;
+    const signature = `${this.index.version} ${key} ${open}`;
+    if (signature === this.lastOpen) return;
+    this.lastOpen = signature;
+    this.post({ source: "skeleton-overlay", type: "open-state", key, open });
+  }
+
   /** Tell the host what each token affects now, if that changed. */
   private reportCounts(): void {
     if (!this.tokens || !this.doc.body) return;
@@ -799,6 +968,7 @@ export class Overlay {
     if (this.remap) {
       if (this.index) this.reportMapped(false);
       this.reportCounts();
+      this.reportOpen();
       this.remap = false;
     }
     const parts: string[] = [];
@@ -874,7 +1044,8 @@ export class Overlay {
       const at = place(c.x, c.y >= 18 ? c.y - 18 : c.y, text);
       parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${COLORS.drop}">${escapeHtml(text)}</div>`);
     }
-    this.shadow.innerHTML =
+    this.placeTextEditor();
+    this.drawn.innerHTML =
       `<style>.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
       `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}` +
       `.label[data-grab]{pointer-events:auto;cursor:grab}` +
@@ -970,6 +1141,9 @@ export class Overlay {
     win.addEventListener("popstate", report, { signal });
   }
 }
+
+/** What Radix renders a Dialog's or Sheet's trigger as. */
+const DIALOG_TRIGGER = '[aria-haspopup="dialog"][aria-expanded]';
 
 const PIN_COLOURS = { build: "#2563eb", behaviour: "#16a34a", question: "#d97706", resolved: "#71717a" };
 

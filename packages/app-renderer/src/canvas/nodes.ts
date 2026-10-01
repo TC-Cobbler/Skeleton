@@ -105,3 +105,48 @@ export function refFor(nodes: KeyedNode[], key: string): { ref: NodeRef } | { re
   if (parent.id) return { ref: { parentId: parent.id, index: Number(key.slice(key.lastIndexOf(".") + 1)) } };
   return { reason: "Neither it nor its parent has a data-ui-id." };
 }
+
+/**
+ * Where Move up / Move down takes the node at `key` (F-2): one place earlier or later
+ * among its siblings, or why it can't go. The index counts the siblings with the node
+ * taken out, as `move` does: "down" goes to index + 1, after the next sibling.
+ */
+export function reorderTarget(nodes: KeyedNode[], key: string, direction: "up" | "down"): { parentKey: string; index: number } | { reason: string } {
+  const node = nodes.find((n) => n.key === key)?.node;
+  const parentKey = parentKeyOf(key);
+  const parent = parentKey === null ? null : (nodes.find((n) => n.key === parentKey)?.node ?? null);
+  if (!node || parentKey === null || !parent) return { reason: "The page's root element can't be moved." };
+  if (!canMove(node, parent)) return { reason: `It's inside 🔒 ${parent.name}: edit it in place.` };
+  if (!parent.id) return { reason: `${parent.name} has no data-ui-id.` };
+  const from = Number(key.slice(key.lastIndexOf(".") + 1));
+  if (direction === "up") return from > 0 ? { parentKey, index: from - 1 } : { reason: "It's already first." };
+  return from < parent.children.length - 1 ? { parentKey, index: from + 1 } : { reason: "It's already last." };
+}
+
+/** Palette overlays whose content isn't on the canvas while they're closed (F-6). */
+const OPENABLE = new Set(["Dialog", "Sheet"]);
+
+/**
+ * The Dialog or Sheet the node at `key` is, or is inside: the one "Open in canvas"
+ * opens (F-6). Null when there's none.
+ */
+export function openableFor(nodes: KeyedNode[], key: string | null): string | null {
+  for (let k = key; k !== null; k = parentKeyOf(k)) {
+    const node = nodes.find((n) => n.key === k)?.node;
+    if (node?.element && OPENABLE.has(node.name)) return k;
+  }
+  return null;
+}
+
+/** Plain elements that can't hold text. */
+const VOID = new Set(["area", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
+
+/**
+ * Can `setText` edit this element's text (T3.5, and on the canvas, F-5)? It needs an ID,
+ * no child elements or expressions, and to be something that holds text: a palette
+ * element whose schema takes text, or a plain non-void element.
+ */
+export function textEditable(node: UiNode, schema: ElementSchema | null): boolean {
+  if (node.kind === "locked" || !node.element || node.id === null) return false;
+  return node.children.length === 0 && (schema ? schema.children === "text" : !VOID.has(node.name));
+}

@@ -11,12 +11,18 @@ export interface SelectionPanelProps {
   /** Agent code a delete would take with it; shown for confirmation when set. */
   confirming: string[] | null;
   onDelete: () => void;
+  /** Why the selection can't move up / down among its siblings, or null if it can (F-2). */
+  cannotMove: { up: string | null; down: string | null };
+  onMove: (direction: "up" | "down") => void;
+  /** The Dialog or Sheet the selection is or is in, and whether it's open on the canvas (null: unknown, F-6). */
+  openable: { name: string; open: boolean | null } | null;
+  onToggleOpen: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-/** The selected element: what it is, its agent logic, and deleting it (T3.4). */
-export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete, confirming, onDelete, onConfirm, onCancel }: SelectionPanelProps) {
+/** The selected element: what it is, its agent logic, reordering it (F-2) and deleting it (T3.4). */
+export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete, confirming, onDelete, cannotMove, onMove, openable, onToggleOpen, onConfirm, onCancel }: SelectionPanelProps) {
   return (
     <section aria-label="Selection" data-testid="selection">
       <h2>Selection</h2>
@@ -46,8 +52,28 @@ export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete,
       )}
       {node && (
         <div className="row actions">
+          <button type="button" onClick={() => onMove("up")} disabled={cannotMove.up !== null} title={cannotMove.up ?? "Move up (Alt+↑)"} data-testid="move-up">
+            Move up
+          </button>
+          <button type="button" onClick={() => onMove("down")} disabled={cannotMove.down !== null} title={cannotMove.down ?? "Move down (Alt+↓)"} data-testid="move-down">
+            Move down
+          </button>
           <button type="button" onClick={onDelete} disabled={cannotDelete !== null} title={cannotDelete ?? "Delete (Del)"}>
             Delete
+          </button>
+        </div>
+      )}
+      {node && openable && (
+        <div className="row actions">
+          <button
+            type="button"
+            aria-pressed={openable.open === true}
+            disabled={openable.open === null}
+            title={openable.open === null ? `Its trigger isn't on the canvas: the app opens this ${openable.name} some other way.` : "Opens it the way the app does, by its trigger; the code doesn't change."}
+            onClick={onToggleOpen}
+            data-testid="open-in-canvas"
+          >
+            {openable.open ? `Close ${openable.name}` : `Open ${openable.name} in canvas`}
           </button>
         </div>
       )}

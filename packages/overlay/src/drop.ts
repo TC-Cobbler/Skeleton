@@ -54,21 +54,35 @@ export function dropIndex(flow: Flow, placed: PlacedChild[], x: number, y: numbe
 export const BESIDE = 8;
 
 /**
- * Is the point in the band at the start or end of `rect` along `flow` (the flow of the
- * rect's parent)? Then a drop goes before or after it instead of into it (F-1, F-4).
+ * Is the point in the band at the start or end of a container along `parentFlow`?
+ * Then a drop goes before or after it in its parent instead of into it (F-1, F-4).
  * Rows and grids use the left and right edges, columns the top and bottom. The band is
- * at most a quarter of the rect, so a small container still has a middle to drop into.
+ * at most a quarter of the container, so a small one still has a middle to drop into.
+ *
+ * When the container lays its own children out along the same axis (a column in a
+ * column), its edge is also "first" or "last" inside it, so the band only counts
+ * where no child is under the point (the container's own padding). Across axes (a row
+ * in a column, a column in a grid) "into" has nothing to say at that edge.
  */
-export function besideSide(flow: Flow, rect: Rect, x: number, y: number, band = BESIDE): "before" | "after" | null {
-  const vertical = flow === "vertical";
+export function besideSide(
+  parentFlow: Flow,
+  container: { rect: Rect; flow: Flow; children: Rect[] },
+  x: number,
+  y: number,
+  band = BESIDE,
+): "before" | "after" | null {
+  const { rect } = container;
+  const vertical = parentFlow === "vertical";
   const start = vertical ? rect.y : rect.x;
   const size = vertical ? rect.height : rect.width;
   const at = vertical ? y : x;
   const edge = Math.min(band, size / 4);
   if (edge <= 0) return null;
-  if (at < start + edge) return "before";
-  if (at >= start + size - edge) return "after";
-  return null;
+  const side = at < start + edge ? "before" : at >= start + size - edge ? "after" : null;
+  if (side === null) return null;
+  const sameAxis = container.flow === "grid" || (container.flow === "vertical") === vertical;
+  const overChild = container.children.some((c) => x >= c.x && x < c.x + c.width && y >= c.y && y < c.y + c.height);
+  return sameAxis && overChild ? null : side;
 }
 
 const LINE = 2;

@@ -28,6 +28,20 @@ body,
 }
 body {
   overflow: hidden;
+  /* Skeleton's chrome is controls, not a document: a drag that starts outside the
+     canvas mustn't select its headings and buttons (F-3). */
+  user-select: none;
+}
+/* What's worth copying stays selectable: text fields, code and diffs, the dev-server
+   log, and error messages. */
+input,
+textarea,
+[contenteditable],
+code,
+pre,
+.log,
+.error {
+  user-select: text;
 }
 main {
   box-sizing: border-box;

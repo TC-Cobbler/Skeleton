@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ElementSchema, UiNode } from "@skeleton/app-main/ipc";
-import { acceptsDrop, agentLogicIn, canMove, flatten, parentKeyOf, refFor, toOverlayNodes } from "../src/canvas/nodes.js";
+import { acceptsDrop, agentLogicIn, canMove, flatten, openableFor, parentKeyOf, refFor, reorderTarget, textEditable, toOverlayNodes } from "../src/canvas/nodes.js";
 
 const range = { start: 0, end: 1, startLine: 1, endLine: 1 };
 const n = (over: Partial<UiNode>): UiNode => ({
@@ -105,5 +105,75 @@ describe("refFor and agentLogicIn (T3.4)", () => {
     expect(agentLogicIn(at("0.1"))).toEqual(["🔒 map (.map() loop)"]);
     expect(agentLogicIn(at("0.2"))).toEqual(["🔒 OrdersTable #ui_ord01 (custom component)"]);
     expect(agentLogicIn(at("0.3"))).toEqual([]);
+  });
+});
+
+describe("reorderTarget (F-2)", () => {
+  const tree = {
+    roots: [
+      n({
+        id: "ui_root0",
+        children: [
+          n({ id: "ui_a0000" }),
+          n({ id: "ui_b0000" }),
+          n({ kind: "locked", name: "map", element: false, lockReason: ".map() loop", children: [n({ id: "ui_row00" })] }),
+        ],
+      }),
+    ],
+    rootError: null,
+  };
+  const nodes = flatten(tree);
+
+  it("moves one place among the siblings, counting them with the node taken out", () => {
+    expect(reorderTarget(nodes, "0.1", "up")).toEqual({ parentKey: "0", index: 0 });
+    expect(reorderTarget(nodes, "0.1", "down")).toEqual({ parentKey: "0", index: 2 });
+    expect(reorderTarget(nodes, "0.0", "down")).toEqual({ parentKey: "0", index: 1 });
+    // A locked block moves as a unit.
+    expect(reorderTarget(nodes, "0.2", "up")).toEqual({ parentKey: "0", index: 1 });
+  });
+
+  it("says why not at the ends, at the root, inside a locked block, or without a parent ID", () => {
+    expect(reorderTarget(nodes, "0.0", "up")).toEqual({ reason: "It's already first." });
+    expect(reorderTarget(nodes, "0.2", "down")).toEqual({ reason: "It's already last." });
+    expect(reorderTarget(nodes, "0", "up")).toHaveProperty("reason");
+    expect(reorderTarget(nodes, "0.2.0", "up")).toHaveProperty("reason");
+    const noId = flatten({ roots: [n({ children: [n({ id: "ui_a0000" }), n({ id: "ui_b0000" })] })], rootError: null });
+    expect(reorderTarget(noId, "0.1", "up")).toEqual({ reason: "div has no data-ui-id." });
+  });
+});
+
+describe("openableFor (F-6)", () => {
+  const nodes = flatten({
+    roots: [
+      n({
+        id: "ui_root0",
+        children: [
+          n({ kind: "palette", name: "Dialog", id: "ui_dlg00", children: [n({ kind: "palette", name: "DialogTrigger" }), n({ kind: "palette", name: "DialogContent", children: [n({ id: "ui_in000" })] })] }),
+          n({ kind: "palette", name: "Sheet", id: "ui_sht00" }),
+          n({ id: "ui_out00" }),
+        ],
+      }),
+    ],
+    rootError: null,
+  });
+
+  it("finds the Dialog or Sheet the node is or is inside", () => {
+    expect(openableFor(nodes, "0.0")).toBe("0.0");
+    expect(openableFor(nodes, "0.0.1.0")).toBe("0.0");
+    expect(openableFor(nodes, "0.1")).toBe("0.1");
+    expect(openableFor(nodes, "0.2")).toBeNull();
+    expect(openableFor(nodes, null)).toBeNull();
+  });
+});
+
+describe("textEditable (T3.5, F-5)", () => {
+  it("takes elements that hold only text, with an ID", () => {
+    expect(textEditable(n({ name: "h1", id: "ui_h1000", text: "Hi" }), null)).toBe(true);
+    expect(textEditable(n({ kind: "palette", name: "Button", id: "ui_btn00", text: "Go" }), elements.Button)).toBe(true);
+    expect(textEditable(n({ name: "h1", id: null, text: "Hi" }), null)).toBe(false);
+    expect(textEditable(n({ name: "img", id: "ui_img00" }), null)).toBe(false);
+    expect(textEditable(n({ kind: "primitive", name: "Stack", id: "ui_s0001" }), elements.Stack)).toBe(false);
+    expect(textEditable(n({ name: "p", id: "ui_p0000", children: [n({ kind: "locked", name: "expression", element: false })] }), null)).toBe(false);
+    expect(textEditable(n({ kind: "locked", name: "p", id: "ui_p0001", lockReason: "custom component" }), null)).toBe(false);
   });
 });

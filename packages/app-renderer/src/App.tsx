@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppInfo, EditHistory, EditIntent, NoteOp, NoteView, ProjectInfo, TokenWrite, UiNode, ViolationItem } from "@skeleton/app-main/ipc";
-import type { DropTarget, GizmoCommit } from "@skeleton/overlay/protocol";
+import { isShortcut, type DropTarget, type GizmoCommit } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas, type GizmoContext, type PreviewLayout } from "./Canvas.js";
 import { COLOUR_GROUP } from "./colour.js";
 import { ColourPanel, type ColourChip } from "./ColourPanel.js";
 import { useCanvasDrag } from "./canvas/drag.js";
-import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
+import { agentLogicIn, openableFor, parentKeyOf, refFor, reorderTarget, textEditable, type NodeRef } from "./canvas/nodes.js";
 import { PropertiesPanel } from "./PropertiesPanel.js";
 import { SelectionPanel } from "./SelectionPanel.js";
 import { Toasts, useToasts } from "./Toasts.js";
@@ -292,6 +292,21 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     }
     edit({ op: "move", ref: r.ref, newParentId: dest.id, index: target.index });
   };
+  // Compose inside a closed Dialog or Sheet (F-6): open it on the canvas with its own trigger.
+  const openable = openableFor(page.nodes, selected);
+  const [openState, setOpenState] = useState<{ key: string; open: boolean | null } | null>(null);
+  const [openRequest, setOpenRequest] = useState<{ key: string; open: boolean } | null>(null);
+  const openableOpen = openable !== null && openState?.key === openable ? openState.open : null;
+  // Move up / Move down (F-2): the same move, one place among the siblings.
+  const reorder = (key: string, direction: "up" | "down"): string | null => {
+    const r = reorderTarget(page.nodes, key, direction);
+    return "reason" in r ? r.reason : null;
+  };
+  const reorderNode = (key: string, direction: "up" | "down") => {
+    const r = reorderTarget(page.nodes, key, direction);
+    if ("reason" in r) return;
+    moveNode(key, r);
+  };
   // Deleting (T3.4): straight away for layout Skeleton placed; agent code needs a confirm.
   const [confirmDelete, setConfirmDelete] = useState<{ key: string; logic: string[] } | null>(null);
   useEffect(() => setConfirmDelete(null), [selected]);
@@ -361,9 +376,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     }
   }, [checkPage, pages.list, current]);
 
-  const onShortcut = (key: string, mod: boolean, shift: boolean) => {
+  const onShortcut = (key: string, mod: boolean, shift: boolean, alt: boolean) => {
     if (withAgent) return;
     if ((key === "Delete" || key === "Backspace") && !mod && selected) requestDelete(selected);
+    else if (alt && (key === "ArrowUp" || key === "ArrowDown") && selected) reorderNode(selected, key === "ArrowUp" ? "up" : "down");
     else if (mod && (key === "z" || key === "Z")) historyStep(shift ? "redo" : "undo");
     else if (mod && (key === "y" || key === "Y")) historyStep("redo");
   };
@@ -375,9 +391,9 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       // Text fields keep their own keys, undo included.
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       const mod = e.ctrlKey || e.metaKey;
-      if (e.key === "Delete" || e.key === "Backspace" || (mod && ["z", "Z", "y", "Y"].includes(e.key))) {
+      if (isShortcut(e.key, mod, e.altKey)) {
         e.preventDefault();
-        latestShortcut.current(e.key, mod, e.shiftKey);
+        latestShortcut.current(e.key, mod, e.shiftKey, e.altKey);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -573,6 +589,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
               cannotDelete={selected ? deletion(selected).reason : null}
               confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
               onDelete={() => selected && requestDelete(selected)}
+              cannotMove={selected ? { up: reorder(selected, "up"), down: reorder(selected, "down") } : { up: null, down: null }}
+              onMove={(direction) => selected && reorderNode(selected, direction)}
+              openable={openable ? { name: page.nodes.find((n) => n.key === openable)?.node.name ?? "Dialog", open: openableOpen } : null}
+              onToggleOpen={() => openable && setOpenRequest({ key: openable, open: openableOpen !== true })}
               onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
               onCancel={() => setConfirmDelete(null)}
             />
@@ -630,6 +650,18 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           setInspectorTab("notes");
         }}
         withAgent={withAgent ? (loop.status?.handoff?.number ?? 0) : null}
+        openWatch={openable}
+        openRequest={openRequest}
+        onOpenState={(key, open) => setOpenState({ key, open })}
+        onTextRequest={(key) => {
+          const node = page.nodes.find((n) => n.key === key)?.node;
+          if (withAgent || !node || !textEditable(node, palette.palette?.elements[node.name] ?? null)) return null;
+          return node.text ?? "";
+        }}
+        onTextCommit={(key, text) => {
+          const id = page.nodes.find((n) => n.key === key)?.node.id;
+          if (id && !withAgent) edit({ op: "setText", id, text });
+        }}
       />
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       {canvasDrag.drag && (

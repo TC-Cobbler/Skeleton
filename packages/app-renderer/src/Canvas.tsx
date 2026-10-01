@@ -34,7 +34,7 @@ export interface CanvasEvents {
   /** A node was dragged to a new place on the canvas (T3.3). */
   onMove?: (key: string, target: DropTarget) => void;
   /** A Skeleton shortcut pressed while the canvas had focus. */
-  onKey?: (key: string, mod: boolean, shift: boolean) => void;
+  onKey?: (key: string, mod: boolean, shift: boolean, alt: boolean) => void;
   /** How many elements on the page each token affects (T4.2), while `tokenUsage` is set. */
   onTokenCounts?: (counts: Record<string, number>) => void;
   /** A gizmo drag was released (T4.4): write this, then answer through `gizmoDone`. */
@@ -43,6 +43,12 @@ export interface CanvasEvents {
   onColourChip?: (chip: { key: string; utility: string; token: string; alt: boolean }) => void;
   /** A note pin was clicked (T5.1). */
   onPin?: (key: string) => void;
+  /** Whether the watched Dialog or Sheet is open on the canvas; null: no trigger on screen (F-6). */
+  onOpenState?: (key: string, open: boolean | null) => void;
+  /** A double-click on the node at `key` (F-5): its source text if it can be edited on the canvas, else null. */
+  onTextRequest?: (key: string) => string | null;
+  /** Its text was edited on the canvas. */
+  onTextCommit?: (key: string, text: string) => void;
 }
 
 /** What the selected element's gizmos can do (T4.3). */
@@ -94,6 +100,10 @@ export interface CanvasProps extends CanvasEvents {
   pins: NotePin[];
   /** With the agent (T5.2): the canvas is veiled and takes no input; shows this handoff. */
   withAgent: number | null;
+  /** The Dialog or Sheet whose open state to report (F-6), or null. */
+  openWatch: string | null;
+  /** Open or close it on the canvas; a new object is sent to the frames. */
+  openRequest: { key: string; open: boolean } | null;
 }
 
 /**
@@ -238,6 +248,7 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "token-highlight", name: p.tokenHighlight });
           if (p.gizmos) post({ source: "skeleton-host", type: "gizmos", ...p.gizmos });
           post({ source: "skeleton-host", type: "pins", pins: p.pins });
+          post({ source: "skeleton-host", type: "open", key: p.openWatch, open: null });
           p.onLocation?.(msg.pathname);
           break;
         }
@@ -263,7 +274,7 @@ function CanvasFrame(props: FrameProps) {
           p.onMove?.(msg.key, msg.target);
           break;
         case "key":
-          p.onKey?.(msg.key, msg.mod, msg.shift);
+          p.onKey?.(msg.key, msg.mod, msg.shift, msg.alt);
           break;
         case "token-counts":
           if (p.primary) p.onTokenCounts?.(msg.counts);
@@ -276,6 +287,18 @@ function CanvasFrame(props: FrameProps) {
           break;
         case "pin":
           p.onPin?.(msg.key);
+          break;
+        case "text-request": {
+          // Only the frame that asked edits.
+          const text = p.onTextRequest?.(msg.key) ?? null;
+          if (text !== null) post({ source: "skeleton-host", type: "text-editor", key: msg.key, text });
+          break;
+        }
+        case "text-commit":
+          p.onTextCommit?.(msg.key, msg.text);
+          break;
+        case "open-state":
+          if (p.primary) p.onOpenState?.(msg.key, msg.open);
           break;
       }
     };
@@ -299,6 +322,10 @@ function CanvasFrame(props: FrameProps) {
   }, [props.gizmoDone]);
   useEffect(() => post({ source: "skeleton-host", type: "preview", css: props.preview }), [props.preview]);
   useEffect(() => post({ source: "skeleton-host", type: "pins", pins: props.pins }), [props.pins]);
+  useEffect(() => post({ source: "skeleton-host", type: "open", key: props.openWatch, open: null }), [props.openWatch]);
+  useEffect(() => {
+    if (props.openRequest) post({ source: "skeleton-host", type: "open", key: props.openRequest.key, open: props.openRequest.open });
+  }, [props.openRequest]);
   // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
   // Skeleton's window, so the overlay doesn't see the key itself.
   useEffect(() => {

@@ -295,6 +295,22 @@ describe("Overlay", () => {
     expect(target()).toEqual({ parentKey: "0", index: 0 });
     expect(label()).toContain("Before Dialog in div #ui_root0");
 
+    // Edges that coincide: aimed at the right edge of an inner container (the trigger,
+    // made a container here) in the middle of its height, the drop goes beside the
+    // nearest ancestor whose parent's flow runs that way. The div is a row now.
+    const nested = editable.map((n) => (n.key === "0.0.0" ? { ...n, drop: true } : n));
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: nested });
+    ($("#root-div") as HTMLElement).style.cssText = "display:flex;flex-direction:row";
+    document.elementFromPoint = () => $("#trigger");
+    send({ source: "skeleton-host", type: "drag", x: 97, y: 20, moving: null, seq: 5 });
+    expect(target()).toEqual({ parentKey: "0", index: 1 });
+    expect(label()).toContain("After Dialog in div #ui_root0");
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 20, moving: null, seq: 6 });
+    expect(target()).toMatchObject({ parentKey: "0.0.0" });
+    ($("#root-div") as HTMLElement).style.cssText = "";
+    document.elementFromPoint = () => $(".inner");
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: editable });
+
     // The parent doesn't take drops: the edge goes into the container, as before.
     const lockedParent = editable.map((n) => (n.key === "0" ? { ...n, drop: false } : n));
     send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: lockedParent });
@@ -432,13 +448,99 @@ describe("Overlay", () => {
     expect(press("z", { metaKey: true, shiftKey: true })).toBe(true);
     expect(press("a")).toBe(false);
     expect(press("z")).toBe(false);
+    expect(press("ArrowUp", { altKey: true })).toBe(true);
+    expect(press("ArrowUp")).toBe(false);
     expect(sent.filter((m) => m.type === "key")).toEqual([
-      { source: "skeleton-overlay", type: "key", key: "Delete", mod: false, shift: false },
-      { source: "skeleton-overlay", type: "key", key: "z", mod: true, shift: true },
+      { source: "skeleton-overlay", type: "key", key: "Delete", mod: false, shift: false, alt: false },
+      { source: "skeleton-overlay", type: "key", key: "z", mod: true, shift: true, alt: false },
+      { source: "skeleton-overlay", type: "key", key: "ArrowUp", mod: false, shift: false, alt: true },
     ]);
     send({ source: "skeleton-host", type: "mode", mode: "interact" });
     expect(press("Backspace")).toBe(false);
-    expect(sent.filter((m) => m.type === "key")).toHaveLength(2);
+    expect(sent.filter((m) => m.type === "key")).toHaveLength(3);
+  });
+
+  it("opens and closes a Dialog by its own trigger, even in select mode, and reports it (F-6)", async () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    // A Radix trigger: it says what it opens and whether it's open.
+    const trigger = $("#trigger") as HTMLElement;
+    trigger.setAttribute("aria-haspopup", "dialog");
+    trigger.setAttribute("aria-expanded", "false");
+    const appClick = vi.fn(() => trigger.setAttribute("aria-expanded", String(trigger.getAttribute("aria-expanded") !== "true")));
+    trigger.addEventListener("click", appClick);
+    const states = () => sent.filter((m) => m.type === "open-state");
+    const settle = async () => {
+      await Promise.resolve(); // the MutationObserver
+      flush();
+    };
+
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: null });
+    expect(states().at(-1)).toEqual({ source: "skeleton-overlay", type: "open-state", key: "0.0", open: false });
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: true });
+    expect(appClick).toHaveBeenCalledOnce();
+    await settle();
+    expect(states().at(-1)).toMatchObject({ key: "0.0", open: true });
+    // Already open: nothing to click.
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: true });
+    expect(appClick).toHaveBeenCalledOnce();
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: false });
+    expect(appClick).toHaveBeenCalledTimes(2);
+    await settle();
+    expect(states().at(-1)).toMatchObject({ key: "0.0", open: false });
+    // The user's own clicks still select, and don't reach the app.
+    trigger.click();
+    expect(appClick).toHaveBeenCalledTimes(2);
+    // No trigger on screen: null.
+    send({ source: "skeleton-host", type: "open", key: "0.1", open: true });
+    expect(states().at(-1)).toMatchObject({ key: "0.1", open: null });
+  });
+
+  it("edits text in place on a double-click the host allows, never touching the app's DOM (F-5)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    const trigger = $("#trigger") as HTMLElement;
+    trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "text-request", key: "0.0.0" });
+
+    const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
+    const editor = () => shadow.querySelector<HTMLInputElement>("[data-text-editor]");
+    const key = (k: string) => {
+      const e = new KeyboardEvent("keydown", { key: k, bubbles: true, composed: true, cancelable: true });
+      editor()?.dispatchEvent(e);
+      return e;
+    };
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    expect(editor()?.value).toBe("Open");
+    expect(shadow.activeElement).toBe(editor());
+    // Redrawing the layer keeps the field (and its focus).
+    flush();
+    expect(editor()).not.toBeNull();
+    // Delete is a character here, not Skeleton's shortcut.
+    const before = sent.length;
+    key("Delete");
+    expect(sent.length).toBe(before);
+    // Escape cancels.
+    (editor() as HTMLInputElement).value = "Changed";
+    key("Escape");
+    expect(editor()).toBeNull();
+    expect(sent.length).toBe(before);
+    expect(trigger.textContent).toBe("Open");
+
+    // Enter commits a change, once.
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    (editor() as HTMLInputElement).value = "Open orders";
+    key("Enter");
+    expect(editor()).toBeNull();
+    expect(sent.slice(before)).toEqual([{ source: "skeleton-overlay", type: "text-commit", key: "0.0.0", text: "Open orders" }]);
+    expect(trigger.textContent).toBe("Open");
+    // Unchanged text commits nothing; a new tree closes the editor.
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    key("Enter");
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    expect(editor()).toBeNull();
+    expect(sent.filter((m) => m.type === "text-commit")).toHaveLength(1);
   });
 
   it("only accepts same-origin paths to navigate to", async () => {

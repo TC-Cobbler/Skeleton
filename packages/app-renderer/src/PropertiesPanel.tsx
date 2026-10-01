@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ClassGroup, EditIntent, ElementSchema, PropSchema, UiNode } from "@skeleton/app-main/ipc";
+import { textEditable } from "./canvas/nodes.js";
 
 type PropValue = string | number | boolean | null;
 
@@ -10,9 +11,6 @@ export interface PropertiesPanelProps {
   layout: { stack: ClassGroup[]; grid: ClassGroup[] } | null;
   onEdit: (edit: EditIntent) => void;
 }
-
-/** Plain elements that can't hold text. */
-const VOID = new Set(["area", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
 
 /**
  * Properties of the selected element (T3.5): its schema props, text content and, for
@@ -29,7 +27,7 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
       </section>
     );
   }
-  const textEditable = node.children.length === 0 && (schema ? schema.children === "text" : !VOID.has(node.name));
+  const hasText = textEditable(node, schema);
   const groups = schema?.layout === "stack" ? layout?.stack : schema?.layout === "grid" ? layout?.grid : undefined;
   const classNameProtected = node.protectedProps.includes("className");
   const classes = typeof node.props["className"] === "string" ? node.props["className"].split(/\s+/).filter(Boolean) : [];
@@ -54,7 +52,7 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
           )}
         </div>
       )}
-      {textEditable && (
+      {hasText && (
         <div className="prop-grid">
           <Row label="Text">
             <TextInput label="Text" value={node.text ?? ""} onCommit={(text) => onEdit({ op: "setText", id, text })} />
