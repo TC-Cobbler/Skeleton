@@ -3,6 +3,7 @@
 // derived from the project's IDs, never stored (ADR 011).
 
 import { isUiId, type Random } from "./ids.js";
+import type { Reason } from "./reasons.js";
 
 export type NoteType = "build" | "behaviour" | "question";
 export type NoteStatus = "open" | "resolved";
@@ -41,9 +42,12 @@ export interface NotesFile {
 }
 
 export class NotesError extends Error {
-  constructor(message: string) {
+  readonly reason: Reason | null;
+
+  constructor(message: string, options?: { reason?: Reason }) {
     super(message);
     this.name = "NotesError";
+    this.reason = options?.reason ?? null;
   }
 }
 

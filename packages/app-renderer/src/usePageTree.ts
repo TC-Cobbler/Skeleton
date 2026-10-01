@@ -3,12 +3,13 @@ import type { ElementSchema, PageView } from "@skeleton/app-main/ipc";
 import type { OverlayNode } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import { flatten, toOverlayNodes, type KeyedNode } from "./canvas/nodes.js";
+import { messageFor, type Message } from "./messages.js";
 
 export interface PageTreeState {
   tree: PageView | null;
   nodes: KeyedNode[];
   overlayNodes: OverlayNode[];
-  error: string | null;
+  error: Message | null;
   /** Re-parse from disk (after an HMR update or an external change). */
   reload: () => void;
 }
@@ -21,7 +22,7 @@ const NO_ELEMENTS: Record<string, ElementSchema> = {};
  */
 export function usePageTree(projectRoot: string, file: string | null, elements: Record<string, ElementSchema> = NO_ELEMENTS): PageTreeState {
   const [tree, setTree] = useState<PageView | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export function usePageTree(projectRoot: string, file: string | null, elements: 
         setError(null);
       },
       (err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(messageFor(err));
       },
     );
     return () => {

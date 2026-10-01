@@ -517,8 +517,8 @@ button.danger {
 .toast {
   pointer-events: none;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-left-width: 4px;
@@ -533,8 +533,24 @@ button.danger {
 .toast-warning {
   border-left-color: #d97706;
 }
-.toast button {
+.toast button,
+.toast details {
   pointer-events: auto;
+}
+.toast-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.message-details summary {
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.message-details pre {
+  white-space: pre-wrap;
+  max-height: 12rem;
+  overflow: auto;
+  user-select: text;
 }
 .toast-text {
   flex: 1;

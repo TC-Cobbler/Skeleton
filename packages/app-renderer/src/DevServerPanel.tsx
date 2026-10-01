@@ -1,5 +1,6 @@
 import type { DevServer } from "./useDevServer.js";
 import { copy } from "./copy.js";
+import { MessageText } from "./Toasts.js";
 
 /** A project's Vite server: state, URL, start/stop and its log (T1.3). */
 export function DevServerPanel({ server }: { server: DevServer }) {
@@ -22,7 +23,7 @@ export function DevServerPanel({ server }: { server: DevServer }) {
           {copy.devServer.stop}
         </button>
       </header>
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {status?.lastError && (
         <p className="error" data-testid="devserver-error">
           {status.lastError}

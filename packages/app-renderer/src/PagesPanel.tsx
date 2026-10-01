@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import type { PageEntry, PageIntent, PageList } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { messageFor, messageForReason, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
 /** The project's pages, read from its router; refreshed when the app updates. */
-export function usePages(projectRoot: string, revision: number): { list: PageList | null; error: string | null } {
+export function usePages(projectRoot: string, revision: number): { list: PageList | null; error: Message | null } {
   const [list, setList] = useState<PageList | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("project:pages", { projectRoot }).then(
@@ -15,7 +17,7 @@ export function usePages(projectRoot: string, revision: number): { list: PageLis
         setList(next);
         setError(null);
       },
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -26,7 +28,7 @@ export function usePages(projectRoot: string, revision: number): { list: PageLis
 
 export interface PagesPanelProps {
   list: PageList | null;
-  error: string | null;
+  error: Message | null;
   current: PageEntry | null;
   onOpen: (page: PageEntry) => void;
   /** Add, rename or delete a page (T3.6); resolves when it's done. */
@@ -66,8 +68,8 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
   return (
     <section aria-label={copy.pages.title} className="pages">
       <h2>{copy.pages.title}</h2>
-      {error && <p className="error">{error}</p>}
-      {list?.error && <p className="error">{list.error}</p>}
+      {error && <MessageText message={error} />}
+      {list?.error && <MessageText message={messageForReason({ code: "pages-unreadable", facts: {} }, list.error)} />}
       <ul role="listbox" aria-label={copy.pages.list}>
         {list?.pages.map((p, i) => {
           const why = unavailable(p);

@@ -2,19 +2,21 @@ import { useCallback, useEffect, useState } from "react";
 import type { GitDiff, LoopStatus, PassSummary } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
 export type LoopAction = "handoff" | "takeBack" | "revert";
 
 /** Where the handoff loop stands (ADR 011), and its actions. */
 export function useLoop(projectRoot: string, revision: number) {
   const [status, setStatus] = useState<LoopStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState<LoopAction | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("loop:status", { projectRoot }).then(
       (next) => !cancelled && setStatus(next),
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -30,7 +32,7 @@ export function useLoop(projectRoot: string, revision: number) {
         setStatus(next);
         return next;
       } catch (err) {
-        setError(err instanceof Error ? err.message.replace(/^loop:\w+: /, "") : String(err));
+        setError(messageFor(err));
         return null;
       } finally {
         setBusy(null);
@@ -46,7 +48,7 @@ const BUSY: Record<LoopAction, string> = copy.loop.busy;
 /** Hand off and Take back (T5.2, T5.3), with where the loop stands. */
 export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBack }: {
   status: LoopStatus | null;
-  error: string | null;
+  error: Message | null;
   busy: LoopAction | null;
   /** Open notes that will go out as tasks. */
   openNotes: number;
@@ -79,9 +81,9 @@ export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBac
       )}
       {busy && <p className="muted small" role="status">{BUSY[busy]}</p>}
       {error && (
-        <pre className="loop-error error" role="alert" data-testid="loop-error">
-          {error}
-        </pre>
+        <div className="loop-error" data-testid="loop-error">
+          <MessageText message={error} />
+        </div>
       )}
     </section>
   );
@@ -233,14 +235,14 @@ function Group({ title, count, testid, children }: { title: string; count: numbe
 /** Per-file diff of the agent's pass (T5.7): handoff → pass. */
 function Diffs({ projectRoot, from, to }: { projectRoot: string; from: string; to: string }) {
   const [diff, setDiff] = useState<GitDiff | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setDiff(null);
     call("git:diff", { projectRoot, from, to }).then(
       (d) => !cancelled && setDiff(d),
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -249,7 +251,7 @@ function Diffs({ projectRoot, from, to }: { projectRoot: string; from: string; t
   return (
     <div className="diffs" data-testid="pass-diffs">
       <h3>{copy.pass.diffTitle}</h3>
-      {error && <p className="error small">{error}</p>}
+      {error && <MessageText message={error} />}
       {diff && diff.files.length === 0 && <p className="muted small">{copy.pass.noChanges}</p>}
       <ul role="list">
         {diff?.files.map((f) => (

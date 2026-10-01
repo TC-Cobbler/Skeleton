@@ -9,7 +9,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, parseModule, sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, moveOnCanvas, placeFromPalette, waitForCanvas } from "./canvas-click.js";
-import { copy, ui } from "./ui.js";
+import { copy, say, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-compose-"));
@@ -522,7 +522,9 @@ describe("undo and redo (T3.8)", () => {
     renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
     await waitForCanvas(page, sourceVersion(outside));
     await history().getByRole("button", { name: copy.app.undo }).click();
-    await expect.poll(() => page.getByTestId("edit-error").last().textContent()).toMatch(/can't undo "Insert Badge": src\/pages\/HomePage.tsx changed since/);
+    await expect
+      .poll(() => ui(page).lastError().textContent())
+      .toBe(say({ code: "changed-since", facts: { direction: "undo", edit: "Insert Badge", page: "src/pages/HomePage.tsx" } }));
     expect(homeFile()).toBe(outside);
     expect(idOf(stackId(), "Badge")).toBeTruthy();
   });

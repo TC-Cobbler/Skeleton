@@ -15,6 +15,8 @@ import {
   NotesError,
   parseHandoff,
   readNotes,
+  reason,
+  reasonOf,
   repairIds,
   takeBackNotes,
   writeNotes,
@@ -22,6 +24,7 @@ import {
   type NoteOp,
   type NotesFile,
   type Random,
+  type Reason,
   type Snapshot,
 } from "@skeleton/core";
 import { GLOBALS_CSS } from "@skeleton/templates";
@@ -42,9 +45,12 @@ const LOOP_PATHS = ["src", "skeleton", HANDOFF_FILE];
 
 /** A loop action that can't happen now (with the agent already, duplicate IDs, …). Nothing was written. */
 export class LoopRefused extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
+  readonly reason: Reason | null;
+
+  constructor(message: string, options?: { cause?: unknown; reason?: Reason }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = "LoopRefused";
+    this.reason = options?.reason ?? reasonOf(options?.cause);
   }
 }
 
@@ -115,12 +121,12 @@ export class Loop {
 
   writeNote(projectRoot: string, op: NoteOp): Promise<NotesView> {
     return this.deps.editor.exclusive(projectRoot, async () => {
-      const reason = await this.lockReason(projectRoot);
-      if (reason) throw new LoopRefused(reason);
+      const locked = await this.lockReason(projectRoot);
+      if (locked) throw new LoopRefused(locked, { reason: reason("with-agent") });
       const file = await this.readNotesFile(projectRoot);
       const target = op.op === "add" ? op.target : op.op === "update" ? op.target : undefined;
       if (target !== undefined && !(await this.projectIds(projectRoot)).ids.has(target)) {
-        throw new LoopRefused(`${target} isn't on any element in the project`);
+        throw new LoopRefused(`${target} isn't on any element in the project`, { reason: reason("note-element-gone", { id: target }) });
       }
       let next: NotesFile;
       try {
@@ -139,16 +145,18 @@ export class Loop {
   handoff(projectRoot: string): Promise<LoopStatus> {
     return this.deps.editor.exclusive(projectRoot, async () => {
       const d = await this.refresh(projectRoot);
-      if (d.state === "with-agent") throw new LoopRefused(`The project is already with the agent (handoff #${d.handoff?.number ?? "?"}).`);
+      if (d.state === "with-agent") {
+        throw new LoopRefused(`The project is already with the agent (handoff #${d.handoff?.number ?? "?"}).`, { reason: reason("already-handed-off", { round: d.handoff?.number ?? 0 }) });
+      }
       const number = d.next;
       const work = await this.workingTree(projectRoot);
       const index = this.indexOf(work);
       if (index.duplicates.length > 0) {
         const where = index.duplicates.slice(0, 5).map((id) => `${id} (${(index.ids.get(id) ?? []).map((o) => `${o.file}:${o.line}`).join(", ")})`);
-        throw new LoopRefused(`Duplicate IDs: ${where.join("; ")}. Each element needs its own data-ui-id before handing off.`);
+        throw new LoopRefused(`Duplicate IDs: ${where.join("; ")}. Each element needs its own data-ui-id before handing off.`, { reason: reason("duplicate-ids", { where: where.join("; ") }) });
       }
       const build = await this.deps.build(projectRoot);
-      if (!build.ok) throw new LoopRefused(`The project doesn't build, so it can't be handed off:\n${build.output}`);
+      if (!build.ok) throw new LoopRefused(`The project doesn't build, so it can't be handed off:\n${build.output}`, { reason: reason("build-broken") });
 
       const baseline = d.baseline ?? (await this.deps.git.rootCommit(projectRoot));
       const changes = changesSince(await this.deps.git.snapshot(projectRoot, baseline, ["src"]), work);
@@ -171,7 +179,7 @@ export class Loop {
   takeBack(projectRoot: string): Promise<LoopStatus> {
     return this.deps.editor.exclusive(projectRoot, async () => {
       const d = await this.refresh(projectRoot);
-      if (d.state !== "with-agent" || !d.handoff) throw new LoopRefused("The project isn't with the agent: there's nothing to take back.");
+      if (d.state !== "with-agent" || !d.handoff) throw new LoopRefused("The project isn't with the agent: there's nothing to take back.", { reason: reason("not-handed-off") });
       const number = d.handoff.number;
       const handoffCommit = d.handoff.commit;
       const made = await this.deps.git.commit(projectRoot, `agent: pass #${number}`, { allowEmpty: true });
@@ -237,7 +245,7 @@ export class Loop {
   revert(projectRoot: string): Promise<LoopStatus> {
     return this.deps.editor.exclusive(projectRoot, async () => {
       const d = await this.refresh(projectRoot);
-      if (!d.pass) throw new LoopRefused("There's no pass to revert: the latest step isn't a take-back.");
+      if (!d.pass) throw new LoopRefused("There's no pass to revert: the latest step isn't a take-back.", { reason: reason("nothing-to-undo-agent") });
       const { number, handoffCommit } = d.pass;
       const git = this.deps.git;
       // Nothing is lost: work since the take-back is committed first, and the revert is a new commit.
@@ -303,7 +311,7 @@ export class Loop {
     try {
       return readNotes(text);
     } catch (cause) {
-      if (cause instanceof NotesError) throw new LoopRefused(`${NOTES_FILE} can't be read: ${cause.message}`, { cause });
+      if (cause instanceof NotesError) throw new LoopRefused(`${NOTES_FILE} can't be read: ${cause.message}`, { cause, reason: reason("notes-unreadable") });
       throw cause;
     }
   }
@@ -322,7 +330,7 @@ export class Loop {
     try {
       return buildIdIndex(files);
     } catch (cause) {
-      throw new LoopRefused(`A source file doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+      throw new LoopRefused(`A source file doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, { cause, reason: reason("file-unreadable") });
     }
   }
 

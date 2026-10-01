@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import type { ViolationItem, ViolationReport } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
 /** The project's violations, re-read when files change. */
-export function useViolations(projectRoot: string, revision: number): { report: ViolationReport | null; error: string | null } {
+export function useViolations(projectRoot: string, revision: number): { report: ViolationReport | null; error: Message | null } {
   const [report, setReport] = useState<ViolationReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("violations:list", { projectRoot }).then(
@@ -15,7 +17,7 @@ export function useViolations(projectRoot: string, revision: number): { report: 
         setReport(next);
         setError(null);
       },
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -30,7 +32,7 @@ const PROMOTE_PREFIX: Record<NonNullable<ViolationItem["promote"]>, string> = { 
 
 export interface ViolationsPanelProps {
   report: ViolationReport | null;
-  error: string | null;
+  error: Message | null;
   onSelect: (item: ViolationItem) => void;
   onSnap: (item: ViolationItem) => void;
   onPromote: (item: ViolationItem, name: string) => void;
@@ -50,7 +52,7 @@ export function ViolationsPanel({ report, error, onSelect, onSnap, onPromote, on
   return (
     <section aria-label={copy.violations.title} className="violations" data-testid="violations">
       <h2>{copy.violations.title}</h2>
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {report?.errors.map((e) => (
         <p key={e} className="error small">
           {e}

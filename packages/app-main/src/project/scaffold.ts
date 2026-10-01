@@ -4,6 +4,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { reason, type Reason } from "@skeleton/core";
 import { loadTemplate, packageNameFor, projectNameError, renderProject, type ProjectFiles } from "@skeleton/templates";
 
 export interface ScaffoldRequest {
@@ -24,13 +25,16 @@ export interface ScaffoldResult {
 export type ScaffoldStep = "validate" | "write" | "install" | "git";
 
 export class ScaffoldError extends Error {
+  readonly reason: Reason;
+
   constructor(
     readonly step: ScaffoldStep,
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; reason?: Reason },
   ) {
-    super(`scaffold failed at ${step}: ${message}`, options);
+    super(`scaffold failed at ${step}: ${message}`, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = "ScaffoldError";
+    this.reason = options?.reason ?? reason("create-failed", { step });
   }
 }
 
@@ -63,13 +67,13 @@ export async function scaffoldProject(request: ScaffoldRequest, options: Scaffol
 
   progress("validate");
   const nameError = projectNameError(request.name);
-  if (nameError) throw new ScaffoldError("validate", nameError);
+  if (nameError) throw new ScaffoldError("validate", nameError, { reason: reason("bad-project-name", { name: request.name }) });
   if (!path.isAbsolute(request.parentDir)) throw new ScaffoldError("validate", "parentDir must be an absolute path");
   const parent = await stat(request.parentDir).catch(() => null);
-  if (!parent?.isDirectory()) throw new ScaffoldError("validate", `${request.parentDir} is not a folder`);
+  if (!parent?.isDirectory()) throw new ScaffoldError("validate", `${request.parentDir} is not a folder`, { reason: reason("folder-missing", { folder: request.parentDir }) });
   const projectRoot = path.join(request.parentDir, packageNameFor(request.name));
   if (await stat(projectRoot).catch(() => null)) {
-    throw new ScaffoldError("validate", `${projectRoot} already exists`);
+    throw new ScaffoldError("validate", `${projectRoot} already exists`, { reason: reason("project-exists", { folder: projectRoot }) });
   }
 
   const files = renderProject(options.template ?? loadTemplate(), { name: request.name, skeletonVersion: options.skeletonVersion });

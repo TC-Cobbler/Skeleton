@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import type { Palette, PaletteEntry } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
 /** The palette, checked against the project's component files; refreshed when files change. */
-export function usePalette(projectRoot: string, revision: number): { palette: Palette | null; error: string | null } {
+export function usePalette(projectRoot: string, revision: number): { palette: Palette | null; error: Message | null } {
   const [palette, setPalette] = useState<Palette | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("palette:list", { projectRoot }).then(
@@ -15,7 +17,7 @@ export function usePalette(projectRoot: string, revision: number): { palette: Pa
         setPalette(next);
         setError(null);
       },
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -26,7 +28,7 @@ export function usePalette(projectRoot: string, revision: number): { palette: Pa
 
 export interface PalettePanelProps {
   palette: Palette | null;
-  error: string | null;
+  error: Message | null;
   /** A press on a placeable entry: may become a drag onto the canvas (T3.2). */
   onStartDrag: (item: PaletteEntry, event: React.PointerEvent) => void;
 }
@@ -43,7 +45,7 @@ export function PalettePanel({ palette, error, onStartDrag }: PalettePanelProps)
   return (
     <section aria-label={copy.palette.title} className="palette">
       <h2>{copy.palette.title}</h2>
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {palette?.groups.map((group) => {
         const items = palette.items.filter((i) => i.group === group.id);
         if (items.length === 0) return null;

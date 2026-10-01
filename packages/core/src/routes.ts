@@ -6,6 +6,7 @@ import { parse as babelParse } from "@babel/parser";
 import * as t from "@babel/types";
 import { diffSources } from "./diff.js";
 import { EditOpError } from "./errors.js";
+import { reason } from "./reasons.js";
 import { collectIds } from "./ids.js";
 import type { EditResult } from "./ops.js";
 import { parseModule } from "./parse.js";
@@ -158,7 +159,7 @@ function parseRouter(op: string, target: string, source: string): RouterFile {
   try {
     ast = babelParse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
   } catch (cause) {
-    throw new EditOpError(op, target, `router doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    throw new EditOpError(op, target, `router doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, { cause, reason: reason("pages-unreadable") });
   }
   let top: t.ArrayExpression | null = null;
   t.traverseFast(ast, (node) => {
@@ -166,7 +167,7 @@ function parseRouter(op: string, target: string, source: string): RouterFile {
     const arg = node.arguments[0];
     if (t.isArrayExpression(arg)) top = arg;
   });
-  if (!top) throw new EditOpError(op, target, "no createBrowserRouter([...]) call with an inline route array");
+  if (!top) throw new EditOpError(op, target, "no createBrowserRouter([...]) call with an inline route array", { reason: reason("pages-unreadable") });
   const routes: RouteEntry[] = [];
   const visit = (array: t.ArrayExpression, parentPath: string, depth: number) => {
     for (const el of array.elements) {
@@ -229,22 +230,28 @@ function finish(op: string, target: string, before: string, after: string): Edit
 const pos = (n: t.Node): [number, number] => [n.start ?? -1, n.end ?? -1];
 
 function checkPath(op: string, target: string, router: RouterFile, path: string, except?: RouteEntry): void {
-  if (!STATIC_PATH.test(path)) throw new EditOpError(op, target, `"${path}" isn't a page path: use lowercase words and dashes, like /orders or /orders/archive`);
+  if (!STATIC_PATH.test(path)) {
+    throw new EditOpError(op, target, `"${path}" isn't a page path: use lowercase words and dashes, like /orders or /orders/archive`, { reason: reason("bad-web-address", { path }) });
+  }
   if (router.routes.some((r) => r !== except && r.fullPath === path && r.component !== null)) {
-    throw new EditOpError(op, target, `there's already a route for ${path}`);
+    throw new EditOpError(op, target, `there's already a route for ${path}`, { reason: reason("web-address-taken", { path }) });
   }
 }
 
 function checkComponent(op: string, target: string, router: RouterFile, name: string): void {
-  if (!COMPONENT.test(name)) throw new EditOpError(op, target, `"${name}" isn't a component name: start with a capital letter, letters and digits only`);
-  if (router.bound.has(name)) throw new EditOpError(op, target, `${name} is already used in the router`);
+  if (!COMPONENT.test(name)) {
+    throw new EditOpError(op, target, `"${name}" isn't a component name: start with a capital letter, letters and digits only`, { reason: reason("bad-page-name", { name }) });
+  }
+  if (router.bound.has(name)) throw new EditOpError(op, target, `${name} is already used in the router`, { reason: reason("page-name-taken", { name }) });
 }
 
 /** The path to write in `array` for a full path, relative to the array's parent route. */
 function ownPath(op: string, target: string, parentPath: string, full: string): string {
   if (parentPath === "") return full;
   const prefix = parentPath === "/" ? "/" : `${parentPath}/`;
-  if (!full.startsWith(prefix)) throw new EditOpError(op, target, `${full} must be under ${parentPath}, where this route lives`);
+  if (!full.startsWith(prefix)) {
+    throw new EditOpError(op, target, `${full} must be under ${parentPath}, where this route lives`, { reason: reason("web-address-outside", { path: full, parent: parentPath }) });
+  }
   return full.slice(prefix.length);
 }
 
@@ -305,7 +312,7 @@ export function removeRoute(source: string, path: string): EditResult {
   const op = "removeRoute";
   const router = parseRouter(op, path, source);
   const route = oneRoute(op, path, router, path);
-  if (route.hasChildren) throw new EditOpError(op, path, `${path} has child routes; remove those first`);
+  if (route.hasChildren) throw new EditOpError(op, path, `${path} has child routes; remove those first`, { reason: reason("page-has-subpages", { path }) });
   const splices: Splice[] = [removal(source, route.obj, route.array)];
   if (route.component && references(router.ast, route.component, route.obj) === 0) {
     const imp = importOf(router, route.component);
@@ -319,8 +326,8 @@ export function setRoutePath(source: string, path: string, newPath: string): Edi
   const op = "setRoutePath";
   const router = parseRouter(op, path, source);
   const route = oneRoute(op, path, router, path);
-  if (!route.pathLiteral) throw new EditOpError(op, path, `${path} is an index route; it takes its layout route's path`);
-  if (route.hasChildren) throw new EditOpError(op, path, `${path} has child routes, whose paths would change too`);
+  if (!route.pathLiteral) throw new EditOpError(op, path, `${path} is an index route; it takes its layout route's path`, { reason: reason("page-is-default", { path }) });
+  if (route.hasChildren) throw new EditOpError(op, path, `${path} has child routes, whose paths would change too`, { reason: reason("page-has-subpages", { path }) });
   checkPath(op, path, router, newPath, route);
   const own = ownPath(op, path, route.parentPath, newPath);
   const [start, end] = pos(route.pathLiteral);
@@ -337,18 +344,26 @@ export function renameRouteComponent(source: string, component: string, newCompo
   const router = parseRouter(op, component, source);
   checkComponent(op, component, router, newComponent);
   const users = router.routes.filter((r) => r.component === component);
-  if (users.length !== 1) throw new EditOpError(op, component, users.length === 0 ? `no route renders ${component}` : `${component} is used by more than one route`);
+  if (users.length !== 1) throw new EditOpError(op, component, users.length === 0 ? `no route renders ${component}` : `${component} is used by more than one route`, {
+      reason: reason("page-not-renamable", { name: component }),
+    });
   const imp = importOf(router, component);
   const spec = imp?.specifiers.find((s) => s.local.name === component);
-  if (!imp || !spec || !t.isImportDefaultSpecifier(spec)) throw new EditOpError(op, component, `${component} isn't a default import of a page file`);
+  if (!imp || !spec || !t.isImportDefaultSpecifier(spec)) {
+    throw new EditOpError(op, component, `${component} isn't a default import of a page file`, { reason: reason("page-not-renamable", { name: component }) });
+  }
   const from = imp.source.value;
-  if (!/^(\.{1,2}\/|@\/)/.test(from)) throw new EditOpError(op, component, `${component} comes from a package, not a page file`);
+  if (!/^(\.{1,2}\/|@\/)/.test(from)) {
+    throw new EditOpError(op, component, `${component} comes from a package, not a page file`, { reason: reason("page-not-renamable", { name: component }) });
+  }
   const route = users[0] as RouteEntry;
   const refs: Splice[] = [];
   t.traverseFast(route.obj, (n) => {
     if ((t.isJSXIdentifier(n) || t.isIdentifier(n)) && n.name === component) refs.push([...pos(n), newComponent]);
   });
-  if (references(router.ast, component, route.obj) > 0) throw new EditOpError(op, component, `${component} is used elsewhere in the router`);
+  if (references(router.ast, component, route.obj) > 0) {
+    throw new EditOpError(op, component, `${component} is used elsewhere in the router`, { reason: reason("page-used-elsewhere", { name: component }) });
+  }
   const [srcStart, srcEnd] = pos(imp.source);
   const slash = from.lastIndexOf("/");
   const ext = /\.(tsx|jsx)$/.exec(from)?.[0] ?? "";
@@ -366,9 +381,9 @@ export function renameDefaultComponent(source: string, newName: string): EditRes
   try {
     ast = babelParse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
   } catch (cause) {
-    throw new EditOpError(op, newName, `page doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    throw new EditOpError(op, newName, `page doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, { cause, reason: reason("page-unreadable") });
   }
-  if (!COMPONENT.test(newName)) throw new EditOpError(op, newName, `"${newName}" isn't a component name`);
+  if (!COMPONENT.test(newName)) throw new EditOpError(op, newName, `"${newName}" isn't a component name`, { reason: reason("bad-page-name", { name: newName }) });
   const splices: Splice[] = [];
   let name: string | null = null;
   const owned = new Set<t.Node>();
@@ -388,17 +403,19 @@ export function renameDefaultComponent(source: string, newName: string): EditRes
       }
     }
   }
-  if (!name || owned.size < (owned.size === 1 ? 1 : 2)) throw new EditOpError(op, newName, "no named default-exported function component");
+  if (!name || owned.size < (owned.size === 1 ? 1 : 2)) {
+    throw new EditOpError(op, newName, "no named default-exported function component", { reason: reason("page-not-renamable", { name: newName }) });
+  }
   const bound = new Set<string>();
   t.traverseFast(ast, (n) => {
     if ((t.isIdentifier(n) || t.isJSXIdentifier(n)) && n.name === newName) bound.add(n.name);
   });
-  if (bound.size > 0) throw new EditOpError(op, newName, `${newName} is already used in the page`);
+  if (bound.size > 0) throw new EditOpError(op, newName, `${newName} is already used in the page`, { reason: reason("page-name-in-code", { name: newName }) });
   let others = 0;
   t.traverseFast(ast, (n) => {
     if ((t.isIdentifier(n) || t.isJSXIdentifier(n)) && n.name === name && !owned.has(n)) others++;
   });
-  if (others > 0) throw new EditOpError(op, newName, `${name} is used in the page's code; rename it there`);
+  if (others > 0) throw new EditOpError(op, newName, `${name} is used in the page's code; rename it there`, { reason: reason("page-name-in-code", { name }) });
   for (const n of owned) splices.push([...pos(n), newName]);
   const after = applySplices(source, splices);
   const result = finish(op, newName, source, after);
@@ -409,7 +426,7 @@ export function renameDefaultComponent(source: string, newName: string): EditRes
 
 function oneRoute(op: string, target: string, router: RouterFile, path: string): RouteEntry {
   const matches = router.routes.filter((r) => r.fullPath === path);
-  if (matches.length === 0) throw new EditOpError(op, target, `there's no route for ${path}`);
+  if (matches.length === 0) throw new EditOpError(op, target, `there's no route for ${path}`, { reason: reason("page-missing", { path }) });
   if (matches.length > 1) throw new EditOpError(op, target, `more than one route has the path ${path}`);
   return matches[0] as RouteEntry;
 }

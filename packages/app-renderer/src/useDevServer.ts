@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DevServerStatus, LogLine } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { messageFor, type Message } from "./messages.js";
 
 const POLL_MS = 500;
 const MAX_LINES = 500;
@@ -8,7 +9,7 @@ const MAX_LINES = 500;
 export interface DevServer {
   status: DevServerStatus | null;
   lines: LogLine[];
-  error: string | null;
+  error: Message | null;
   start: () => Promise<void>;
   stop: () => Promise<void>;
 }
@@ -17,7 +18,7 @@ export interface DevServer {
 export function useDevServer(projectRoot: string, autoStart: boolean): DevServer {
   const [status, setStatus] = useState<DevServerStatus | null>(null);
   const [lines, setLines] = useState<LogLine[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const lastSeq = useRef(0);
 
   useEffect(() => {
@@ -35,12 +36,12 @@ export function useDevServer(projectRoot: string, autoStart: boolean): DevServer
         if (next.logs.length > 0) setLines((prev) => [...prev, ...next.logs].slice(-MAX_LINES));
         lastSeq.current = Math.max(lastSeq.current, next.lastSeq);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(messageFor(err));
       }
     };
     if (autoStart) {
       call("devserver:start", { projectRoot }).catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : String(err)),
+        setError(messageFor(err)),
       );
     }
     void tick();
@@ -57,7 +58,7 @@ export function useDevServer(projectRoot: string, autoStart: boolean): DevServer
       try {
         await call(channel, { projectRoot });
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(messageFor(err));
       }
     },
     [projectRoot],

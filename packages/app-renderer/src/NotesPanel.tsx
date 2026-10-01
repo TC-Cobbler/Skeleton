@@ -3,11 +3,13 @@ import type { NoteOp, NoteType, NoteView, NotesView, Reply } from "@skeleton/app
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
 import { filterNotes, looseReplies, repliesFor, TYPE_LABEL, type NoteFilter } from "./notes.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
 /** The project's notes and replies, re-read when files change. */
-export function useNotes(projectRoot: string, revision: number): { view: NotesView | null; error: string | null; set: (view: NotesView) => void } {
+export function useNotes(projectRoot: string, revision: number): { view: NotesView | null; error: Message | null; set: (view: NotesView) => void } {
   const [view, setView] = useState<NotesView | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("notes:read", { projectRoot }).then(
@@ -16,7 +18,7 @@ export function useNotes(projectRoot: string, revision: number): { view: NotesVi
         setView(next);
         setError(null);
       },
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -29,7 +31,7 @@ const TYPES: NoteType[] = ["build", "behaviour", "question"];
 
 export interface NotesPanelProps {
   view: NotesView | null;
-  error: string | null;
+  error: Message | null;
   /** The selected element, if any. Notes pin to its data-ui-id. */
   selected: { id: string | null; name: string } | null;
   /** Only this element's notes (a pin was clicked), or null for all. */
@@ -55,7 +57,7 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
   return (
     <section aria-label={copy.notes.title} className="notes" data-testid="notes">
       <h2>{copy.notes.title}</h2>
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {readOnly && <p className="muted small">{copy.notes.readOnly}</p>}
       {!readOnly && selected && (canPin ? <AddNote target={canPin} name={selected.name} onWrite={onWrite} /> : <p className="muted small">{copy.notes.cantPin(selected.name)}</p>)}
       {!readOnly && !selected && <p className="muted small">{copy.notes.selectToPin}</p>}

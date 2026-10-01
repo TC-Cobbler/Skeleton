@@ -27,19 +27,20 @@ import { NotesPanel, useNotes } from "./NotesPanel.js";
 import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
 import { copy } from "./copy.js";
+import { messageFor } from "./messages.js";
+import { MessageText } from "./Toasts.js";
+import type { Message } from "./messages.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [project, setProject] = useState<ProjectInfo | null>(null);
 
   useEffect(() => {
-    call("app:info", null).then(setInfo, (err: unknown) =>
-      setError(String(err)),
-    );
+    call("app:info", null).then(setInfo, (err: unknown) => setError(messageFor(err)));
   }, []);
 
   async function close() {
@@ -47,7 +48,7 @@ export function App() {
     try {
       await call("devserver:stop", { projectRoot: project.projectRoot });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(messageFor(err));
     }
     setProject(null);
   }
@@ -70,7 +71,7 @@ export function App() {
           {copy.app.info(info)}
         </p>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {project ? (
         <ProjectView project={project} />
       ) : (
@@ -128,14 +129,34 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   );
   const toasts = useToasts();
   const pushToast = toasts.push;
-  const setEditError = useCallback((message: string | null) => message !== null && pushToast("error", message), [pushToast]);
+  // Messages name elements as they are on the page on screen (spec §4).
+  const nodesNow = useRef(page.nodes);
+  nodesNow.current = page.nodes;
+  const fileNow = useRef(file);
+  fileNow.current = file;
+  /** Shows a failure or refusal in plain words: an error from main, or one of the renderer's own sentences. */
+  const setEditError = useCallback(
+    (err: unknown, tried?: string) =>
+      pushToast(
+        "error",
+        messageFor(err, {
+          element: (id) => {
+            const n = nodesNow.current.find((k) => k.node.id === id)?.node;
+            return n ? { name: n.name, text: n.text ?? null } : null;
+          },
+          page: fileNow.current,
+          ...(tried ? { tried } : {}),
+        }),
+      ),
+    [pushToast],
+  );
   // Say once per project when edits can't be typechecked (T3.7).
   const warnedUnchecked = useRef(false);
   const noteUnchecked = useCallback(
     (reason: string | null) => {
       if (reason === null || warnedUnchecked.current) return;
       warnedUnchecked.current = true;
-      pushToast("warning", copy.app.unchecked(reason));
+      pushToast("warning", messageFor(copy.app.unchecked(reason)));
     },
     [pushToast],
   );
@@ -160,7 +181,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           // A rolled-back edit did touch the file: re-read it either way.
           page.reload();
           settled?.(false);
-          setEditError(err instanceof Error ? err.message.replace(/^page:edit: /, "") : String(err));
+          setEditError(err);
         },
       );
     },
@@ -179,7 +200,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         (err: unknown) => {
           setRevision((r) => r + 1);
           settled?.(false);
-          setEditError(err instanceof Error ? err.message.replace(/^tokens:write: /, "") : String(err));
+          setEditError(err);
         },
       );
     },
@@ -246,7 +267,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       (err: unknown) => {
         page.reload();
         setRevision((r) => r + 1);
-        setEditError(err instanceof Error ? err.message.replace(new RegExp(`^${channel}: `), "") : String(err));
+        setEditError(err);
       },
     );
   };
@@ -341,7 +362,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     let cancelled = false;
     call("edit:history", { projectRoot: project.projectRoot }).then(
       (h) => !cancelled && setHistory(h),
-      (err: unknown) => !cancelled && setEditError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setEditError(err),
     );
     return () => {
       cancelled = true;
@@ -361,7 +382,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       (err: unknown) => {
         page.reload();
         setRevision((r) => r + 1);
-        setEditError(err instanceof Error ? err.message.replace(/^edit:(undo|redo): /, "") : String(err));
+        setEditError(err);
       },
     );
   };
@@ -412,7 +433,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const writeNote = useCallback(
     (op: NoteOp) =>
       call("notes:write", { projectRoot: project.projectRoot, op }).then(setNotesView, (err: unknown) => {
-        setEditError(err instanceof Error ? err.message.replace(/^notes:write: /, "") : String(err));
+        setEditError(err);
         throw err;
       }),
     [project.projectRoot, setNotesView, setEditError],
@@ -476,8 +497,8 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             {copy.app.dark}
           </button>
         </div>
-        {page.error && <p className="error">{page.error}</p>}
-        {fsRevision.error && <p className="error">{fsRevision.error}</p>}
+        {page.error && <MessageText message={page.error} />}
+        {fsRevision.error && <MessageText message={fsRevision.error} />}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
         <PagesPanel
           list={pages.list}
@@ -497,7 +518,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
               }
             } catch (err) {
               setRevision((r) => r + 1);
-              setEditError(err instanceof Error ? err.message.replace(/^project:page: /, "") : String(err));
+              setEditError(err);
               throw err;
             }
           }}
@@ -655,7 +676,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           if (id && !withAgent) edit({ op: "setText", id, text });
         }}
       />
-      <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
+      <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} onHold={toasts.hold} onAction={(action) => action === "undo" && historyStep("undo")} />
       {canvasDrag.drag && (
         <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>
           {canvasDrag.drag.source.label}

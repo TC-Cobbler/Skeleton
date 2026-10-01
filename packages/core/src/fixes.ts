@@ -6,6 +6,7 @@ import { tryEvaluate } from "./calc.js";
 import { colourDistance, parseColour } from "./colour.js";
 import { isPlumbing, lookupFor } from "./theme.js";
 import { readTokens, writeTokens, TokenError, type TokenUpdate } from "./tokens.js";
+import { reason } from "./reasons.js";
 import { buildTree, walkTree, type UiNode } from "./tree.js";
 import { COLOUR_PREFIXES, RADIUS_SIDES, SPACING_PREFIXES } from "./utilities.js";
 import { findViolations, stripVariants, type Violation } from "./violations.js";
@@ -183,7 +184,7 @@ export function promoteViolation(css: string, detail: ViolationDetail, name: str
   }
   const taken = readTokens(css);
   for (const u of updates) {
-    if (taken.some((t) => t.name === u.name)) throw new TokenError(`${u.name} already exists; pick another name`);
+    if (taken.some((t) => t.name === u.name)) throw new TokenError(`${u.name} already exists; pick another name`, { reason: reason("theme-name-taken", { name: u.name }) });
   }
   return { css: writeTokens(css, updates), utility: `${variants}${important}${utility}` };
 }

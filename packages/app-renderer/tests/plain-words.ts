@@ -16,7 +16,7 @@ const COPY_FILES = { renderer: "packages/app-renderer/src/copy.ts", overlay: "pa
  * (spec §4, §7): Details, Copy details, the read-only page code view and the app
  * preview log.
  */
-const PLUMBING = [/\.details(\.|$)/, /\.copyDetails(\.|$)/, /^renderer:viewSource\.where$/, /^renderer:devServer\.log(\.|$)/];
+const PLUMBING = [/(^|[:.])details(\.|$)/, /(^|[:.])copyDetails(\.|$)/, /^renderer:viewSource\.where$/, /^renderer:devServer\.log(\.|$)/];
 
 /**
  * Avoid-words that are also ordinary English in the sense Skeleton uses them:

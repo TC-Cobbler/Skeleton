@@ -2,16 +2,17 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { ProjectInfo, ProjectList } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
-const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** New project / open / recent (T1.4). */
 export function ProjectPicker({ onOpen }: { onOpen: (project: ProjectInfo) => void }) {
   const [list, setList] = useState<ProjectList | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
 
   useEffect(() => {
-    call("project:list", null).then(setList, (err: unknown) => setError(message(err)));
+    call("project:list", null).then(setList, (err: unknown) => setError(messageFor(err)));
   }, []);
 
   async function openFolder() {
@@ -20,7 +21,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (project: ProjectInfo) => vo
       const folder = await call("dialog:chooseFolder", { title: copy.picker.openTitle });
       if (folder) onOpen(await call("project:open", { projectRoot: folder }));
     } catch (err) {
-      setError(message(err));
+      setError(messageFor(err));
     }
   }
 
@@ -29,7 +30,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (project: ProjectInfo) => vo
     try {
       onOpen(await call("project:open", { projectRoot }));
     } catch (err) {
-      setError(message(err));
+      setError(messageFor(err));
     }
   }
 
@@ -38,7 +39,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (project: ProjectInfo) => vo
       const recent = await call("project:forget", { projectRoot });
       setList((prev) => (prev ? { ...prev, recent } : prev));
     } catch (err) {
-      setError(message(err));
+      setError(messageFor(err));
     }
   }
 
@@ -52,7 +53,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (project: ProjectInfo) => vo
             {copy.picker.openFolder}
           </button>
         </header>
-        {error && <p className="error">{error}</p>}
+        {error && <MessageText message={error} />}
         {list && list.recent.length === 0 && <p className="muted">{copy.picker.noRecent}</p>}
         <ul className="recent" aria-label={copy.picker.recent}>
           {list?.recent.map((r) => (
@@ -76,14 +77,14 @@ function NewProjectForm({ defaultParentDir, onCreated }: { defaultParentDir: str
   const [name, setName] = useState("");
   const [parentDir, setParentDir] = useState(defaultParentDir);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
 
   async function chooseParent() {
     try {
       const folder = await call("dialog:chooseFolder", { title: copy.picker.parentTitle, defaultPath: parentDir });
       if (folder) setParentDir(folder);
     } catch (err) {
-      setError(message(err));
+      setError(messageFor(err));
     }
   }
 
@@ -95,7 +96,7 @@ function NewProjectForm({ defaultParentDir, onCreated }: { defaultParentDir: str
       const created = await call("project:create", { parentDir, name: name.trim() });
       onCreated({ projectRoot: created.projectRoot, name: name.trim() });
     } catch (err) {
-      setError(message(err));
+      setError(messageFor(err));
       setBusy(false);
     }
   }
@@ -120,7 +121,7 @@ function NewProjectForm({ defaultParentDir, onCreated }: { defaultParentDir: str
           {busy && <span className="muted">{copy.picker.createProgress}</span>}
         </div>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
     </section>
   );
 }

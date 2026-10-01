@@ -4,11 +4,126 @@
  * change is made once. Templated text is a function of what it shows.
  */
 
+import type { ReasonCode } from "@skeleton/app-main/ipc";
+
+/** What a reason's sentence can name, already in plain words (messages.ts fills it in). */
+export interface Named {
+  /** An element, by its element name. */
+  el: string;
+  /** A page, by its page name. */
+  page: string;
+  /** A web address. */
+  path: string;
+  /** A page or project name the user typed. */
+  name: string;
+  /** A theme value, by its theme value name. */
+  theme: string;
+  round: number;
+  max: number;
+  /** An undo step's label. */
+  edit: string;
+  direction: "undo" | "redo";
+  /** A folder, by its own name. */
+  folder: string;
+  /** The web address a page's address must start with. */
+  parent: string;
+}
+
 const count = (n: number) => (n > 0 ? ` (${n})` : "");
 /** `word` or `plural` (default `word` + "s") for `n`. */
 const plural = (n: number, word: string, many = `${word}s`) => (n === 1 ? word : many);
 
 export const copy = {
+  /**
+   * The plain sentence for every reason code (ADR 013, spec §4): what happened, then
+   * what to do. Refusals and problems; anything else gets `fault`.
+   */
+  messages: {
+    "inside-agent-code": (n) => `Can't change ${n.el}: it's inside agent code. You can move or delete the whole agent code instead.`,
+    "is-agent-code": (n) => `Can't change ${n.el}: it's agent code, so Skeleton won't rewrite it. You can move or delete it whole.`,
+    "agent-control": (n) => `Can't change that setting of ${n.el}: the agent's code decides it.`,
+    "agent-style": (n) => `Can't restyle ${n.el}: the agent's code decides its look. Add a note to ask the agent.`,
+    "agent-value": () => "Can't edit this text: the agent's code fills it in.",
+    "text-has-elements": (n) => `Can't edit the text of ${n.el} as a whole: it holds other elements. Edit their text instead.`,
+    "text-has-comment": () => "Can't edit this text here: the agent left a remark in it. Ask the agent to change it.",
+    "text-too-long": (n) => `That text is too long. Use at most ${n.max} characters.`,
+    "element-gone": () => "Can't do that: the element isn't on the page any more.",
+    "move-into-itself": (n) => `Can't move ${n.el} into itself.`,
+    "next-to-text": (n) => `Can't drop there: ${n.el} holds text, so nothing can go inside it.`,
+    "with-agent": () => "The project is with the agent. Take it back first.",
+    "edit-undone": () => "Skeleton undid that change because it would have broken your app. Nothing was changed.",
+    "nothing-to-undo": (n) => `There's nothing to ${n.direction}.`,
+    "changed-since": (n) =>
+      `Can't ${n.direction} "${n.edit}": the ${n.page} page has changed since then, probably by the agent. ${n.direction === "undo" ? "Undoing" : "Redoing"} now would lose that change.`,
+    "bad-web-address": () => "A web address uses lowercase words and dashes, like /orders or /orders/archive.",
+    "web-address-taken": (n) => `There's already a page at ${n.path}. Pick another web address.`,
+    "web-address-outside": (n) => `This page's web address has to start with ${n.parent}.`,
+    "bad-page-name": () => "A page name starts with a letter and uses only letters, numbers and spaces, like Order history.",
+    "page-name-taken": (n) => `There's already a page called ${n.name}. Pick another name.`,
+    "page-name-in-code": () => "Can't use that name: the page's code already uses it. Pick another name.",
+    "page-file-taken": (n) => `There's already a page called ${n.page}. Pick another name.`,
+    "only-page": () => "Can't delete the only page. Add another page first.",
+    "page-used-elsewhere": (n) => `Can't do that to the ${n.page} page: other parts of your app use it. Ask the agent to remove those first.`,
+    "page-has-subpages": (n) => `Can't do that to the page at ${n.path}: it has pages inside it. Ask the agent to change it.`,
+    "page-is-default": () => "Can't change this page's web address: it shares the web address of the pages around it.",
+    "page-not-renamable": () => "Can't rename this page here: the agent set it up in a way Skeleton can't change. Ask the agent to rename it.",
+    "page-missing": () => "That page isn't in your app any more.",
+    "page-unreadable": (n) => `Skeleton can't read the ${n.page} page right now, so it can't be changed.`,
+    "pages-unreadable": () => "Skeleton can't read your app's list of pages, so pages can't be changed right now.",
+    "theme-unreadable": () => "Skeleton can't read your app's theme right now.",
+    "bad-theme-value": (n) => `That isn't a value ${n.theme} can use. Type one value, like 12px or #3366cc.`,
+    "theme-value-twice": (n) => `Can't change ${n.theme}: the theme sets it in more than one place.`,
+    "theme-value-missing": (n) => `Can't change ${n.theme}: it isn't in the theme any more.`,
+    "theme-name-taken": (n) => `There's already a theme value called ${n.theme}. Pick another name.`,
+    "off-theme-moved": () => "That value has moved since the list was made. Try again.",
+    "off-theme-in-agent-code": () => "Can't change this value: it's in agent code. Leave it as is, or ask the agent.",
+    "already-handed-off": (n) => `The project is already with the agent (round ${n.round}). Take it back first.`,
+    "not-handed-off": () => "There's nothing to take back: the project isn't with the agent.",
+    "nothing-to-undo-agent": () => "There's no agent's work to undo: the last step wasn't a take back.",
+    "duplicate-ids": () => "Can't hand off yet: two elements look the same to Skeleton, so it can't tell them apart.",
+    "build-broken": () => "Can't hand off: your app has a problem in its code and won't start.",
+    "file-unreadable": () => "Skeleton can't read one of your app's pages, so it can't go on. Ask the agent to fix it, then try again. Nothing was changed.",
+    "notes-unreadable": () => "Skeleton can't read your notes. Ask the agent to fix them, then try again. Nothing was changed.",
+    "note-element-gone": () => "Can't pin the note there: that element isn't in your app any more.",
+    "not-a-skeleton-project": (n) => `${n.folder} wasn't made with Skeleton, so it can't be opened here.`,
+    "bad-project-name": () => "A project name starts with a letter or number, and uses letters, numbers, spaces and dashes.",
+    "project-exists": (n) => `There's already a folder called ${n.folder} there. Pick another name or place.`,
+    "folder-missing": () => "That folder isn't there any more. Choose another place.",
+    "create-failed": () => "Skeleton couldn't create the project. Nothing was left behind.",
+  } satisfies Record<ReasonCode, (n: Named) => string>,
+  /** Anything without a reason: only a Skeleton bug could cause it. */
+  fault: {
+    unchanged: "Skeleton couldn't do that. Nothing in your project was changed.",
+    unknown: "Skeleton couldn't do that. Something went wrong; see Details.",
+  },
+  details: {
+    show: "Details",
+    hide: "Hide details",
+    copy: "Copy details",
+    copied: "Copied",
+    /** The block Copy details puts on the clipboard, for pasting to the agent. */
+    block: (b: { tried: string; page: string | null; id: string | null; code: string | null; message: string }) =>
+      [
+        `Skeleton couldn't do this: ${b.tried}`,
+        b.page ? `Page file: ${b.page}` : null,
+        b.id ? `Element: data-ui-id="${b.id}"` : null,
+        b.code ? `Reason: ${b.code}` : null,
+        `Error: ${b.message}`,
+      ]
+        .filter((line) => line !== null)
+        .join("\n"),
+  },
+  actions: {
+    undo: "Undo",
+  },
+  /** How the facts in a message are named. */
+  named: {
+    thatElement: "that element",
+    elementName: (kind: string, text: string | null) => (text ? `${kind} "${text}"` : kind),
+    pageName: (file: string) => file.replace(/^.*\//, "").replace(/\.[jt]sx$/, "").replace(/Page$/, "").replace(/([a-z])([A-Z])/g, "$1 $2") || file,
+    pageComponent: (component: string) => component.replace(/Page$/, "").replace(/([a-z])([A-Z])/g, "$1 $2"),
+    folder: (folder: string) => folder.replace(/\/+$/, "").replace(/^.*\//, ""),
+  },
   common: {
     cancel: "Cancel",
     delete: "Delete",

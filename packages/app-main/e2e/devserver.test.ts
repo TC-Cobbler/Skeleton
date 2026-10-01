@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clickOnCanvas } from "./canvas-click.js";
-import { copy, ui } from "./ui.js";
+import { copy, say, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const parentDir = mkdtempSync(path.join(tmpdir(), "skeleton-e2e-"));
@@ -218,6 +218,6 @@ export default function OrdersPage() {
   it("refuses to open a folder that isn't a Skeleton project", async () => {
     await stubFolderDialog(parentDir);
     await ui(page).picker.openFolder().click();
-    await page.getByText(/isn't a Skeleton project/).waitFor();
+    await page.getByText(say({ code: "not-a-skeleton-project", facts: { folder: parentDir } })).waitFor();
   });
 });

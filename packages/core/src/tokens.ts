@@ -1,4 +1,5 @@
 import postcss, { type AtRule, type Container, type Declaration, type Rule } from "postcss";
+import { reason, type Reason } from "./reasons.js";
 
 /**
  * Where a token lives in globals.css:
@@ -25,9 +26,12 @@ export interface TokenUpdate {
 }
 
 export class TokenError extends Error {
-  constructor(message: string) {
+  readonly reason: Reason | null;
+
+  constructor(message: string, options?: { reason?: Reason }) {
     super(message);
     this.name = "TokenError";
+    this.reason = options?.reason ?? null;
   }
 }
 
@@ -51,7 +55,7 @@ export function writeTokens(css: string, updates: TokenUpdate[]): string {
   for (const update of updates) {
     if (!update.name.startsWith("--")) throw new TokenError(`token "${update.name}" must start with --`);
     if (/[;{}]/.test(update.value) || update.value.trim() === "") {
-      throw new TokenError(`invalid value for ${update.name}: ${JSON.stringify(update.value)}`);
+      throw new TokenError(`invalid value for ${update.name}: ${JSON.stringify(update.value)}`, { reason: reason("bad-theme-value", { name: update.name }) });
     }
     const matches: { block: TokenBlock; decl: Declaration }[] = [];
     for (const { block, container } of blocks) {
@@ -62,14 +66,14 @@ export function writeTokens(css: string, updates: TokenUpdate[]): string {
     }
     if (matches.length > 1) {
       const where = matches.map((m) => m.block).join(", ");
-      throw new TokenError(`${update.name} is defined in several blocks (${where}); specify block`);
+      throw new TokenError(`${update.name} is defined in several blocks (${where}); specify block`, { reason: reason("theme-value-twice", { name: update.name }) });
     }
     const match = matches[0];
     if (match) {
       match.decl.value = update.value;
       continue;
     }
-    if (!update.create) throw new TokenError(`${update.name} not found${update.block ? ` in ${update.block}` : ""}`);
+    if (!update.create) throw new TokenError(`${update.name} not found${update.block ? ` in ${update.block}` : ""}`, { reason: reason("theme-value-missing", { name: update.name }) });
     if (!update.block) throw new TokenError(`creating ${update.name} requires a block`);
     const target = blocks.find((b) => b.block === update.block);
     if (!target) throw new TokenError(`globals.css has no ${update.block} block`);

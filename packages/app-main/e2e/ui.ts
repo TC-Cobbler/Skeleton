@@ -5,10 +5,11 @@
 
 import type { Page } from "playwright-core";
 import { copy } from "../../app-renderer/src/copy.js";
+import { say } from "../../app-renderer/src/messages.js";
 import { copy as canvasCopy } from "../../overlay/src/copy.js";
 
-/** The renderer's words, and the overlay's words on the canvas. */
-export { canvasCopy, copy };
+/** The renderer's words, the overlay's words on the canvas, and a reason's plain sentence. */
+export { canvasCopy, copy, say };
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** A name that starts with `text`: tabs and toggles that add a count, e.g. "Notes (2)". */
@@ -75,6 +76,9 @@ export function ui(page: Page) {
       start: () => button(copy.devServer.start),
       stop: () => button(copy.devServer.stop),
     },
+
+    /** The latest error message's sentence (Details aside). */
+    lastError: () => page.getByTestId("edit-error").last().locator(".toast-text"),
 
     /** An inspector tab, whatever count it shows. */
     tab: (tab: InspectorTab) => page.getByRole("tab", { name: startsWith(copy.app.tabs[tab](0)) }),

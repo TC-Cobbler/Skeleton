@@ -3,11 +3,13 @@ import type { ThemeToken, TokenGroup, TokenSheet, TokenWrite } from "@skeleton/a
 import { call } from "./bridge.js";
 import { TextInput } from "./PropertiesPanel.js";
 import { copy } from "./copy.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
 
 /** The project's tokens, re-read when files change. */
-export function useTokens(projectRoot: string, revision: number): { sheet: TokenSheet | null; error: string | null; set: (sheet: TokenSheet) => void } {
+export function useTokens(projectRoot: string, revision: number): { sheet: TokenSheet | null; error: Message | null; set: (sheet: TokenSheet) => void } {
   const [sheet, setSheet] = useState<TokenSheet | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("tokens:read", { projectRoot }).then(
@@ -16,7 +18,7 @@ export function useTokens(projectRoot: string, revision: number): { sheet: Token
         setSheet(next);
         setError(null);
       },
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -29,7 +31,7 @@ const GROUPS: { id: TokenGroup; label: string }[] = (["colour", "radius", "spaci
 
 export interface TokensPanelProps {
   sheet: TokenSheet | null;
-  error: string | null;
+  error: Message | null;
   /** The mode the canvas shows: its column is marked (colour edits target it, T4.7). */
   dark: boolean;
   /** Elements on the page each token affects (T4.2), when known. */
@@ -49,7 +51,7 @@ export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover }: To
   return (
     <section aria-label={copy.tokens.title} className="tokens" data-testid="tokens">
       <h2>{copy.tokens.title}</h2>
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {sheet && (
         <>
           <input aria-label={copy.tokens.filterLabel} placeholder={copy.tokens.filter} value={filter} onChange={(e) => setFilter(e.target.value)} />
