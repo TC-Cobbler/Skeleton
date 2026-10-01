@@ -1,7 +1,7 @@
 # Name every theme value, setting and agent control
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: none
 Part of: [UI refresh map](../map.md)
 
