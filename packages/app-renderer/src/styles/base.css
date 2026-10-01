@@ -279,7 +279,6 @@ div.error p {
   text-transform: none;
   letter-spacing: normal;
   white-space: normal;
-  transform: translateX(-50%);
   pointer-events: none;
 }
 /* Icon-only buttons: square, the icon centred. */

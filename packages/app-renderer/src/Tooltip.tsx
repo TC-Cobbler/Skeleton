@@ -40,7 +40,7 @@ export function useTooltip(text: string | null | undefined, describe = true) {
   }, []);
   const at = (el: Element) => {
     const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.bottom + 6 };
+    return { x: r.left, y: r.bottom + 6 };
   };
   useEffect(() => clear, []);
   useEffect(() => {

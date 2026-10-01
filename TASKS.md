@@ -311,12 +311,13 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Top bar: project name, the page picker (replacing the Pages panel), Undo/Redo, and the ⋯ menu with App preview and its log, Show code and About.
   - Status bar: app state and the workspace's purpose.
   - Done: `app-renderer/src/TopBar.tsx` (`PagePicker`, `MoreMenu`, `About`, `usePopover`). The Pages panel lives in the picker; the app preview, About (project folder, versions, licences) and Close project live in the ⋯ menu; the status bar shows the app's state. The workspace's purpose joins it in T8.7. Tests open the picker and the app preview through `ui.ts`. Unit tests pass. E2e passes apart from the intermittent canvas misses in KI-3, which pass on rerun.
-- [~] **T8.7** **Workspaces and inspector** (layout D).
+- [x] **T8.7** **Workspaces and inspector** (layout D).
   - Build | Style | Hand off, each with its own left panel.
   - The tabbed inspector (Element / Theme / Off-theme / Agent's work), with each workspace's default tab, and the element's notes at the end of Element.
   - The hand-off bar under the canvas.
   - Navigation goes into the test helpers.
-- [ ] **T8.8** **Plain words in the panels.**
+  - Done: the workspaces are in the top bar. Build's Add and Layers tabs both stay in the page (Layers keeps what's open). Style shows Layers and the reach hint; Hand off shows every note. Selecting an element shows Element, which ends with that element's notes (`ElementNotes`). The canvas column has its toolbar above and the hand-off bar, with "Review the agent's work", below. The status bar shows the workspace's purpose. `ui.ts` gained `openWorkspace`, `showLayers` and `showAdd`. Unit tests pass. E2e passes apart from the KI-3 flakes, which show up when the files run in parallel and pass on their own.
+- [~] **T8.8** **Plain words in the panels.**
   - Use GLOSSARY.md terms throughout, and element names instead of IDs.
   - Use the name tables (spec §6) for theme values, settings and options, agent controls and element parts, each with its fallback rule.
 - [ ] **T8.9** **Plain messages.**

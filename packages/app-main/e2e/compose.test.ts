@@ -68,6 +68,7 @@ describe("palette (T3.1)", () => {
     const disabled = await palette.locator('.palette-item[aria-disabled="true"]').allTextContents();
     expect(disabled).toEqual(["Toast"]);
     expect(await palette.getByTestId("palette-toast").getAttribute("aria-description")).toMatch(/Toaster is already mounted/);
+    await ui(page).showLayers();
   });
 });
 
@@ -124,6 +125,7 @@ describe("drag from the palette (T3.2)", () => {
 
   it("changes nothing when released outside the canvas or cancelled with Escape", async () => {
     const before = homeFile();
+    await ui(page).showAdd();
     const item = await palette("card").boundingBox();
     const canvas = await page.getByTestId("canvas-frame").boundingBox();
     if (!item || !canvas) throw new Error("no boxes");
@@ -142,6 +144,7 @@ describe("drag from the palette (T3.2)", () => {
     await page.waitForTimeout(500);
     expect(homeFile()).toBe(before);
     expect(await page.getByTestId("edit-error").count()).toBe(0);
+    await ui(page).showLayers();
   });
 });
 

@@ -71,8 +71,8 @@ export function ui(page: Page) {
     dark: () => button(copy.app.dark),
 
     // Hand off and Take back (T5.2, T5.3).
-    handOff: () => button(copy.loop.handOff),
-    takeBack: () => button(copy.loop.takeBack),
+    handOff: () => region(copy.loop.title).getByRole("button", { name: copy.loop.handOff, exact: true }),
+    takeBack: () => region(copy.loop.title).getByRole("button", { name: copy.loop.takeBack, exact: true }),
 
     // Panels.
     palette: () => region(copy.palette.title),
