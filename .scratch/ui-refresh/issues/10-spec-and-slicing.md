@@ -1,7 +1,7 @@
 # Write the UI refresh spec and slice it into TASKS.md
 
 Type: task
-Status: open
+Status: claimed
 Blocked by: 06, 07, 08, 09
 Part of: [UI refresh map](../map.md)
 
