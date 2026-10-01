@@ -264,6 +264,45 @@ describe("Overlay", () => {
     expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).not.toContain("data-drop-indicator");
   });
 
+  it("drops beside a container aimed at its edge, into it aimed at its middle (F-1, F-4)", () => {
+    const { sent, send, flush } = setup();
+    // Treat the Dialog as an editable container, like a Card in a Stack.
+    const editable = nodes.map((n) => (n.key === "0.0" ? { ...n, kind: "palette" as const, drop: true } : n));
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: editable });
+    const box = (y: number, h: number) => () => ({ x: 0, y, left: 0, top: y, right: 100, bottom: y + h, width: 100, height: h, toJSON: () => ({}) }) as DOMRect;
+    ($("#root-div") as HTMLElement).getBoundingClientRect = box(0, 100);
+    ($(".dialog") as HTMLElement).getBoundingClientRect = box(0, 40);
+    ($("#trigger") as HTMLElement).getBoundingClientRect = box(10, 20);
+    document.querySelectorAll<HTMLElement>(".row").forEach((el, i) => (el.getBoundingClientRect = box(50 + i * 20, 20)));
+    document.elementFromPoint = () => $(".inner");
+    const target = () => {
+      const m = sent.at(-1);
+      return m?.type === "drop-target" ? m.target : "none";
+    };
+    const label = () => {
+      flush();
+      return document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
+    };
+
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 20, moving: null, seq: 1 });
+    expect(target()).toMatchObject({ parentKey: "0.0" });
+    expect(label()).toContain("Into Dialog");
+    // The div is a column: the Dialog's bottom 8px is "after it", its top 8px "before it".
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 36, moving: null, seq: 2 });
+    expect(target()).toEqual({ parentKey: "0", index: 1 });
+    expect(label()).toContain("After Dialog in div #ui_root0");
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 3, moving: null, seq: 3 });
+    expect(target()).toEqual({ parentKey: "0", index: 0 });
+    expect(label()).toContain("Before Dialog in div #ui_root0");
+
+    // The parent doesn't take drops: the edge goes into the container, as before.
+    const lockedParent = editable.map((n) => (n.key === "0" ? { ...n, drop: false } : n));
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: lockedParent });
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 36, moving: null, seq: 4 });
+    expect(target()).toMatchObject({ parentKey: "0.0" });
+    send({ source: "skeleton-host", type: "drag-end" });
+  });
+
   it("moves the nearest movable node by dragging on the canvas, without selecting (T3.3)", () => {
     const { sent, send, flush } = setup();
     send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });

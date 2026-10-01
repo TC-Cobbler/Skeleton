@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "../src/drop.js";
+import { besideSide, dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "../src/drop.js";
 
 const r = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
 
@@ -106,5 +106,33 @@ describe("edgeScroll", () => {
     expect(edgeScroll(-50, 600)).toBe(-18);
     expect(edgeScroll(590, 600)).toBeGreaterThan(0);
     expect(edgeScroll(700, 600)).toBe(18);
+  });
+});
+
+describe("besideSide", () => {
+  const card = r(100, 100, 200, 120);
+
+  it("goes before or after at the edges along the parent's flow (F-1, F-4)", () => {
+    // In a column: the top and bottom bands.
+    expect(besideSide("vertical", card, 200, 103)).toBe("before");
+    expect(besideSide("vertical", card, 200, 216)).toBe("after");
+    expect(besideSide("vertical", card, 102, 160)).toBeNull();
+    // In a row or a grid: the left and right bands.
+    expect(besideSide("horizontal", card, 104, 160)).toBe("before");
+    expect(besideSide("grid", card, 295, 160)).toBe("after");
+    expect(besideSide("grid", card, 200, 103)).toBeNull();
+  });
+
+  it("goes into the middle", () => {
+    expect(besideSide("vertical", card, 200, 160)).toBeNull();
+    expect(besideSide("horizontal", card, 200, 160)).toBeNull();
+  });
+
+  it("keeps a middle in a small container: the band is at most a quarter of it", () => {
+    const thin = r(0, 0, 100, 16);
+    expect(besideSide("vertical", thin, 50, 3)).toBe("before");
+    expect(besideSide("vertical", thin, 50, 5)).toBeNull();
+    expect(besideSide("vertical", thin, 50, 12)).toBe("after");
+    expect(besideSide("vertical", r(0, 0, 100, 0), 50, 0)).toBeNull();
   });
 });

@@ -2,7 +2,7 @@
 // Draws hover/selection outlines and maps DOM ↔ source through NodeIndex. Talks to
 // the host only via postMessage; never imports from core.
 
-import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
+import { besideSide, dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type Flow, type PlacedChild } from "./drop.js";
 import { handlesFor, LIVE_TARGET, planDrag, scopeOf, type Drag, type GizmoData, type Handle, type Measured, type Scope } from "./gizmos.js";
 import { NodeIndex } from "./mapping.js";
 import { stripVariants, TokenMatcher } from "./tokens.js";
@@ -56,6 +56,8 @@ interface DropState extends DropTarget {
   indicator: Rect;
   /** The container is empty: the indicator fills it. */
   fill: boolean;
+  /** The drop goes before or after this child of the container, aimed at its edge (F-1, F-4). */
+  beside: { key: string; side: "before" | "after" } | null;
 }
 
 export interface OverlayOptions {
@@ -272,7 +274,9 @@ export class Overlay {
   /**
    * Where a drop at (x, y) lands: the innermost drop container at the point (never
    * the node being moved or anything inside it), and the index among its children
-   * from their rendered positions along the container's flow.
+   * from their rendered positions along the container's flow. Near that container's
+   * edge, along its parent's flow, the drop goes beside it in the parent instead
+   * (F-1, F-4), if the parent takes drops too.
    */
   private dropAt(x: number, y: number, moving: string | null): DropState | null {
     if (!this.index || !this.doc.body) return null;
@@ -283,25 +287,45 @@ export class Overlay {
     for (let key: string | null = hit?.key ?? null; key !== null; key = parentKeyOf(key)) {
       const node = this.node(key);
       if (!node?.drop || inMoving(key)) continue;
-      const elements = this.index.elementsOf(node, this.doc.body, this.layer);
-      const container = unionRect(elements.map(rectOf));
-      if (!elements[0] || !container) continue;
-      const style = this.options.win.getComputedStyle(elements[0]);
-      const flow = flowOf(style.display, style.flexDirection, style.gridTemplateColumns);
-      // Indexes count the children as they'll be once the moved node is taken out.
-      const placed: PlacedChild[] = [];
-      let count = 0;
-      for (const child of this.index.nodes) {
-        if (parentKeyOf(child.key) !== key || child.key === moving) continue;
-        const rect = unionRect(this.rects(child));
-        if (rect) placed.push({ index: count, rect });
-        count++;
+      const inside = this.layoutOf(node, moving);
+      if (!inside) continue;
+      const parentKey = parentKeyOf(key);
+      const parent = this.node(parentKey);
+      const outside = parent?.drop && parentKey !== null && !inMoving(parentKey) ? this.layoutOf(parent, moving) : null;
+      const own = outside?.placed.find((c) => c.key === key);
+      const side = outside && own ? besideSide(outside.flow, inside.container, x, y) : null;
+      if (outside && own && side && parentKey !== null) {
+        const index = own.index + (side === "after" ? 1 : 0);
+        const { rect } = indicatorRect(outside.flow, outside.container, outside.placed, index);
+        return { parentKey, index, container: outside.container, indicator: rect, fill: false, beside: { key, side } };
       }
-      const index = dropIndex(flow, placed, x, y, count);
-      const { rect, fill } = indicatorRect(flow, container, placed, index);
-      return { parentKey: key, index, container, indicator: rect, fill };
+      const index = dropIndex(inside.flow, inside.placed, x, y, inside.count);
+      const { rect, fill } = indicatorRect(inside.flow, inside.container, inside.placed, index);
+      return { parentKey: key, index, container: inside.container, indicator: rect, fill, beside: null };
     }
     return null;
+  }
+
+  /**
+   * A drop container as rendered: its flow, its box, and its children's boxes. Indexes
+   * count the children as they'll be once the moved node is taken out.
+   */
+  private layoutOf(node: OverlayNode, moving: string | null): { flow: Flow; container: Rect; placed: (PlacedChild & { key: string })[]; count: number } | null {
+    if (!this.index || !this.doc.body) return null;
+    const elements = this.index.elementsOf(node, this.doc.body, this.layer);
+    const container = unionRect(elements.map(rectOf));
+    if (!elements[0] || !container) return null;
+    const style = this.options.win.getComputedStyle(elements[0]);
+    const flow = flowOf(style.display, style.flexDirection, style.gridTemplateColumns);
+    const placed: (PlacedChild & { key: string })[] = [];
+    let count = 0;
+    for (const child of this.index.nodes) {
+      if (parentKeyOf(child.key) !== node.key || child.key === moving) continue;
+      const rect = unionRect(this.rects(child));
+      if (rect) placed.push({ index: count, rect, key: child.key });
+      count++;
+    }
+    return { flow, container, placed, count };
   }
 
   private target(event: Event): OverlayNode | null {
@@ -841,7 +865,12 @@ export class Overlay {
           `background:${drop.fill ? "rgb(37 99 235 / 0.15)" : COLORS.drop}"></div>`,
       );
       const moved = this.node(this.moving);
-      const text = moved ? `Move ${labelOf(moved)} into ${labelOf(dropNode)}` : `Into ${labelOf(dropNode)}`;
+      const besideNode = drop.beside ? this.node(drop.beside.key) : null;
+      const where =
+        drop.beside && besideNode
+          ? `${drop.beside.side === "before" ? "before" : "after"} ${labelOf(besideNode)} in ${labelOf(dropNode)}`
+          : `into ${labelOf(dropNode)}`;
+      const text = moved ? `Move ${labelOf(moved)} ${where}` : where.charAt(0).toUpperCase() + where.slice(1);
       const at = place(c.x, c.y >= 18 ? c.y - 18 : c.y, text);
       parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${COLORS.drop}">${escapeHtml(text)}</div>`);
     }

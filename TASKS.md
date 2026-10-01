@@ -258,6 +258,20 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ---
 
+## v1.0.x — Dogfood fixes (ROADMAP.md)
+
+Fixes to v1's own features from the dogfood's friction (F-1 to F-6 in `docs/dogfood-log.md`). No new scope.
+
+- [x] **T7.1** Drop beside a container, not only into it (F-1, F-4): near a container's edge along its parent's flow, the drop goes before or after it in the parent.
+- [ ] **T7.2** Reorder without seeing both ends (F-2): Move up / Move down in the Selection panel, through the same `move` op.
+- [ ] **T7.3** No text selection in Skeleton's chrome (F-3), except the dev-server log, code views and text fields.
+- [ ] **T7.4** Compose inside overlays (F-6): an "open in canvas" toggle on a selected Dialog or Sheet.
+- [ ] **T7.5** Lighter templates (F-5): edit an element's text on the canvas with a double-click.
+
+**Gate:** each fix has its tests; the full unit suite and the Gates 1–5 e2e tests still pass.
+
+---
+
 ## Parked (see ROADMAP.md)
 
 - Shadow / elevation tokens (v1.1)

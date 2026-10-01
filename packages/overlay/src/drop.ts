@@ -50,6 +50,27 @@ export function dropIndex(flow: Flow, placed: PlacedChild[], x: number, y: numbe
   return count;
 }
 
+/** Within this distance of a container's edge, along its parent's flow, a drop goes beside it, not into it. */
+export const BESIDE = 8;
+
+/**
+ * Is the point in the band at the start or end of `rect` along `flow` (the flow of the
+ * rect's parent)? Then a drop goes before or after it instead of into it (F-1, F-4).
+ * Rows and grids use the left and right edges, columns the top and bottom. The band is
+ * at most a quarter of the rect, so a small container still has a middle to drop into.
+ */
+export function besideSide(flow: Flow, rect: Rect, x: number, y: number, band = BESIDE): "before" | "after" | null {
+  const vertical = flow === "vertical";
+  const start = vertical ? rect.y : rect.x;
+  const size = vertical ? rect.height : rect.width;
+  const at = vertical ? y : x;
+  const edge = Math.min(band, size / 4);
+  if (edge <= 0) return null;
+  if (at < start + edge) return "before";
+  if (at >= start + size - edge) return "after";
+  return null;
+}
+
 const LINE = 2;
 
 /**
