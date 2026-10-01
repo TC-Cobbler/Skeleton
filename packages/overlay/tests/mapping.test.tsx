@@ -2,6 +2,7 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { locChain, NodeIndex } from "../src/mapping.js";
+import { copy } from "../src/copy.js";
 import { Overlay } from "../src/overlay.js";
 import type { HostMessage, OverlayMessage, OverlayNode } from "../src/protocol.js";
 
@@ -573,7 +574,7 @@ describe("Overlay", () => {
     const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
     const pin = shadow.querySelector('[data-pin="0.0.0"]') as HTMLElement;
     expect(pin.textContent).toBe("2\u2009↩");
-    expect(pin.title).toBe("2 open of 3 notes · agent replied");
+    expect(pin.title).toBe(`${copy.overlay.pinNotes(2, 3)} · ${copy.overlay.pinReplied}`);
     expect(shadow.querySelector('[data-pin="0.1.0"]')?.textContent).toBe("✓");
     pin.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true, cancelable: true }));
     expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "pin", key: "0.0.0" });

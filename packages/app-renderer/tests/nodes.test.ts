@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ElementSchema, UiNode } from "@skeleton/app-main/ipc";
 import { acceptsDrop, agentLogicIn, canMove, flatten, openableFor, parentKeyOf, refFor, reorderTarget, textEditable, toOverlayNodes } from "../src/canvas/nodes.js";
+import { copy } from "../src/copy.js";
 
 const range = { start: 0, end: 1, startLine: 1, endLine: 1 };
 const n = (over: Partial<UiNode>): UiNode => ({
@@ -93,17 +94,17 @@ describe("refFor and agentLogicIn (T3.4)", () => {
   });
 
   it("says why a node can't be removed", () => {
-    expect(refFor(nodes, "0")).toEqual({ reason: "The page's root element can't be removed." });
-    expect(refFor(nodes, "0.1.0")).toMatchObject({ reason: expect.stringContaining("inside 🔒 map") });
-    expect(refFor(nodes, "0.3.0")).toEqual({ reason: "Neither it nor its parent has a data-ui-id." });
-    expect(refFor(nodes, "9")).toEqual({ reason: "It's no longer on the page." });
+    expect(refFor(nodes, "0")).toEqual({ reason: copy.nodes.rootRemove });
+    expect(refFor(nodes, "0.1.0")).toEqual({ reason: copy.nodes.insideLockedRemove("map") });
+    expect(refFor(nodes, "0.3.0")).toEqual({ reason: copy.nodes.noIds });
+    expect(refFor(nodes, "9")).toEqual({ reason: copy.nodes.gone });
   });
 
   it("lists the agent code in a subtree", () => {
     const at = (key: string) => nodes.find((k) => k.key === key)?.node as UiNode;
-    expect(agentLogicIn(at("0.0"))).toEqual(["onClick on Button #ui_btn01"]);
-    expect(agentLogicIn(at("0.1"))).toEqual(["🔒 map (.map() loop)"]);
-    expect(agentLogicIn(at("0.2"))).toEqual(["🔒 OrdersTable #ui_ord01 (custom component)"]);
+    expect(agentLogicIn(at("0.0"))).toEqual([copy.nodes.protectedLogic(["onClick"], "Button #ui_btn01")]);
+    expect(agentLogicIn(at("0.1"))).toEqual([copy.nodes.lockedLogic("map", ".map() loop")]);
+    expect(agentLogicIn(at("0.2"))).toEqual([copy.nodes.lockedLogic("OrdersTable #ui_ord01", "custom component")]);
     expect(agentLogicIn(at("0.3"))).toEqual([]);
   });
 });
@@ -133,12 +134,12 @@ describe("reorderTarget (F-2)", () => {
   });
 
   it("says why not at the ends, at the root, inside a locked block, or without a parent ID", () => {
-    expect(reorderTarget(nodes, "0.0", "up")).toEqual({ reason: "It's already first." });
-    expect(reorderTarget(nodes, "0.2", "down")).toEqual({ reason: "It's already last." });
+    expect(reorderTarget(nodes, "0.0", "up")).toEqual({ reason: copy.nodes.first });
+    expect(reorderTarget(nodes, "0.2", "down")).toEqual({ reason: copy.nodes.last });
     expect(reorderTarget(nodes, "0", "up")).toHaveProperty("reason");
     expect(reorderTarget(nodes, "0.2.0", "up")).toHaveProperty("reason");
     const noId = flatten({ roots: [n({ children: [n({ id: "ui_a0000" }), n({ id: "ui_b0000" })] })], rootError: null });
-    expect(reorderTarget(noId, "0.1", "up")).toEqual({ reason: "div has no data-ui-id." });
+    expect(reorderTarget(noId, "0.1", "up")).toEqual({ reason: copy.nodes.noId("div") });
   });
 });
 

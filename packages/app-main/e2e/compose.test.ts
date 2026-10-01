@@ -9,6 +9,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, parseModule, sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, moveOnCanvas, placeFromPalette, waitForCanvas } from "./canvas-click.js";
+import { copy, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-compose-"));
@@ -42,9 +43,9 @@ beforeAll(async () => {
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
   }, scratch);
-  await page.getByRole("button", { name: "Change…" }).click();
-  await page.getByLabel("Project name").fill("Compose");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await ui(page).picker.changeFolder().click();
+  await ui(page).picker.projectName().fill("Compose");
+  await ui(page).picker.create().click();
   await page.frameLocator('[data-testid="canvas-frame"]').getByRole("heading", { name: "Compose" }).waitFor({ timeout: 90_000 });
 }, 180_000);
 
@@ -55,7 +56,7 @@ afterAll(async () => {
 
 describe("palette (T3.1)", () => {
   it("lists the curated set by group, all placeable in a new project except Toast", async () => {
-    const palette = page.getByRole("region", { name: "Palette" });
+    const palette = ui(page).palette();
     await palette.getByTestId("palette-button").waitFor();
     for (const group of ["Layout", "Inputs", "Display", "Overlay", "Navigation"]) {
       await expect(palette.getByRole("list", { name: `${group} components` }).count()).resolves.toBe(1);
@@ -70,7 +71,7 @@ describe("palette (T3.1)", () => {
 
 describe("drag from the palette (T3.2)", () => {
   const frame = () => canvasFrame(page);
-  const palette = (id: string) => page.getByRole("region", { name: "Palette" }).getByTestId(`palette-${id}`);
+  const palette = (id: string) => ui(page).palette().getByTestId(`palette-${id}`);
   const heading = () => frame().getByRole("heading", { name: "Compose" });
 
   it("drops a Button after the heading, with one minimal diff, and selects it", async () => {
@@ -256,9 +257,9 @@ describe("delete (T3.4)", () => {
 
   it("won't delete an element a locked block wraps, and says why", async () => {
     await layer("ui_mapr1").click();
-    const button = page.getByTestId("selection").getByRole("button", { name: "Delete" });
+    const button = page.getByTestId("selection").getByRole("button", { name: copy.common.delete });
     expect(await button.isDisabled()).toBe(true);
-    expect(await button.getAttribute("title")).toMatch(/inside 🔒 map/);
+    expect(await button.getAttribute("title")).toBe(copy.nodes.insideLockedRemove("map"));
   });
 
   it("asks before deleting agent code, and Cancel leaves it", async () => {
@@ -268,13 +269,13 @@ describe("delete (T3.4)", () => {
     await page.keyboard.press("Delete");
     const confirm = page.getByTestId("confirm-delete");
     await confirm.waitFor();
-    expect(await confirm.textContent()).toContain("🔒 map (.map() loop)");
-    await confirm.getByRole("button", { name: "Cancel" }).click();
+    expect(await confirm.textContent()).toContain(copy.nodes.lockedLogic("map", ".map() loop"));
+    await confirm.getByRole("button", { name: copy.common.cancel }).click();
     await page.waitForTimeout(300);
     expect(homeFile()).toBe(before);
 
-    await page.getByTestId("selection").getByRole("button", { name: "Delete" }).click();
-    await confirm.getByRole("button", { name: "Delete anyway" }).click();
+    await page.getByTestId("selection").getByRole("button", { name: copy.common.delete }).click();
+    await confirm.getByRole("button", { name: copy.selection.deleteAnyway }).click();
     const after = await edited(before);
     expect(after).not.toContain(".map(");
     expect(childNames(stackId())).toEqual(["h1", "div", "Card", "Button", "Stack"]);
@@ -320,12 +321,12 @@ describe("properties panel (T3.5)", () => {
     const button = idOf(stackId(), "Button");
     target = button;
     await layer(button).click();
-    await change(() => props().getByLabel("variant").selectOption("outline"));
+    await change(() => props().getByLabel(copy.properties.propLabel("variant")).selectOption("outline"));
     expect(tagOf(button)).toContain(`variant="outline"`);
-    await change(() => props().getByLabel("size").selectOption("lg"));
-    await change(() => props().getByLabel("disabled").click());
+    await change(() => props().getByLabel(copy.properties.propLabel("size")).selectOption("lg"));
+    await change(() => props().getByLabel(copy.properties.propLabel("disabled")).click());
     expect(tagOf(button)).toMatch(/variant="outline" size="lg" disabled=\{true\}/);
-    await change(() => props().getByLabel("variant").selectOption("default"));
+    await change(() => props().getByLabel(copy.properties.propLabel("variant")).selectOption("default"));
     expect(tagOf(button)).not.toContain("variant=");
     await canvasFrame(page).locator(`button[data-ui-id="${button}"][disabled]`).waitFor();
   });
@@ -334,7 +335,7 @@ describe("properties panel (T3.5)", () => {
     const button = idOf(stackId(), "Button");
     target = button;
     await layer(button).click();
-    const text = props().getByLabel("Text");
+    const text = props().getByLabel(copy.properties.text);
     await change(async () => {
       await text.fill("Save & close");
       await text.press("Enter");
@@ -347,16 +348,16 @@ describe("properties panel (T3.5)", () => {
     const row = idOf(stackId(), "Stack");
     target = row;
     await layer(row).click();
-    expect(await props().getByLabel("direction").inputValue()).toBe("horizontal");
-    expect(await props().getByLabel("Gap").inputValue()).toBe("gap-4");
-    await change(() => props().getByLabel("Gap").selectOption("gap-8"));
-    await change(() => props().getByLabel("Justify").selectOption("justify-between"));
-    await change(() => props().getByLabel("Align").selectOption("items-center"));
+    expect(await props().getByLabel(copy.properties.propLabel("direction")).inputValue()).toBe("horizontal");
+    expect(await props().getByLabel(copy.properties.classGroupLabel("Gap")).inputValue()).toBe("gap-4");
+    await change(() => props().getByLabel(copy.properties.classGroupLabel("Gap")).selectOption("gap-8"));
+    await change(() => props().getByLabel(copy.properties.classGroupLabel("Justify")).selectOption("justify-between"));
+    await change(() => props().getByLabel(copy.properties.classGroupLabel("Align")).selectOption("items-center"));
     // A swap stays in place; a new group's class goes at the end.
     expect(tagOf(row)).toContain(`className="gap-8 p-4 justify-between items-center"`);
-    await change(() => props().getByLabel("Justify").selectOption(""));
+    await change(() => props().getByLabel(copy.properties.classGroupLabel("Justify")).selectOption(""));
     expect(tagOf(row)).toContain(`className="gap-8 p-4 items-center"`);
-    await change(() => props().getByLabel("direction").selectOption("vertical"));
+    await change(() => props().getByLabel(copy.properties.propLabel("direction")).selectOption("vertical"));
     expect(tagOf(row).slice(0, 120)).not.toContain("direction=");
     // The canvas shows it: a column now, with the new gap.
     const style = await canvasFrame(page).locator(`[data-ui-id="${row}"]`).evaluate((e) => [getComputedStyle(e).flexDirection, getComputedStyle(e).rowGap]);
@@ -372,13 +373,13 @@ describe("properties panel (T3.5)", () => {
     renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
     await waitForCanvas(page, sourceVersion(source));
     await layer(button).click();
-    expect(await props().getByLabel("variant").count()).toBe(1);
+    expect(await props().getByLabel(copy.properties.propLabel("variant")).count()).toBe(1);
     expect(await page.getByTestId("selection").textContent()).toContain("onClick");
   });
 });
 
 describe("page ops (T3.6)", () => {
-  const pages = () => page.getByRole("region", { name: "Pages" });
+  const pages = () => ui(page).pages();
   const file = (rel: string) => readFileSync(path.join(projectRoot, rel), "utf8");
   const exists = (rel: string) => {
     try {
@@ -390,11 +391,11 @@ describe("page ops (T3.6)", () => {
   };
 
   it("adds a page: file, route, and the canvas shows it", async () => {
-    await pages().getByRole("button", { name: "Add page" }).click();
-    const form = pages().getByRole("form", { name: "Add page" });
-    await form.getByLabel("Name").fill("Order history");
-    expect(await form.getByLabel("Path").inputValue()).toBe("/order-history");
-    await form.getByRole("button", { name: "Add" }).click();
+    await pages().getByRole("button", { name: copy.pages.add }).click();
+    const form = pages().getByRole("form", { name: copy.pages.add });
+    await form.getByLabel(copy.pages.name).fill("Order history");
+    expect(await form.getByLabel(copy.pages.path).inputValue()).toBe("/order-history");
+    await form.getByRole("button", { name: copy.pages.submitAdd }).click();
     await canvasFrame(page).getByRole("heading", { name: "Order history" }).waitFor();
     expect(file("src/router.tsx")).toContain(`{ path: "/order-history", element: <OrderHistoryPage /> },`);
     expect(file("src/pages/OrderHistoryPage.tsx")).toContain("export default function OrderHistoryPage() {");
@@ -402,18 +403,18 @@ describe("page ops (T3.6)", () => {
   });
 
   it("renames the path, then the name (component and file)", async () => {
-    await pages().getByRole("button", { name: "Rename" }).click();
-    let form = pages().getByRole("form", { name: "Rename page" });
-    await form.getByLabel("Path").fill("/orders");
-    await form.getByRole("button", { name: "Rename" }).click();
+    await pages().getByRole("button", { name: copy.pages.rename }).click();
+    let form = pages().getByRole("form", { name: copy.pages.renameForm });
+    await form.getByLabel(copy.pages.path).fill("/orders");
+    await form.getByRole("button", { name: copy.pages.rename }).click();
     await expect.poll(() => pages().getByRole("option", { selected: true }).textContent()).toContain("/orders");
     expect(file("src/router.tsx")).toContain(`{ path: "/orders", element: <OrderHistoryPage /> },`);
 
-    await pages().getByRole("button", { name: "Rename" }).click();
-    form = pages().getByRole("form", { name: "Rename page" });
-    expect(await form.getByLabel("Name").inputValue()).toBe("Order History");
-    await form.getByLabel("Name").fill("Orders");
-    await form.getByRole("button", { name: "Rename" }).click();
+    await pages().getByRole("button", { name: copy.pages.rename }).click();
+    form = pages().getByRole("form", { name: copy.pages.renameForm });
+    expect(await form.getByLabel(copy.pages.name).inputValue()).toBe("Order History");
+    await form.getByLabel(copy.pages.name).fill("Orders");
+    await form.getByRole("button", { name: copy.pages.rename }).click();
     // The new file is written before the old one is deleted: wait for both.
     await expect.poll(() => [exists("src/pages/OrdersPage.tsx"), exists("src/pages/OrderHistoryPage.tsx")]).toEqual([true, false]);
     expect(file("src/router.tsx")).toContain(`import OrdersPage from "./pages/OrdersPage";`);
@@ -424,16 +425,16 @@ describe("page ops (T3.6)", () => {
 
   it("deletes a page after confirming, and shows another one", async () => {
     const router = file("src/router.tsx");
-    await pages().getByRole("button", { name: "Delete" }).click();
-    await pages().getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+    await pages().getByRole("button", { name: copy.common.delete }).click();
+    await pages().getByRole("alertdialog").getByRole("button", { name: copy.common.cancel }).click();
     expect(file("src/router.tsx")).toBe(router);
-    await pages().getByRole("button", { name: "Delete" }).click();
-    await pages().getByRole("alertdialog").getByRole("button", { name: "Delete page" }).click();
+    await pages().getByRole("button", { name: copy.common.delete }).click();
+    await pages().getByRole("alertdialog").getByRole("button", { name: copy.pages.deletePage }).click();
     await expect.poll(() => exists("src/pages/OrdersPage.tsx")).toBe(false);
     expect(file("src/router.tsx")).not.toContain("OrdersPage");
     await canvasFrame(page).getByRole("heading", { name: "Compose" }).waitFor();
     // The last page can't be deleted.
-    expect(await pages().getByRole("button", { name: "Delete" }).isDisabled()).toBe(true);
+    expect(await pages().getByRole("button", { name: copy.common.delete }).isDisabled()).toBe(true);
   });
 });
 
@@ -465,25 +466,25 @@ describe("post-edit pipeline (T3.7)", () => {
     );
     expect(homeFile()).toBe(before);
     // Through the UI: a valid edit goes through and formats a long tag.
-    await page.getByTestId("properties").getByLabel("Padding X").selectOption("px-10");
+    await page.getByTestId("properties").getByLabel(copy.properties.classGroupLabel("Padding X")).selectOption("px-10");
     await edited(before);
     expect(homeFile()).toMatch(new RegExp(`<Stack\\n\\s+data-ui-id="${row}"\\n`));
   });
 });
 
 describe("undo and redo (T3.8)", () => {
-  const history = () => page.getByRole("group", { name: "History" });
+  const history = () => ui(page).history();
   const idOf = (parent: string, name: string) => findNodeById(buildTree(homeFile()).roots, parent)?.children.find((c) => c.name === name)?.id as string;
 
   it("undoes and redoes a drop with the buttons, restoring the file exactly", async () => {
     const before = homeFile();
     await placeFromPalette(page, "badge", canvasFrame(page).getByRole("heading", { name: "Compose" }), { fx: 0.5, fy: 0.9 });
     const placed = homeFile();
-    await expect.poll(() => history().getByRole("button", { name: "Undo" }).getAttribute("title")).toBe("Undo Insert Badge (Ctrl+Z)");
-    await history().getByRole("button", { name: "Undo" }).click();
+    await expect.poll(() => history().getByRole("button", { name: copy.app.undo }).getAttribute("title")).toBe(copy.app.undoTitle("Insert Badge"));
+    await history().getByRole("button", { name: copy.app.undo }).click();
     await expect.poll(homeFile).toBe(before);
     await waitForCanvas(page, sourceVersion(before));
-    await history().getByRole("button", { name: "Redo" }).click();
+    await history().getByRole("button", { name: copy.app.redo }).click();
     await expect.poll(homeFile).toBe(placed);
   });
 
@@ -503,12 +504,12 @@ describe("undo and redo (T3.8)", () => {
   });
 
   it("undoes adding a page: the file goes, and the canvas moves to a page that exists", async () => {
-    const pages = page.getByRole("region", { name: "Pages" });
-    await pages.getByRole("button", { name: "Add page" }).click();
-    await pages.getByRole("form", { name: "Add page" }).getByLabel("Name").fill("Scratch");
-    await pages.getByRole("form", { name: "Add page" }).getByRole("button", { name: "Add" }).click();
+    const pages = ui(page).pages();
+    await pages.getByRole("button", { name: copy.pages.add }).click();
+    await pages.getByRole("form", { name: copy.pages.add }).getByLabel(copy.pages.name).fill("Scratch");
+    await pages.getByRole("form", { name: copy.pages.add }).getByRole("button", { name: copy.pages.submitAdd }).click();
     await canvasFrame(page).getByRole("heading", { name: "Scratch" }).waitFor();
-    await history().getByRole("button", { name: "Undo" }).click();
+    await history().getByRole("button", { name: copy.app.undo }).click();
     await expect.poll(() => readFileSync(path.join(projectRoot, "src/router.tsx"), "utf8")).not.toContain("ScratchPage");
     await canvasFrame(page).getByRole("heading", { name: "Compose" }).waitFor();
   });
@@ -520,7 +521,7 @@ describe("undo and redo (T3.8)", () => {
     writeFileSync(tmp, outside);
     renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
     await waitForCanvas(page, sourceVersion(outside));
-    await history().getByRole("button", { name: "Undo" }).click();
+    await history().getByRole("button", { name: copy.app.undo }).click();
     await expect.poll(() => page.getByTestId("edit-error").last().textContent()).toMatch(/can't undo "Insert Badge": src\/pages\/HomePage.tsx changed since/);
     expect(homeFile()).toBe(outside);
     expect(idOf(stackId(), "Badge")).toBeTruthy();

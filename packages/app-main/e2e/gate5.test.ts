@@ -19,6 +19,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, readNotes, readTokens, sourceVersion, walkTree, type UiNode } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, waitForCanvas } from "./canvas-click.js";
+import { copy, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-gate5-"));
@@ -86,9 +87,9 @@ beforeAll(async () => {
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
   }, scratch);
-  await page.getByRole("button", { name: "Change…" }).click();
-  await page.getByLabel("Project name").fill("Gate Five");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await ui(page).picker.changeFolder().click();
+  await ui(page).picker.projectName().fill("Gate Five");
+  await ui(page).picker.create().click();
   await frame().getByRole("heading", { name: "Gate Five" }).waitFor({ timeout: 90_000 });
   // Two Stacks; a Table with a placeholder row in a Card in the first. Gate 3 covers
   // building a page from the palette; here it's written, as in Gate 4.
@@ -150,18 +151,18 @@ describe("Gate 5", () => {
     await page.getByTestId(`layer-${IDS.table}`).click();
     expect(await page.getByTestId("selection-id").textContent()).toBe(IDS.table);
     await tab(/^Notes/).click();
-    const form = page.getByRole("form", { name: "Add a note" });
-    await form.getByLabel("Note type").selectOption("build");
-    await form.getByLabel("Note text").fill("Load orders from /api/orders");
-    await form.getByRole("button", { name: "Add" }).click();
+    const form = ui(page).addNote();
+    await form.getByLabel(copy.notes.type).selectOption("build");
+    await form.getByLabel(copy.notes.text).fill("Load orders from /api/orders");
+    await form.getByRole("button", { name: copy.notes.add }).click();
     await expect.poll(() => readNotes(read("skeleton/notes.json")).notes.map((n) => [n.target, n.type, n.text, n.status])).toEqual([
       [IDS.table, "build", "Load orders from /api/orders", "open"],
     ]);
     // Pinned on the canvas.
     await expect.poll(() => frame().locator(`skeleton-overlay [data-pin]`).first().textContent(), { timeout: 10_000 }).toBe("1");
 
-    await page.getByRole("button", { name: "Hand off" }).click();
-    await expect.poll(loopState, { timeout: 120_000 }).toBe("With agent · handoff #1");
+    await ui(page).handOff().click();
+    await expect.poll(loopState, { timeout: 120_000 }).toBe(copy.loop.withAgent(1));
     expect(subjects()[0]).toBe("skeleton: handoff #1");
     expect(git("status", "--porcelain")).toBe("");
     const handoff = read("HANDOFF.md");
@@ -170,9 +171,9 @@ describe("Gate 5", () => {
     expect(handoff).toContain("## Agent replies\n<!-- Agent: tick tasks above and add replies here, keyed by data-ui-id -->");
     // Locked: the canvas is veiled, the palette and edits are off.
     await page.getByTestId("agent-veil").waitFor();
-    expect(await page.getByRole("button", { name: "Undo" }).isDisabled()).toBe(true);
-    expect(await page.getByRole("button", { name: "Hand off" }).count()).toBe(0);
-    expect(await page.getByRole("form", { name: "Add a note" }).count()).toBe(0);
+    expect(await ui(page).undo().isDisabled()).toBe(true);
+    expect(await ui(page).handOff().count()).toBe(0);
+    expect(await ui(page).addNote().count()).toBe(0);
   }, 180_000);
 
   it("F5: the agent fetches data and ticks the task; take back shows it live, locked, resolved and replied", async () => {
@@ -195,18 +196,18 @@ describe("Gate 5", () => {
         .concat(`- ${IDS.table} · Loads via useOrders() (src/hooks/use-orders.ts); the row template keeps ui_tbr00\n`),
     );
 
-    await page.getByRole("button", { name: "Take back" }).click();
-    await expect.poll(loopState, { timeout: 120_000 }).toBe("With you");
+    await ui(page).takeBack().click();
+    await expect.poll(loopState, { timeout: 120_000 }).toBe(copy.loop.withYou);
     expect(subjects()[0]).toBe("agent: pass #1");
     await page.getByTestId("agent-veil").waitFor({ state: "detached" });
 
     // The pass summary: task done, no breaches, nothing to repair, the build passes.
     const summary = page.getByTestId("pass-summary");
     await summary.waitFor();
-    expect(await page.getByTestId("pass-tasks").textContent()).toContain("Tasks: 1 of 1 done");
-    expect(await page.getByTestId("pass-build").textContent()).toMatch(/^Build passes/);
-    expect(await page.getByTestId("pass-breaches").locator("summary").textContent()).toBe("Contract breaches (0)");
-    expect(await page.getByTestId("pass-repairs").locator("summary").textContent()).toBe("Repaired (0)");
+    expect(await page.getByTestId("pass-tasks").textContent()).toContain(copy.pass.tasks(1, 1, 0));
+    expect(await page.getByTestId("pass-build").textContent()).toMatch(startsWith(copy.pass.buildPassed));
+    expect(await page.getByTestId("pass-breaches").locator("summary").textContent()).toBe(`${copy.pass.groups.breaches} (0)`);
+    expect(await page.getByTestId("pass-repairs").locator("summary").textContent()).toBe(`${copy.pass.groups.repaired} (0)`);
     expect(await page.getByTestId("pass-locked").textContent()).toContain(".map");
     // The per-file diff against the handoff (T5.7).
     await page.getByTestId("pass-diffs").getByRole("button", { name: HOME }).click();
@@ -231,10 +232,10 @@ describe("Gate 5", () => {
     // The note is resolved and the reply pinned to the Table.
     expect(readNotes(read("skeleton/notes.json")).notes[0]?.status).toBe("resolved");
     await tab(/^Notes/).click();
-    await page.getByRole("group", { name: "Note status" }).getByRole("button", { name: "All" }).click();
+    await page.getByRole("group", { name: copy.notes.status }).getByRole("button", { name: copy.notes.all }).click();
     const note = page.getByTestId("note").first();
-    expect(await note.getByTestId("note-status").textContent()).toBe("resolved");
-    expect(await note.getByTestId("note-reply").textContent()).toBe("Agent, pass 1: Loads via useOrders() (src/hooks/use-orders.ts); the row template keeps ui_tbr00");
+    expect(await note.getByTestId("note-status").textContent()).toBe(copy.notes.resolvedStatus);
+    expect(await note.getByTestId("note-reply").textContent()).toBe(`${copy.notes.agentReply(1)} Loads via useOrders() (src/hooks/use-orders.ts); the row template keeps ui_tbr00`);
     await expect.poll(() => frame().locator("skeleton-overlay [data-pin]").first().textContent(), { timeout: 10_000 }).toBe("✓ ↩");
   }, 180_000);
 
@@ -247,7 +248,7 @@ describe("Gate 5", () => {
 
     // --radius-card, in the token panel.
     await tab(/^Tokens/).click();
-    const input = page.getByRole("region", { name: "Tokens" }).getByTestId("token---radius-card").getByLabel("--radius-card value");
+    const input = ui(page).tokens().getByTestId("token---radius-card").getByLabel(copy.tokens.valueLabel("--radius-card"));
     await input.fill("calc(var(--radius) * 2)");
     await input.press("Enter");
     await expect.poll(() => token(read("src/styles/globals.css"))).toBe("calc(var(--radius) * 2)");

@@ -1,4 +1,5 @@
 import type { FrameLocator, Locator, Page } from "playwright-core";
+import { ui } from "./ui.js";
 
 /**
  * Clicks an element inside a canvas frame with the real mouse, like a user.
@@ -87,7 +88,7 @@ export async function placeFromPalette(page: Page, paletteId: string, target: Lo
   // selection changed" isn't enough: after an edit it can briefly show the previous
   // edit's element, which let a drop return before it had landed (KI-1).
   const existing = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="layer-ui_"]')].map((row) => row.getAttribute("data-testid")?.slice(6) ?? ""));
-  const item = page.getByRole("region", { name: "Palette" }).getByTestId(`palette-${paletteId}`);
+  const item = ui(page).palette().getByTestId(`palette-${paletteId}`);
   await dragToCanvas(page, item, target, aim);
   const handle = await page.waitForFunction(
     (previous) => {

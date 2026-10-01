@@ -10,6 +10,7 @@ import { _electron, type ElectronApplication, type Locator, type Page } from "pl
 import { sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, placeFromPalette, waitForCanvas, type Aim } from "./canvas-click.js";
+import { copy, ui } from "./ui.js";
 
 const STEP = process.env["DOGFOOD_STEP"] ?? "";
 const DIR = process.env["DOGFOOD_DIR"] ?? "/home/user/dogfood";
@@ -58,7 +59,7 @@ async function select(id: string) {
 
 async function setText(id: string, text: string) {
   await select(id);
-  const input = props().getByLabel("Text");
+  const input = props().getByLabel(copy.properties.text);
   await edit(`text of ${id} → ${text}`, async () => {
     await input.fill(text);
     await input.press("Enter");
@@ -142,33 +143,33 @@ async function ledger(name: string, value: string) {
 
 async function note(id: string, type: "build" | "behaviour" | "question", text: string) {
   await select(id);
-  await page.getByRole("tab", { name: /^Notes/ }).click();
-  const form = page.getByRole("form", { name: "Add a note" });
-  await form.getByLabel("Note type").selectOption(type);
-  await form.getByLabel("Note text").fill(text);
-  await form.getByRole("button", { name: "Add" }).click();
+  await ui(page).tab("notes").click();
+  const form = ui(page).addNote();
+  await form.getByLabel(copy.notes.type).selectOption(type);
+  await form.getByLabel(copy.notes.text).fill(text);
+  await form.getByRole("button", { name: copy.notes.add }).click();
   await expect.poll(() => (existsSync(path.join(ROOT, "skeleton/notes.json")) ? read("skeleton/notes.json") : "")).toContain(text);
-  await page.getByRole("tab", { name: "Element" }).click();
+  await ui(page).tab("element").click();
   log(`note: ${type} on ${id}: ${text}`);
 }
 
 async function token(name: string, value: string, dark = false) {
-  await page.getByRole("tab", { name: /^Tokens/ }).click();
-  const input = page.getByTestId(`token-${name}`).getByLabel(`${name} ${dark ? "dark " : ""}value`);
+  await ui(page).tab("tokens").click();
+  const input = page.getByTestId(`token-${name}`).getByLabel(dark ? copy.tokens.darkValueLabel(name) : copy.tokens.valueLabel(name));
   await edit(`token ${name}${dark ? " (dark)" : ""} → ${value}`, async () => {
     await input.fill(value);
     await input.press("Enter");
   }, "src/styles/globals.css");
   await ledger(dark ? `${name}.dark` : name, value);
-  await page.getByRole("tab", { name: "Element" }).click();
+  await ui(page).tab("element").click();
 }
 
 async function addPage(name: string): Promise<string> {
-  const pages = page.getByRole("region", { name: "Pages" });
-  await pages.getByRole("button", { name: "Add page" }).click();
-  const form = pages.getByRole("form", { name: "Add page" });
-  await form.getByLabel("Name").fill(name);
-  await form.getByRole("button", { name: "Add" }).click();
+  const pages = ui(page).pages();
+  await pages.getByRole("button", { name: copy.pages.add }).click();
+  const form = pages.getByRole("form", { name: copy.pages.add });
+  await form.getByLabel(copy.pages.name).fill(name);
+  await form.getByRole("button", { name: copy.pages.submitAdd }).click();
   const f = `src/pages/${name.replace(/\s+/g, "")}Page.tsx`;
   await expect.poll(() => existsSync(path.join(ROOT, f)), { timeout: 20_000 }).toBe(true);
   log(`page: ${name} (${f})`);
@@ -176,23 +177,23 @@ async function addPage(name: string): Promise<string> {
 }
 
 async function goToPage(label: RegExp, f: string) {
-  await page.getByRole("region", { name: "Pages" }).getByRole("option", { name: label }).click();
+  await ui(page).pages().getByRole("option", { name: label }).click();
   file = f;
   await waitForCanvas(page, sourceVersion(read(f)), "canvas-desktop").catch(() => undefined);
   await page.waitForTimeout(800);
 }
 
 async function handOff() {
-  await page.getByRole("button", { name: "Hand off" }).click();
+  await ui(page).handOff().click();
   await page.getByTestId("agent-veil").waitFor({ timeout: 240_000 });
   log("handed off");
   await shot("handed-off");
 }
 
 async function takeBack() {
-  await page.getByRole("button", { name: "Take back" }).click();
-  await expect.poll(() => page.getByTestId("loop").textContent(), { timeout: 240_000 }).toMatch(/With you/);
-  await page.getByRole("tab", { name: /^Pass/ }).click();
+  await ui(page).takeBack().click();
+  await expect.poll(() => page.getByTestId("loop").textContent(), { timeout: 240_000 }).toContain(copy.loop.withYou);
+  await ui(page).tab("pass").click();
   await page.waitForTimeout(800);
   log(`pass summary:\n${await page.getByTestId("pass").innerText()}`);
   await shot("pass");
@@ -211,11 +212,11 @@ beforeAll(async () => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
   }, exists ? ROOT : DIR);
   if (exists) {
-    await page.getByRole("button", { name: "Open…" }).click();
+    await ui(page).picker.openFolder().click();
   } else {
-    await page.getByRole("button", { name: "Change…" }).click();
-    await page.getByLabel("Project name").fill(NAME);
-    await page.getByRole("button", { name: "Create project" }).click();
+    await ui(page).picker.changeFolder().click();
+    await ui(page).picker.projectName().fill(NAME);
+    await ui(page).picker.create().click();
   }
   await frame().locator("h1").first().waitFor({ timeout: 120_000 });
   await page.waitForTimeout(1500);
@@ -322,7 +323,7 @@ const steps: Record<string, () => Promise<void>> = {
     // grid's empty columns instead.
     if (read().includes("ui_cjmuo")) {
       await select("ui_cjmuo");
-      await edit("delete the nested cards", () => page.getByTestId("selection").getByRole("button", { name: "Delete" }).click());
+      await edit("delete the nested cards", () => page.getByTestId("selection").getByRole("button", { name: copy.common.delete }).click());
     }
     const second = await place("card", at(grid), { fx: 0.5, fy: 0.5 });
     const third = await place("card", at(grid), { fx: 0.85, fy: 0.5 });
@@ -375,7 +376,7 @@ const steps: Record<string, () => Promise<void>> = {
     const confirm = footer.children.find((c) => c.name === "Button");
     if (!confirm?.id) throw new Error("no Confirm button in the dialog footer");
     await select("ui_27ttm");
-    await edit("delete the placeholder Add game button", () => page.getByTestId("selection").getByRole("button", { name: "Delete" }).click());
+    await edit("delete the placeholder Add game button", () => page.getByTestId("selection").getByRole("button", { name: copy.common.delete }).click());
     await token("--radius", "0.5rem");
     await shot("composed");
 
@@ -394,16 +395,16 @@ const steps: Record<string, () => Promise<void>> = {
     // (Resumable: a step that already landed is skipped.)
     // Orphan tray: the loop 1 Question's button was deleted in loop 4; discard its note.
     if (read("skeleton/notes.json").includes("What should adding a game ask for?")) {
-      await page.getByRole("tab", { name: /^Notes/ }).click();
+      await ui(page).tab("notes").click();
       const tray = page.getByTestId("orphan-tray");
       await tray.waitFor();
       await shot("orphan-tray");
       const notesBefore = read("skeleton/notes.json");
-      await tray.getByTestId("orphan").first().getByRole("button", { name: "Discard" }).click();
+      await tray.getByTestId("orphan").first().getByRole("button", { name: copy.notes.discard }).click();
       await expect.poll(() => read("skeleton/notes.json")).not.toBe(notesBefore);
       await expect.poll(() => tray.count()).toBe(0);
       log("orphan note discarded");
-      await page.getByRole("tab", { name: "Element" }).click();
+      await ui(page).tab("element").click();
     }
 
     // Edit the agent's form fields inside the closed dialog, from the Layers tree.

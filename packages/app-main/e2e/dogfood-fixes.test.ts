@@ -15,6 +15,7 @@ import { _electron, type ElectronApplication, type Locator, type Page } from "pl
 import { buildTree, findNodeById, sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, placeFromPalette, waitForCanvas } from "./canvas-click.js";
+import { copy, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-fixes-"));
@@ -61,9 +62,9 @@ beforeAll(async () => {
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
   }, scratch);
-  await page.getByRole("button", { name: "Change…" }).click();
-  await page.getByLabel("Project name").fill("Fixes");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await ui(page).picker.changeFolder().click();
+  await ui(page).picker.projectName().fill("Fixes");
+  await ui(page).picker.create().click();
   await frame().getByRole("heading", { name: "Fixes" }).waitFor({ timeout: 90_000 });
   // A toolbar, a Grid with one Card, and a closed Dialog: what the dogfood's loops composed.
   const source = homeFile()
@@ -162,7 +163,7 @@ describe("Move up / Move down (T7.2, F-2)", () => {
     await page.getByTestId(`layer-${IDS.dialog}`).click();
     const down = selection().getByTestId("move-down");
     expect(await down.isDisabled()).toBe(true);
-    expect(await down.getAttribute("title")).toBe("It's already last.");
+    expect(await down.getAttribute("title")).toBe(copy.nodes.last);
     expect(await selection().getByTestId("move-up").isDisabled()).toBe(false);
   });
 });
@@ -170,8 +171,8 @@ describe("Move up / Move down (T7.2, F-2)", () => {
 describe("no text selection in the chrome (T7.3, F-3)", () => {
   it("keeps headings and buttons unselectable, and the log and code selectable", async () => {
     const userSelect = (l: Locator) => l.evaluate((e) => getComputedStyle(e).userSelect);
-    expect(await userSelect(page.getByRole("heading", { name: "Layers" }))).toBe("none");
-    expect(await userSelect(page.getByRole("button", { name: "Undo" }))).toBe("none");
+    expect(await userSelect(page.getByRole("heading", { name: copy.layers.title }))).toBe("none");
+    expect(await userSelect(ui(page).undo())).toBe("none");
     expect(await userSelect(page.getByTestId("devserver-log"))).toBe("text");
     expect(await userSelect(page.getByTestId("project-root"))).toBe("text");
   });
@@ -182,11 +183,11 @@ describe("compose inside a closed Dialog (T7.4, F-6)", () => {
 
   it("opens it on the canvas by its trigger, takes a drop into it, and closes it", async () => {
     await page.getByTestId(`layer-${IDS.dialog}`).click();
-    await expect.poll(() => toggle().textContent()).toBe("Open Dialog in canvas");
+    await expect.poll(() => toggle().textContent()).toBe(copy.selection.open("Dialog"));
     const before = homeFile();
     await toggle().click();
     await frame().getByRole("dialog").getByText("New game").waitFor();
-    await expect.poll(() => toggle().textContent()).toBe("Close Dialog");
+    await expect.poll(() => toggle().textContent()).toBe(copy.selection.close("Dialog"));
     expect(homeFile()).toBe(before);
 
     // Into its content, below the header: the content's padding, in the dialog's lower half.
@@ -196,7 +197,7 @@ describe("compose inside a closed Dialog (T7.4, F-6)", () => {
     await frame().getByRole("dialog").locator(`[data-ui-id="${id}"]`).waitFor();
 
     // From something inside it, the toggle still names the Dialog.
-    await expect.poll(() => toggle().textContent()).toBe("Close Dialog");
+    await expect.poll(() => toggle().textContent()).toBe(copy.selection.close("Dialog"));
     // Its text edits on the canvas too: the modal's focus trap leaves the editor alone.
     const title = frame().getByRole("dialog").locator('[data-ui-id="ui_dtt00"]');
     const at = await canvasPoint(page, "canvas-frame", title);
@@ -210,7 +211,7 @@ describe("compose inside a closed Dialog (T7.4, F-6)", () => {
     await frame().getByRole("dialog").getByText("Add a game").waitFor();
     await toggle().click();
     await expect.poll(() => frame().getByRole("dialog").count()).toBe(0);
-    await expect.poll(() => toggle().textContent()).toBe("Open Dialog in canvas");
+    await expect.poll(() => toggle().textContent()).toBe(copy.selection.open("Dialog"));
   });
 });
 

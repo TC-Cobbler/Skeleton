@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { copy } from "../src/copy.js";
 import { factorOf, handlesFor, planDrag, scopeOf, toPx, typeScale, type Drag, type GizmoData, type Handle, type Measured } from "../src/gizmos.js";
 import type { GizmoToken } from "../src/protocol.js";
 
@@ -91,7 +92,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     });
 
     it("says why a scope isn't available", () => {
-      expect(planDrag(handle("radius"), "component", measured({ classes: ["rounded-full"] }), data)).toEqual({ unavailable: expect.stringMatching(/no radius token/) });
+      expect(planDrag(handle("radius"), "component", measured({ classes: ["rounded-full"] }), data)).toEqual({ unavailable: copy.gizmos.noRadiusToken });
       expect(planDrag(handle("radius"), "instance", button, { ...data, classEdits: "it's a locked block" })).toEqual({ unavailable: "it's a locked block" });
     });
   });
@@ -120,7 +121,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     });
 
     it("Shift needs a scale step to scale from", () => {
-      expect(planDrag(handle("gap", 0), "global", measured({ flow: "row", gap: 13, classes: ["gap-[13px]"] }), data)).toEqual({ unavailable: expect.stringMatching(/spacing scale/) });
+      expect(planDrag(handle("gap", 0), "global", measured({ flow: "row", gap: 13, classes: ["gap-[13px]"] }), data)).toEqual({ unavailable: copy.gizmos.notSpacingStep("gap") });
     });
   });
 
