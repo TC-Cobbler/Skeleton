@@ -51,3 +51,7 @@ Result: 5 of 5 runs, 350 canvas clicks, none missed. The elements selected from 
 - **A different palette entry is occasionally placed** than the one aimed at (Gate 4 setups). This may be the same helper race as (1): the next drag started while the previous edit was still in flight.
 - **A gizmo press can be lost** (`dragGizmo` retries it). The handle race in (2) is a likely cause.
 Neither was reproduced in this investigation.
+
+## KI-2: Gate 4's Alt-drag label sometimes isn't found (open, intermittent)
+
+Seen once in 5 runs (2026-10-01, before T8.1 changed anything): during the Alt-drag in `gate4.test.ts`, the drag started (its live preview was there), but `label()` found no handle label within 2 s and returned null. The following 4 runs passed, and so did `tokens.test.ts`'s Alt-drag. It's not caused by the UI refresh. It's worth a look if it recurs: the label may be redrawn away while Alt is held.

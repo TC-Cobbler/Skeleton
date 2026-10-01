@@ -318,7 +318,7 @@ describe("violations panel (T4.6)", () => {
       { file: "src/pages/HomePage.tsx", id: "ui_agnt1", value: 'style={{ color: "red" }}' },
     ]);
     await expect.poll(() => rows().count()).toBe(0);
-    await panel().getByLabel(startsWith(copy.violations.showKeptLabel)).check();
+    await panel().getByLabel(copy.violations.showKeptLabel).check();
     expect(await rows().count()).toBe(1);
   });
 });
