@@ -166,6 +166,7 @@ export default function OrdersPage() {
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
     await canvas.getByRole("heading", { name: "Orders page" }).waitFor({ timeout: 15_000 });
     await page.getByTestId("layer-ui_ord02").waitFor();
+    await ui(page).openPages();
     expect(await list.getByRole("option", { name: /\/orders/ }).getAttribute("aria-selected")).toBe("true");
 
     // Navigating inside the app switches the page too.

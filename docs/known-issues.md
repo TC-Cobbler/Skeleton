@@ -59,3 +59,14 @@ Seen twice in about 7 full e2e runs (2026-10-01): mid-drag, the drag had started
 - **Cause (likely):** the overlay treated any `lostpointercapture` as the drag's release, which is meant for a button let go outside the frame. When the capture was lost while the button was still held, the drag ended early: its commit was sent and its label disappeared, while the preview waited for the page to update.
 - **Fix:** a lost capture with a button still held (`event.buttons !== 0`) takes the capture back, so the drag goes on. Only a lost capture with no button held releases.
 - **Check:** `tokens.test.ts` and `gate4.test.ts` together, 4 runs after the fix: no missing label. Watch for it in later full runs.
+
+## KI-3: a canvas click or double-click right after an edit is sometimes missed (open, intermittent)
+
+Seen in the v1.0.y runs (2026-10-01), each passing on its own and on rerun:
+
+- **`dogfood-fixes.test.ts`, "edit text on the canvas":** after one text edit lands, a second double-click at the same point sometimes doesn't open the text editor (2 of 6 runs). Adding about 100 ms before it (a diagnostic run) made it pass 3 of 3. The element hadn't moved and was still selected.
+- **`tokens.test.ts`, "colour chip and picker":** a click on a colour chip sometimes doesn't open the colour picker (2 of about 10 runs).
+
+**Likely cause:** a short window while the overlay maps the updated page, in which a press on the canvas doesn't find its element. A person clicking again is unaffected. It's in the canvas code from v1.0 and v1.0.x, not the UI refresh.
+
+**Next step if it recurs at the v1.0.y gate:** log the overlay's target lookup for the missed press.
