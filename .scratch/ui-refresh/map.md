@@ -25,13 +25,13 @@ A written **UI refresh spec** for Skeleton's own app (renderer + overlay chrome)
 ## Decisions so far
 
 - [Inventory every user-visible string and control](issues/01-inventory-ui-surface.md): about 260 visible strings plus palette, property and main/core messages are catalogued in [inventory.md](inventory.md), with jargon flags, everyday/occasional/plumbing panels, a concept hot list, and 140 texts tests query by.
-- [Choose the plain-language word for every concept](issues/02-plain-vocabulary.md): 58 terms in GLOSSARY.md. Theme / Off-theme, Agent code (and its kinds), Round / Agent's work, element names instead of IDs, Edit | Try it, Your app, Add, Column / Row and plain layout settings; tabs Element / Theme / Off-theme / Notes / Agent's work.
+- [Choose the plain-language word for every concept](issues/02-plain-vocabulary.md): 58 terms in GLOSSARY.md. Theme / Off-theme, Agent code (and its kinds), Round / Agent's work, element names instead of IDs, Edit | Try it, Your app, Add, Column / Row and plain layout settings. (Its tab list is superseded by the layout ticket.)
+- [Prototype the regrouped Adobe-style layout](issues/03-layout-prototype.md): approved layout D. Build | Style | Hand off workspaces with a per-workspace left panel, a page picker, a tabbed inspector (Element / Theme / Off-theme / Agent's work) with element notes inline, a hand-off bar under the canvas, Advanced in a ⋯ menu, and a status bar.
 - [Research Adobe's public design conventions for dark desktop apps](issues/05-adobe-spectrum-research.md): Spectrum 2 dark greys (#111 canvas, #1B1B1B panels), single blue accent #4069FD, system font at 14px, 32px controls, 260px panels, icon buttons need tooltips; on-screen text says what a control does.
 
 ## Not yet specified
 
 - **How the restyle is built**: whether the renderer keeps plain `styles.css` with a token layer of its own, or adopts something else; icon source. Hangs on the visual style.
-- **Where "Advanced" lives**: the home for hidden plumbing (Dev server, View source, diffs, config acknowledgements) — shaped by the layout prototype.
 - **The spec itself and TASKS.md slicing**: final write-up once vocabulary, layout and style are settled.
 
 ## Out of scope

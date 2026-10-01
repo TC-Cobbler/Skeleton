@@ -34,3 +34,4 @@ Settled with Johnny over three rounds plus a confirmation, all on the recommende
 
 **Not settled here:** the individual entries in the three lookup tables (theme value names, setting labels and option values, agent-controls names). They're ticketed as [Name every theme value, setting and agent control](08-name-tables.md).
 
+**Superseded in part:** the inspector tab list (which included a Notes tab) was replaced by [Prototype the regrouped Adobe-style layout](03-layout-prototype.md). Notes moved to the Hand off workspace and to the Element tab. The words themselves stand.
