@@ -1,7 +1,7 @@
 # Settle the dark visual style
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 03, 05
 Part of: [UI refresh map](../map.md)
 
