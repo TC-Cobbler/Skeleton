@@ -307,10 +307,11 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Add the "icon-only buttons use IconButton" test and the tooltip behaviour tests.
   - Add the licence notice in About.
   - Done: `app-renderer/src/Tooltip.tsx` (`useTooltip`, `Tooltip`, `Hinted`, `IconButton`). Hints are also each element's `aria-description`, and the e2e tests read them there. The licence notice sits in the app info line until the ⋯ menu's About exists (T8.6). `tests/icon-buttons.test.ts` and `tests/tooltip.test.tsx`. Full unit and e2e suites pass.
-- [~] **T8.6** **Top bar and status bar** (layout D).
+- [x] **T8.6** **Top bar and status bar** (layout D).
   - Top bar: project name, the page picker (replacing the Pages panel), Undo/Redo, and the ⋯ menu with App preview and its log, Show code and About.
   - Status bar: app state and the workspace's purpose.
-- [ ] **T8.7** **Workspaces and inspector** (layout D).
+  - Done: `app-renderer/src/TopBar.tsx` (`PagePicker`, `MoreMenu`, `About`, `usePopover`). The Pages panel lives in the picker; the app preview, About (project folder, versions, licences) and Close project live in the ⋯ menu; the status bar shows the app's state. The workspace's purpose joins it in T8.7. Tests open the picker and the app preview through `ui.ts`. Unit tests pass. E2e passes apart from the intermittent canvas misses in KI-3, which pass on rerun.
+- [~] **T8.7** **Workspaces and inspector** (layout D).
   - Build | Style | Hand off, each with its own left panel.
   - The tabbed inspector (Element / Theme / Off-theme / Agent's work), with each workspace's default tab, and the element's notes at the end of Element.
   - The hand-off bar under the canvas.

@@ -67,6 +67,8 @@ Seen in the v1.0.y runs (2026-10-01), each passing on its own and on rerun:
 - **`dogfood-fixes.test.ts`, "edit text on the canvas":** after one text edit lands, a second double-click at the same point sometimes doesn't open the text editor (2 of 6 runs). Adding about 100 ms before it (a diagnostic run) made it pass 3 of 3. The element hadn't moved and was still selected.
 - **`tokens.test.ts`, "colour chip and picker":** a click on a colour chip sometimes doesn't open the colour picker (2 of about 10 runs).
 
+- **`compose.test.ts`, in one full run:** a palette drop wasn't placed, and after a delete nothing was selected. The file passed 3 of 3 on its own.
+
 **Likely cause:** a short window while the overlay maps the updated page, in which a press on the canvas doesn't find its element. A person clicking again is unaffected. It's in the canvas code from v1.0 and v1.0.x, not the UI refresh.
 
 **Next step if it recurs at the v1.0.y gate:** log the overlay's target lookup for the missed press.
