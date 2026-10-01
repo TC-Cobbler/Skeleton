@@ -227,6 +227,26 @@ _Avoid_: Wrap, flex-wrap
 The panel of elements you can drag onto the canvas, grouped as Layout, Inputs, Display, Overlays and Navigation.
 _Avoid_: Palette, components
 
+**Text field**:
+A one-line box for typing text.
+_Avoid_: Input
+
+**Text box**:
+A box for typing several lines of text.
+_Avoid_: Textarea
+
+**Menu**:
+A list of actions that opens from a button.
+_Avoid_: Dropdown menu
+
+**Side panel**:
+A panel that slides in from the edge of the screen.
+_Avoid_: Sheet, drawer
+
+**Pop-up message**:
+A short message that appears briefly and goes away by itself.
+_Avoid_: Toast, snackbar
+
 ## Element settings
 
 **Setting**:
