@@ -39,6 +39,11 @@ export function avoidTerms(glossary: string): string[] {
   return [...terms];
 }
 
+/** GLOSSARY.md's own terms (its bold headings), which may contain an avoid-word: "Agent component". */
+export function glossaryTerms(glossary: string): string[] {
+  return [...glossary.matchAll(/^\*\*(.+?)\*\*:?\s*$/gm)].map(([, term]) => (term ?? "").toLowerCase());
+}
+
 /** Whether `text` uses `term`: whole words for words, plain substrings for code like `.map()`. */
 export function uses(text: string, term: string): boolean {
   const lower = text.toLowerCase();
@@ -68,10 +73,14 @@ function copyTexts(file: string, prefix: string): { path: string; text: string }
 
 /** Every use of an avoid-word on screen, as "path: term". */
 export function jargon(): string[] {
-  const terms = avoidTerms(readFileSync(path.join(root, "GLOSSARY.md"), "utf8"));
+  const glossary = readFileSync(path.join(root, "GLOSSARY.md"), "utf8");
+  const terms = avoidTerms(glossary);
+  const own = glossaryTerms(glossary).filter((g) => terms.some((term) => uses(g, term)));
   const found = new Set<string>();
   for (const [prefix, file] of Object.entries(COPY_FILES)) {
-    for (const { path: at, text } of copyTexts(file, prefix)) {
+    for (const { path: at, text: said } of copyTexts(file, prefix)) {
+      // A glossary term is the plain word, whatever words it's made of.
+      const text = own.reduce((t, term) => t.split(term).join(" "), said.toLowerCase());
       if (PLUMBING.some((p) => p.test(at))) continue;
       for (const term of terms) if (uses(text, term)) found.add(`${at}: ${term}`);
       // Theme values by their code name, e.g. --primary.
