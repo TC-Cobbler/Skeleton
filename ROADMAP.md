@@ -41,6 +41,12 @@ The roadmap is organised by milestone, not by date. A milestone ships when its g
 
 ---
 
+## v1.0.y — UI refresh
+
+**Thesis:** Skeleton's own UI should make sense to someone who doesn't know HTML or CSS. It needs plain words, an Adobe-style layout (Build | Style | Hand off workspaces with a tabbed inspector), a compact dark style, and messages that say what happened and what to do. This is presentation only: no new features and no behaviour changes. The spec is `docs/ui-refresh-spec.md`, and the tasks are T8.1–T8.10 in TASKS.md.
+
+---
+
 ## v1.1 — Fill the system out
 
 **Thesis:** With the loop proven, make the design system complete and the tool responsive-capable.

@@ -274,6 +274,62 @@ See `docs/decisions/012-dogfood-fixes.md`.
 
 ---
 
+## v1.0.y — UI refresh (docs/ui-refresh-spec.md)
+
+Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't know HTML or CSS. It covers the vocabulary, layout D, the Compact pro dark style and the plain messages. **On-screen presentation only:** no new features, no behaviour changes, and nothing different written into user projects. Every slice keeps the full unit suite and every e2e gate test green, with **the same steps and assertions** (spec §7).
+
+- [ ] **T8.1** **Copy files and test helpers: a pure refactor.**
+  - Move every on-screen string, unchanged, into the renderer's copy file and the overlay's own copy file.
+  - Add the shared e2e helper file of lookups by role and visible name, including the project picker.
+  - Switch every e2e and renderer test to the helpers and copy entries.
+  - Nothing visible changes.
+- [ ] **T8.2** **Plain-words check.**
+  - Add a unit test that fails on any glossary *Avoid* word in the copy files, with the allowed exceptions from spec §7.
+  - It starts with a **pending list** of today's jargon. Each later slice shrinks the list, and it must be empty by the gate.
+- [ ] **T8.3** **Reason codes and the message table.**
+  - Core and app-main errors Johnny can meet carry a reason code and facts alongside their unchanged technical message, and IPC passes these through.
+  - Add the renderer message table: tier 1 and 2 sentences, plus the catch-all for Skeleton faults.
+  - Messages get Details and Copy details, and opening Details stops auto-dismiss.
+  - Add the "every code has a sentence" test.
+  - Record ADR 013.
+- [ ] **T8.4** **Style foundation.**
+  - Add the shared style values file (spec §3) and split `styles.css` into area files that use only those values.
+  - The overlay injects the values file into its shadow root and drops its hard-coded colours.
+  - Set the native window frame to dark.
+  - The result is today's layout in Compact pro.
+- [ ] **T8.5** **Icons and tooltips.**
+  - Add Lucide (1.5px stroke, 20/16px), IconButton (label required) and Tooltip (hover and focus, Escape to close).
+  - Remove `title=` throughout.
+  - Add the "icon-only buttons use IconButton" test and the tooltip behaviour tests.
+  - Add the licence notice in About.
+- [ ] **T8.6** **Top bar and status bar** (layout D).
+  - Top bar: project name, the page picker (replacing the Pages panel), Undo/Redo, and the ⋯ menu with App preview and its log, Show code and About.
+  - Status bar: app state and the workspace's purpose.
+- [ ] **T8.7** **Workspaces and inspector** (layout D).
+  - Build | Style | Hand off, each with its own left panel.
+  - The tabbed inspector (Element / Theme / Off-theme / Agent's work), with each workspace's default tab, and the element's notes at the end of Element.
+  - The hand-off bar under the canvas.
+  - Navigation goes into the test helpers.
+- [ ] **T8.8** **Plain words in the panels.**
+  - Use GLOSSARY.md terms throughout, and element names instead of IDs.
+  - Use the name tables (spec §6) for theme values, settings and options, agent controls and element parts, each with its fallback rule.
+- [ ] **T8.9** **Plain messages.**
+  - Write every reason code's sentence to spec §4.
+  - Rewrite the empty states, progress lines and confirmations.
+  - Disable controls Skeleton knows will be refused, with the same sentence in the tooltip.
+- [ ] **T8.10** **Overlay words and colours.**
+  - Canvas labels, drop labels, note pins, agent code badges and handle hints in plain words, by element name.
+  - The overlay's colours come from the shared values (agent code orange, notes purple, one blue).
+
+**Gate:**
+- The plain-words pending list is empty.
+- Every reason code has a sentence.
+- Every icon-only button uses IconButton and its tooltip shows on hover and on focus.
+- The full unit suite and every e2e gate test (gate1–5, dogfood, dogfood-fixes) pass with unchanged steps and assertions.
+- Johnny reviews screenshots of each workspace against the approved mocks and signs off.
+
+---
+
 ## Parked (see ROADMAP.md)
 
 - Shadow / elevation tokens (v1.1)
