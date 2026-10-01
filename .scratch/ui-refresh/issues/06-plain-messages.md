@@ -1,7 +1,7 @@
 # Rewrite messages and empty states in plain language
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 02
 Part of: [UI refresh map](../map.md)
 
