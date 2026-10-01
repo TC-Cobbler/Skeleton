@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ViolationItem, ViolationReport } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { kindOf, themeName } from "./names.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
 import { Tooltip } from "./Tooltip.js";
@@ -82,24 +83,24 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
   return (
     <li className={`violation${item.kept ? " is-kept" : ""}`} data-testid="violation">
       <div className="violation-head">
-        <Tooltip text={`${item.file}:${item.line}`}>
-          <button type="button" className="link" onClick={() => onSelect(item)}>
-            {item.element ? copy.violations.element(item.element.name, item.element.id) : `${item.file}:${item.line}`}
+        <Tooltip text={copy.pass.onPage(copy.named.pageName(item.file))}>
+          <button type="button" className="link" data-ui-id={item.element?.id ?? undefined} onClick={() => onSelect(item)}>
+            {item.element ? kindOf(item.element.name) : copy.violations.noElement}
           </button>
         </Tooltip>
         <span className="muted small">{PROPERTY[item.property]}</span>
       </div>
       <code className="violation-value">{value}</code>
       {item.nearest && (
-        <div className="muted small">
-          {copy.violations.nearest} <code>{item.nearest.utility}</code> {copy.violations.nearestValue(item.nearest.token, item.nearest.value)}
+        <div className="muted small" data-nearest={item.nearest.utility}>
+          {copy.violations.nearest} {copy.violations.nearestValue(themeName(item.nearest.token), item.nearest.value)}
         </div>
       )}
       {!item.editable && !item.kept && <div className="muted small">{copy.violations.inAgentCode}</div>}
       {!item.kept && (
         <div className="row violation-actions">
           {item.editable && item.nearest && (
-            <Tooltip text={copy.violations.snapTitle(item.nearest.utility)}>
+            <Tooltip text={copy.violations.snapTitle(themeName(item.nearest.token))}>
               <button type="button" onClick={() => onSnap(item)}>
                 {copy.violations.snap}
               </button>

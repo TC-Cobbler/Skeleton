@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { copy } from "./copy.js";
+import { elementName } from "./names.js";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Hinted, IconButton } from "./Tooltip.js";
 
@@ -86,8 +87,7 @@ export function LayersPanel({ nodes, selected, hovered, onScreen, onSelect, onHo
                   <span className="twisty" />
                 )}
                 {node.kind === "locked" && <span aria-label={copy.layers.locked}>🔒</span>}
-                <span className="layer-name">{node.name}</span>
-                {node.id && <code className="layer-id">{node.id}</code>}
+                <span className="layer-name">{elementName(node)}</span>
               </li>
             </Hinted>
           ),

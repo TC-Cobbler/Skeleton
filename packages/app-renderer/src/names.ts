@@ -78,3 +78,25 @@ export function elementName(node: Pick<UiNode, "name" | "kind" | "element" | "lo
   const text = node.text?.trim();
   return text && text.length <= 40 ? n.withText(kind, text) : kind;
 }
+
+/** A palette group's name, by its id: "overlay" → "Overlays". */
+export const paletteGroup = (id: string, label: string): string => copy.palette.groups[id] ?? label;
+
+/** A palette entry's name, by its id: "stack-vertical" → "Column". */
+export const paletteItem = (id: string, label: string): string => copy.palette.items[id]?.[0] ?? label;
+
+/** What a palette entry is for, by its id. */
+export const paletteDescription = (id: string, description: string): string => copy.palette.items[id]?.[1] ?? description;
+
+/** An element's kind from its code name alone, when there's no node to read (the agent's work). */
+export function kindOf(name: string): string {
+  if (name === "Stack") return n.stack;
+  return n.elements[name] ?? partName(name);
+}
+
+/** Agent code from its code name and why it's agent code, when there's no node to read. */
+export function agentCodeKind(name: string, lockReason: string | null): string {
+  if (n.agentKinds[name]) return n.agentKinds[name];
+  if (lockReason === "custom component") return n.agentComponent(name);
+  return n.agentElement;
+}

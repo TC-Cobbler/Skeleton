@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { NoteOp, NoteType, NoteView, NotesView, Reply } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { kindOf } from "./names.js";
 import { filterNotes, looseReplies, repliesFor, TYPE_LABEL, type NoteFilter } from "./notes.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
@@ -34,7 +35,7 @@ const TYPES: NoteType[] = ["build", "behaviour", "question"];
 export interface NotesPanelProps {
   view: NotesView | null;
   error: Message | null;
-  /** The selected element, if any. Notes pin to its data-ui-id. */
+  /** The selected element, if any, with its element name. Notes pin to its data-ui-id. */
   selected: { id: string | null; name: string } | null;
   /** Only this element's notes (a pin was clicked), or null for all. */
   focus: string | null;
@@ -109,12 +110,12 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
               <li key={n.id} className="note" data-testid="orphan">
                 <div className="note-head">
                   <span className={`note-type note-${n.type}`}>{TYPE_LABEL[n.type]}</span>
-                  <span className="muted small">{copy.notes.wasOn(n.target)}</span>
+                  <span className="muted small">{copy.notes.wasOn(n.element ? kindOf(n.element) : copy.notes.element)}</span>
                 </div>
                 <div>{n.text}</div>
                 {!readOnly && (
                   <div className="row note-actions">
-                    <Tooltip text={canPin ? copy.notes.attachTitle(selected?.name, canPin) : copy.notes.attachNeedsId}>
+                    <Tooltip text={canPin ? copy.notes.attachTitle(selected?.name ?? copy.notes.element) : copy.notes.attachNeedsId}>
                       <button type="button" disabled={!canPin} onClick={() => canPin && void onWrite({ op: "update", id: n.id, target: canPin })}>
                         {copy.notes.attach}
                       </button>
@@ -176,7 +177,7 @@ function AddNote({ target, name, onWrite }: { target: string; name: string; onWr
       }}
     >
       <label className="small muted">
-        {copy.notes.noteOn(name, target)}
+        {copy.notes.noteOn(name)}
       </label>
       <div className="row">
         <select aria-label={copy.notes.type} value={type} onChange={(e) => setType(e.target.value as NoteType)}>
@@ -200,9 +201,9 @@ function NoteRow({ note, replies, readOnly, onWrite, onSelectTarget }: { note: N
     <li className={`note${note.status === "resolved" ? " is-resolved" : ""}`} data-testid="note" data-note-id={note.id}>
       <div className="note-head">
         <span className={`note-type note-${note.type}`}>{TYPE_LABEL[note.type]}</span>
-        <Tooltip text={note.file ?? undefined}>
-          <button type="button" className="link" onClick={() => onSelectTarget(note)}>
-            {copy.pass.elementRef(note.element ?? copy.notes.element, note.target)}
+        <Tooltip text={note.file ? copy.pass.onPage(copy.named.pageName(note.file)) : undefined}>
+          <button type="button" className="link" data-ui-id={note.target} onClick={() => onSelectTarget(note)}>
+            {note.element ? kindOf(note.element) : copy.notes.element}
           </button>
         </Tooltip>
         <span className="muted small" data-testid="note-status">

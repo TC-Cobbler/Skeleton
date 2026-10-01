@@ -14,7 +14,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, diffSources, findNodeById, readTokens } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, clickOnCanvas, dragGizmo } from "./canvas-click.js";
-import { canvasCopy, copy, pattern, startsWith, ui } from "./ui.js";
+import { canvasCopy, copy, names, pattern, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-gate4-"));
@@ -199,7 +199,8 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
     expect((await radiiBy(first)).others).toEqual(before.others);
     await violationsTab().click();
     await expect.poll(() => violationsTab().textContent(), { timeout: 10_000 }).toBe(copy.app.tabs.violations(1));
-    expect(await page.getByTestId("violation").first().textContent()).toContain(`Button #${first}`);
+    expect(await page.getByTestId("violation").first().textContent()).toContain(names.kindOf("Button"));
+    expect(await page.getByTestId("violation").first().locator("[data-ui-id]").getAttribute("data-ui-id")).toBe(first);
     // Undo it, so the next mode starts from the same page.
     await ui(page).undo().click();
     await expect.poll(() => home(), { timeout: 10_000 }).toBe(pageBefore);

@@ -52,10 +52,6 @@
 .page.is-disabled {
   opacity: 0.45;
 }
-.layer-id {
-  font-size: var(--sk-type-small);
-  color: var(--sk-colour-secondary);
-}
 /* Expand and collapse: as narrow as before the icons (14px), so a row is mostly its name. */
 .twisty {
   display: inline-flex;

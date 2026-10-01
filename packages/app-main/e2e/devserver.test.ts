@@ -76,7 +76,7 @@ describe("new project → running dev server (PRD F1)", () => {
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
     const heading = canvas.getByRole("heading", { name: "E2E App" });
     await clickOnCanvas(page, "canvas-frame", heading);
-    await page.getByTestId("selection-id").waitFor();
+    await page.getByTestId("selection-id").waitFor({ state: "attached" });
     expect(await page.getByTestId("selection-name").textContent()).toBe("h1");
     expect(await page.getByTestId("selection-id").textContent()).toMatch(/^ui_[a-z0-9]{5}$/);
     const id = await page.getByTestId("selection-id").textContent();

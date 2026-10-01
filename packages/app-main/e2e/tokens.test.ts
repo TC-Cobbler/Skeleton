@@ -8,7 +8,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, readTokens } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, clickOnCanvas, dragGizmo, placeFromPalette } from "./canvas-click.js";
-import { canvasCopy, copy, pattern, startsWith, ui } from "./ui.js";
+import { canvasCopy, copy, names, pattern, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-tokens-"));
@@ -66,13 +66,13 @@ describe("token panel (T4.1)", () => {
     for (const name of ["--radius", "--radius-button", "--spacing", "--type-base", "--text-lg", "--font-sans", "--primary", "--border-width"]) {
       expect(await row(name).count(), name).toBe(1);
     }
-    expect(await row("--primary").getByLabel(copy.tokens.valueLabel("--primary")).inputValue()).toBe("oklch(0.205 0 0)");
-    expect(await row("--primary").getByLabel(copy.tokens.darkValueLabel("--primary")).inputValue()).toBe("oklch(0.922 0 0)");
+    expect(await row("--primary").getByLabel(copy.tokens.valueLabel(names.themeName("--primary"), "light")).inputValue()).toBe("oklch(0.205 0 0)");
+    expect(await row("--primary").getByLabel(copy.tokens.valueLabel(names.themeName("--primary"), "dark")).inputValue()).toBe("oklch(0.922 0 0)");
     expect(await row("--radius-button").textContent()).toContain(copy.tokens.resolved("0.5rem"));
   });
 
   it("writes an exact value to globals.css, and the canvas follows", async () => {
-    const input = row("--radius").getByLabel(copy.tokens.valueLabel("--radius"));
+    const input = row("--radius").getByLabel(copy.tokens.valueLabel(names.themeName("--radius")));
     await input.fill("1rem");
     await input.press("Enter");
     await expect.poll(() => token("--radius", "light")).toBe("1rem");
@@ -89,7 +89,7 @@ describe("token panel (T4.1)", () => {
   });
 
   it("writes a dark value to .dark only", async () => {
-    const input = row("--primary").getByLabel(copy.tokens.darkValueLabel("--primary"));
+    const input = row("--primary").getByLabel(copy.tokens.valueLabel(names.themeName("--primary"), "dark"));
     await input.fill("oklch(0.7 0.15 250)");
     await input.press("Enter");
     await expect.poll(() => token("--primary", "dark")).toBe("oklch(0.7 0.15 250)");
@@ -241,8 +241,8 @@ describe("colour chip and picker (T4.3, T4.7)", () => {
   it("opens a picker on the selection's colour, and edits the token for light mode", async () => {
     await clickOnCanvas(page, "canvas-frame", frame().getByRole("button", { name: "Button" }).nth(1));
     await clickChip("bg");
-    expect(await panel().textContent()).toContain("--primary");
-    expect(await panel().getByRole("button", { name: "Token (light)" }).getAttribute("aria-pressed")).toBe("true");
+    expect(await panel().textContent()).toContain(names.themeName("--primary"));
+    expect(await panel().getByRole("button", { name: copy.colour.token("light") }).getAttribute("aria-pressed")).toBe("true");
     const before = await bg();
     await panel().getByLabel(copy.colour.pick).fill("#3366cc");
     await expect.poll(() => token("--primary", "light"), { timeout: 10_000 }).toBe(await hexOklch("#3366cc"));
@@ -282,13 +282,16 @@ describe("violations panel (T4.6)", () => {
     await expect.poll(() => rows().count(), { timeout: 10_000 }).toBe(2);
     expect(await ui(page).tab("violations").textContent()).toBe(copy.app.tabs.violations(2));
     const radius = row("rounded-[");
-    expect(await radius.textContent()).toMatch(pattern(/Button #ui_[a-z0-9]{5}/, copy.violations.property.radius));
-    expect(await radius.textContent()).toMatch(pattern(copy.violations.nearest, / rounded-\S+ \(--radius-/));
-    expect(await row("bg-[#ff0000]").textContent()).toMatch(pattern(copy.violations.nearest, / bg-\S+ \(--/));
+    expect(await radius.textContent()).toMatch(pattern(names.kindOf("Button"), /.*/, copy.violations.property.radius));
+    expect(await radius.locator("[data-ui-id]").getAttribute("data-ui-id")).toMatch(/^ui_[a-z0-9]{5}$/);
+    expect(await radius.textContent()).toMatch(pattern(copy.violations.nearest, / .+ \(.+\)/));
+    expect(await radius.locator("[data-nearest]").getAttribute("data-nearest")).toMatch(/^rounded-\S+$/);
+    expect(await row("bg-[#ff0000]").textContent()).toMatch(pattern(copy.violations.nearest, / .+ \(.+\)/));
+    expect(await row("bg-[#ff0000]").locator("[data-nearest]").getAttribute("data-nearest")).toMatch(/^bg-\S+$/);
   });
 
   it("snaps an override to the nearest token", async () => {
-    const nearest = (await row("rounded-[").locator(".muted code").first().textContent()) as string;
+    const nearest = (await row("rounded-[").locator("[data-nearest]").getAttribute("data-nearest")) as string;
     await row("rounded-[").getByRole("button", { name: copy.violations.snap }).click();
     await expect.poll(() => homeFile(), { timeout: 10_000 }).toContain(`className="${nearest}"`);
     await expect.poll(() => rows().count()).toBe(1);

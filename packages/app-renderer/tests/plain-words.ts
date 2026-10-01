@@ -14,9 +14,9 @@ const COPY_FILES = { renderer: "packages/app-renderer/src/copy.ts", overlay: "pa
 /**
  * Copy entries written for the agent or showing raw code, where code words belong
  * (spec §4, §7): Details, Copy details, the read-only page code view and the app
- * preview log.
+ * preview log, plus the versions Skeleton runs on in About (Electron, Node).
  */
-const PLUMBING = [/(^|[:.])details(\.|$)/, /(^|[:.])copyDetails(\.|$)/, /^renderer:viewSource\.where$/, /^renderer:devServer\.log(\.|$)/];
+const PLUMBING = [/(^|[:.])details(\.|$)/, /(^|[:.])copyDetails(\.|$)/, /^renderer:viewSource\.where$/, /^renderer:devServer\.log(\.|$)/, /^renderer:app\.info$/];
 
 /**
  * Avoid-words that are also ordinary English in the sense Skeleton uses them:

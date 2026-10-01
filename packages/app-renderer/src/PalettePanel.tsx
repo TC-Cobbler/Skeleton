@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Palette, PaletteEntry } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { paletteDescription, paletteGroup, paletteItem } from "./names.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
 import { Hinted } from "./Tooltip.js";
@@ -37,7 +38,7 @@ export interface PalettePanelProps {
 /** Why an entry can't be placed, or null if it can. */
 export function unavailableReason(item: PaletteEntry): string | null {
   if (item.available) return null;
-  if (item.note) return item.note;
+  if (item.note) return copy.palette.notes[item.id] ?? item.note;
   return copy.palette.missing(item.missing);
 }
 
@@ -52,19 +53,19 @@ export function PalettePanel({ palette, error, onStartDrag }: PalettePanelProps)
         if (items.length === 0) return null;
         return (
           <div key={group.id} className="palette-group">
-            <h3>{copy.palette.groupLabel(group.label)}</h3>
-            <ul role="list" aria-label={copy.palette.groupList(group.label)}>
+            <h3>{paletteGroup(group.id, group.label)}</h3>
+            <ul role="list" aria-label={copy.palette.groupList(paletteGroup(group.id, group.label))}>
               {items.map((item) => {
                 const why = unavailableReason(item);
                 return (
-                  <Hinted key={item.id} text={why ?? copy.palette.itemDescription(item.description)}>
+                  <Hinted key={item.id} text={why ?? paletteDescription(item.id, item.description)}>
                     <li
                       data-testid={`palette-${item.id}`}
                       aria-disabled={why !== null}
                       className={`palette-item${why ? " is-disabled" : ""}`}
                       onPointerDown={why === null ? (e) => onStartDrag(item, e) : undefined}
                     >
-                      {copy.palette.itemLabel(item.label)}
+                      {paletteItem(item.id, item.label)}
                     </li>
                   </Hinted>
                 );

@@ -9,7 +9,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, parseModule, sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, moveOnCanvas, placeFromPalette, waitForCanvas } from "./canvas-click.js";
-import { copy, say, ui } from "./ui.js";
+import { copy, names, say, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-compose-"));
@@ -268,7 +268,7 @@ describe("delete (T3.4)", () => {
   });
 
   it("asks before deleting agent code, and Cancel leaves it", async () => {
-    const mapRow = page.locator(".layer", { has: page.locator(".layer-name", { hasText: /^map$/ }) });
+    const mapRow = page.locator(".layer", { has: page.locator(".layer-name", { hasText: names.elementKind({ name: "map", kind: "locked", element: false, lockReason: ".map() loop", props: {} }) }) });
     await mapRow.click();
     const before = homeFile();
     await page.keyboard.press("Delete");
@@ -326,12 +326,12 @@ describe("properties panel (T3.5)", () => {
     const button = idOf(stackId(), "Button");
     target = button;
     await layer(button).click();
-    await change(() => props().getByLabel(copy.properties.propLabel("variant")).selectOption("outline"));
+    await change(() => props().getByLabel(names.settingLabel("variant", "Button")).selectOption("outline"));
     expect(tagOf(button)).toContain(`variant="outline"`);
-    await change(() => props().getByLabel(copy.properties.propLabel("size")).selectOption("lg"));
-    await change(() => props().getByLabel(copy.properties.propLabel("disabled")).click());
+    await change(() => props().getByLabel(names.settingLabel("size", "Button")).selectOption("lg"));
+    await change(() => props().getByLabel(names.settingLabel("disabled", "Button")).click());
     expect(tagOf(button)).toMatch(/variant="outline" size="lg" disabled=\{true\}/);
-    await change(() => props().getByLabel(copy.properties.propLabel("variant")).selectOption("default"));
+    await change(() => props().getByLabel(names.settingLabel("variant", "Button")).selectOption("default"));
     expect(tagOf(button)).not.toContain("variant=");
     await canvasFrame(page).locator(`button[data-ui-id="${button}"][disabled]`).waitFor();
   });
@@ -353,16 +353,16 @@ describe("properties panel (T3.5)", () => {
     const row = idOf(stackId(), "Stack");
     target = row;
     await layer(row).click();
-    expect(await props().getByLabel(copy.properties.propLabel("direction")).inputValue()).toBe("horizontal");
-    expect(await props().getByLabel(copy.properties.classGroupLabel("Gap")).inputValue()).toBe("gap-4");
-    await change(() => props().getByLabel(copy.properties.classGroupLabel("Gap")).selectOption("gap-8"));
-    await change(() => props().getByLabel(copy.properties.classGroupLabel("Justify")).selectOption("justify-between"));
-    await change(() => props().getByLabel(copy.properties.classGroupLabel("Align")).selectOption("items-center"));
+    expect(await props().getByLabel(names.settingLabel("direction")).inputValue()).toBe("horizontal");
+    expect(await props().getByLabel(names.layoutLabel("Gap")).inputValue()).toBe("gap-4");
+    await change(() => props().getByLabel(names.layoutLabel("Gap")).selectOption("gap-8"));
+    await change(() => props().getByLabel(names.layoutLabel("Justify")).selectOption("justify-between"));
+    await change(() => props().getByLabel(names.layoutLabel("Align")).selectOption("items-center"));
     // A swap stays in place; a new group's class goes at the end.
     expect(tagOf(row)).toContain(`className="gap-8 p-4 justify-between items-center"`);
-    await change(() => props().getByLabel(copy.properties.classGroupLabel("Justify")).selectOption(""));
+    await change(() => props().getByLabel(names.layoutLabel("Justify")).selectOption(""));
     expect(tagOf(row)).toContain(`className="gap-8 p-4 items-center"`);
-    await change(() => props().getByLabel(copy.properties.propLabel("direction")).selectOption("vertical"));
+    await change(() => props().getByLabel(names.settingLabel("direction")).selectOption("vertical"));
     expect(tagOf(row).slice(0, 120)).not.toContain("direction=");
     // The canvas shows it: a column now, with the new gap.
     const style = await canvasFrame(page).locator(`[data-ui-id="${row}"]`).evaluate((e) => [getComputedStyle(e).flexDirection, getComputedStyle(e).rowGap]);
@@ -378,8 +378,8 @@ describe("properties panel (T3.5)", () => {
     renameSync(tmp, path.join(projectRoot, "src/pages/HomePage.tsx"));
     await waitForCanvas(page, sourceVersion(source));
     await layer(button).click();
-    expect(await props().getByLabel(copy.properties.propLabel("variant")).count()).toBe(1);
-    expect(await page.getByTestId("selection").textContent()).toContain("onClick");
+    expect(await props().getByLabel(names.settingLabel("variant", "Button")).count()).toBe(1);
+    expect(await page.getByTestId("selection").textContent()).toContain(names.agentControlName("onClick"));
   });
 });
 
@@ -474,7 +474,7 @@ describe("post-edit pipeline (T3.7)", () => {
     );
     expect(homeFile()).toBe(before);
     // Through the UI: a valid edit goes through and formats a long tag.
-    await page.getByTestId("properties").getByLabel(copy.properties.classGroupLabel("Padding X")).selectOption("px-10");
+    await page.getByTestId("properties").getByLabel(names.layoutLabel("Padding X")).selectOption("px-10");
     await edited(before);
     expect(homeFile()).toMatch(new RegExp(`<Stack\\n\\s+data-ui-id="${row}"\\n`));
   });

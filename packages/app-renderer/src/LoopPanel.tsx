@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { GitDiff, LoopStatus, PassSummary } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
+import { agentCodeKind, kindOf } from "./names.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
 
@@ -151,10 +152,11 @@ export function PassPanel({ projectRoot, status, busy, onRevert, onSelectId }: {
 
 function Summary({ summary: s, onSelectId }: { summary: PassSummary; onSelectId: (id: string, file: string) => void }) {
   const idLink = (id: string, element: string, file: string) => (
-    <button type="button" className="link" onClick={() => onSelectId(id, file)}>
-      {copy.pass.elementRef(element, id)}
+    <button type="button" className="link" data-ui-id={id} onClick={() => onSelectId(id, file)}>
+      {kindOf(element)}
     </button>
   );
+  const on = (file: string) => copy.pass.onPage(copy.named.pageName(file));
   return (
     <div className="pass-summary" data-testid="pass-summary">
       <p className={s.build.ok ? "small" : "error small"} data-testid="pass-build">
@@ -176,8 +178,8 @@ function Summary({ summary: s, onSelectId }: { summary: PassSummary; onSelectId:
       <Group title={copy.pass.groups.repaired} count={s.repairs.length} testid="pass-repairs">
         {s.repairs.map((r, i) => (
           <li key={i}>
-            {r.kind === "reminted" ? copy.pass.reminted(r.was) : copy.pass.gaveId}
-            {idLink(r.id, r.element, r.file)}
+            {r.kind === "reminted" ? copy.pass.reminted : copy.pass.gaveId}
+            {idLink(r.id, r.element, r.file)} <span className="muted">{on(r.file)}</span>
           </li>
         ))}
       </Group>
@@ -190,13 +192,15 @@ function Summary({ summary: s, onSelectId }: { summary: PassSummary; onSelectId:
       </Group>
       <Group title={copy.pass.groups.added} count={s.elementsAdded.length} testid="pass-added">
         {s.elementsAdded.map((e) => (
-          <li key={e.id}>{idLink(e.id, e.element, e.file)}</li>
+          <li key={e.id}>
+            {idLink(e.id, e.element, e.file)} <span className="muted">{on(e.file)}</span>
+          </li>
         ))}
       </Group>
       <Group title={copy.pass.groups.removed} count={s.elementsRemoved.length} testid="pass-removed">
         {s.elementsRemoved.map((e) => (
           <li key={e.id}>
-            {copy.pass.elementRef(e.element, e.id)} <span className="muted">({e.file})</span>
+            <span data-ui-id={e.id}>{kindOf(e.element)}</span> <span className="muted">{on(e.file)}</span>
           </li>
         ))}
       </Group>
@@ -204,14 +208,14 @@ function Summary({ summary: s, onSelectId }: { summary: PassSummary; onSelectId:
       <Group title={copy.pass.groups.violations} count={s.newViolations.length} testid="pass-violations">
         {s.newViolations.map((v, i) => (
           <li key={i}>
-            <code>{v.kind === "inline-style" ? copy.pass.inlineStyle : v.value}</code> <span className="muted">{v.file}:{v.line}</span>
+            <code>{v.kind === "inline-style" ? copy.pass.inlineStyle : v.value}</code> <span className="muted">{on(v.file)}</span>
           </li>
         ))}
       </Group>
       <Group title={copy.pass.groups.locked} count={s.newLockedBlocks.length} testid="pass-locked">
         {s.newLockedBlocks.map((b, i) => (
           <li key={i}>
-            🔒 {b.element} <span className="muted">({b.reason}, {b.file}:{b.line})</span>
+            {agentCodeKind(b.element, b.reason)} <span className="muted">{on(b.file)}</span>
           </li>
         ))}
       </Group>

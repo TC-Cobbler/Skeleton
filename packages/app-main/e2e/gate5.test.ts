@@ -19,7 +19,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, readNotes, readTokens, sourceVersion, walkTree, type UiNode } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, waitForCanvas } from "./canvas-click.js";
-import { copy, startsWith, ui } from "./ui.js";
+import { copy, names, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-gate5-"));
@@ -209,7 +209,7 @@ describe("Gate 5", () => {
     expect(await page.getByTestId("pass-build").textContent()).toMatch(startsWith(copy.pass.buildPassed));
     expect(await page.getByTestId("pass-breaches").locator("summary").textContent()).toBe(`${copy.pass.groups.breaches} (0)`);
     expect(await page.getByTestId("pass-repairs").locator("summary").textContent()).toBe(`${copy.pass.groups.repaired} (0)`);
-    expect(await page.getByTestId("pass-locked").textContent()).toContain(".map");
+    expect(await page.getByTestId("pass-locked").textContent()).toContain(names.agentCodeKind("map", ".map() loop"));
     // The per-file diff against the handoff (T5.7).
     await page.getByTestId("pass-diffs").getByRole("button", { name: HOME }).click();
     expect(await page.getByTestId("patch").textContent()).toContain(`+${AGENT.hookCall}`);
@@ -249,7 +249,7 @@ describe("Gate 5", () => {
 
     // --radius-card, in the token panel.
     await tab(/^Tokens/).click();
-    const input = ui(page).tokens().getByTestId("token---radius-card").getByLabel(copy.tokens.valueLabel("--radius-card"));
+    const input = ui(page).tokens().getByTestId("token---radius-card").getByLabel(copy.tokens.valueLabel(names.themeName("--radius-card")));
     await input.fill("calc(var(--radius) * 2)");
     await input.press("Enter");
     await expect.poll(() => token(read("src/styles/globals.css"))).toBe("calc(var(--radius) * 2)");

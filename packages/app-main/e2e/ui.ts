@@ -6,11 +6,12 @@
 import type { Page } from "playwright-core";
 import { copy } from "../../app-renderer/src/copy.js";
 import { say } from "../../app-renderer/src/messages.js";
+import * as names from "../../app-renderer/src/names.js";
 import { copy as canvasCopy } from "../../overlay/src/copy.js";
 import { STYLE } from "../../overlay/src/style.js";
 
-/** The renderer's words, the overlay's words on the canvas, and a reason's plain sentence. */
-export { canvasCopy, copy, say, STYLE };
+/** The renderer's words, the overlay's words on the canvas, a reason's plain sentence, and plain names (spec §6). */
+export { canvasCopy, copy, names, say, STYLE };
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** A name that starts with `text`: tabs and toggles that add a count, e.g. "Notes (2)". */

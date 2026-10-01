@@ -28,6 +28,7 @@ import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
 import { copy } from "./copy.js";
 import { messageFor } from "./messages.js";
+import { elementName } from "./names.js";
 import { Columns3, Hand, Monitor, Moon, MousePointer2, Redo2, Smartphone, Sun, Tablet, Undo2 } from "lucide-react";
 import { IconButton } from "./Tooltip.js";
 import { About, MoreMenu, PagePicker } from "./TopBar.js";
@@ -146,7 +147,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
         messageFor(err, {
           element: (id) => {
             const n = nodesNow.current.find((k) => k.node.id === id)?.node;
-            return n ? { name: n.name, text: n.text ?? null } : null;
+            return n ? elementName(n) : null;
           },
           page: fileNow.current,
           ...(tried ? { tried } : {}),
@@ -587,7 +588,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
           <NotesPanel
             view={notes.view}
             error={notes.error}
-            selected={selectedNode ? { id: selectedNode.node.id, name: selectedNode.node.name } : null}
+            selected={selectedNode ? { id: selectedNode.node.id, name: elementName(selectedNode.node) } : null}
             focus={noteFocus}
             onFocus={setNoteFocus}
             readOnly={withAgent}
@@ -667,7 +668,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
         {inspectorTab === "element" && selectedNode && (
           <ElementNotes
             view={notes.view}
-            selected={{ id: selectedNode.node.id, name: selectedNode.node.name }}
+            selected={{ id: selectedNode.node.id, name: elementName(selectedNode.node) }}
             readOnly={withAgent}
             onWrite={writeNote}
             onSelectTarget={(n: NoteView) => n.file && goTo(n.file, n.target)}

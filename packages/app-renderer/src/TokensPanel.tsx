@@ -3,6 +3,7 @@ import type { ThemeToken, TokenGroup, TokenSheet, TokenWrite } from "@skeleton/a
 import { call } from "./bridge.js";
 import { TextInput } from "./PropertiesPanel.js";
 import { copy } from "./copy.js";
+import { themeName } from "./names.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
 import { Hinted, Tooltip } from "./Tooltip.js";
@@ -100,7 +101,7 @@ function TokenRow({
   return (
     <li className="token" data-testid={`token-${token.name}`} onPointerEnter={() => onHover(token.name)} onPointerLeave={() => onHover(null)}>
       <div className="token-head">
-        <code>{copy.tokens.tokenName(token.name)}</code>
+        <span className="token-name">{themeName(token.name)}</span>
         {count !== null && (
           <Hinted text={copy.tokens.countTitle}>
             <span className="muted small" data-testid="token-count">
@@ -110,8 +111,8 @@ function TokenRow({
         )}
       </div>
       <div className={`token-values${token.dark !== null ? " has-dark" : ""}`}>
-        <TokenValue label={copy.tokens.valueLabel(token.name)} value={token.value} swatch={token.group === "colour"} onCommit={(v) => write(v, token.dark !== null ? "light" : null)} />
-        {token.dark !== null && <TokenValue label={copy.tokens.darkValueLabel(token.name)} value={token.dark} swatch onCommit={(v) => write(v, "dark")} />}
+        <TokenValue label={copy.tokens.valueLabel(themeName(token.name), token.dark !== null ? "light" : null)} value={token.value} swatch={token.group === "colour"} onCommit={(v) => write(v, token.dark !== null ? "light" : null)} />
+        {token.dark !== null && <TokenValue label={copy.tokens.valueLabel(themeName(token.name), "dark")} value={token.dark} swatch onCommit={(v) => write(v, "dark")} />}
       </div>
       {(derived || detached) && (
         <div className="token-derived muted small">

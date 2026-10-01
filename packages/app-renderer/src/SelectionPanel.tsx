@@ -1,6 +1,7 @@
 import type { UiNode } from "@skeleton/app-main/ipc";
 import { ViewSource } from "./ViewSource.js";
 import { copy } from "./copy.js";
+import { agentControlName, agentControlShown, elementKind, elementName } from "./names.js";
 import { Tooltip } from "./Tooltip.js";
 
 export interface SelectionPanelProps {
@@ -23,29 +24,33 @@ export interface SelectionPanelProps {
   onCancel: () => void;
 }
 
-/** The selected element: what it is, its agent logic, reordering it (F-2) and deleting it (T3.4). */
+/** The selected element: what it is, its agent controls, reordering it (F-2) and deleting it (T3.4). */
 export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete, confirming, onDelete, cannotMove, onMove, openable, onToggleOpen, onConfirm, onCancel }: SelectionPanelProps) {
+  const controls = node ? [...new Set(node.protectedProps.filter(agentControlShown).map(agentControlName))] : [];
   return (
     <section aria-label={copy.selection.title} data-testid="selection">
       <h2>{copy.selection.title}</h2>
       {node ? (
         <dl className="inspector">
+          {/* What tests check it by, never shown: code name, classification, data-ui-id, lock reason. */}
+          <div hidden>
+            <span data-testid="selection-name">{node.name}</span>
+            <span data-testid="selection-kind">{node.kind}</span>
+            <span data-testid="selection-id">{node.id ?? ""}</span>
+            {node.lockReason && <span data-testid="selection-lock">{node.lockReason}</span>}
+          </div>
           <dt>{copy.selection.element}</dt>
-          <dd data-testid="selection-name">{node.name}</dd>
-          <dt>{copy.selection.kind}</dt>
-          <dd data-testid="selection-kind">{node.kind}</dd>
-          <dt>{copy.selection.id}</dt>
-          <dd data-testid="selection-id">{node.id ?? copy.selection.noId}</dd>
-          {node.lockReason && (
+          <dd data-testid="selection-element">{elementName(node)}</dd>
+          {node.kind === "locked" && (
             <>
               <dt>{copy.selection.locked}</dt>
-              <dd data-testid="selection-lock">{node.lockReason}</dd>
+              <dd>{elementKind(node)}</dd>
             </>
           )}
-          {node.protectedProps.length > 0 && (
+          {controls.length > 0 && (
             <>
               <dt>{copy.selection.agentLogic}</dt>
-              <dd>{node.protectedProps.join(", ")}</dd>
+              <dd>{controls.join(", ")}</dd>
             </>
           )}
         </dl>

@@ -5,7 +5,7 @@ import { copy } from "../src/copy.js";
 import { messageFor, named, say, tierOf } from "../src/messages.js";
 
 const facts = { id: "ui_btn01", prop: "onClick", page: "src/pages/LibraryPage.tsx", path: "/stats", name: "StatsPage", round: 3, max: 2000, edit: "Insert Badge", direction: "undo", folder: "/home/j/games", parent: "/library", value: "rounded-[7px]", where: "x" };
-const elements = (id: string) => (id === "ui_btn01" ? { name: "Button", text: "Add game" } : null);
+const elements = (id: string) => (id === "ui_btn01" ? 'Button "Add game"' : null);
 const error = (reason: Reason | null, code: "edit-refused" | "failed" = "edit-refused") =>
   new BridgeError({ code, channel: "page:edit", message: "setProp(ui_btn01): prop \"onClick\" carries agent logic and is protected", reason });
 

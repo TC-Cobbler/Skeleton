@@ -76,7 +76,7 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
           const why = unavailable(p);
           const isCurrent = current !== null && p.path === current.path && p.file === current.file;
           return (
-            <Hinted key={`${p.path}#${i}`} text={why ?? p.file ?? undefined}>
+            <Hinted key={`${p.path}#${i}`} text={why}>
               <li
                 role="option"
                 aria-selected={isCurrent}
@@ -84,7 +84,7 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
                 className={`page${isCurrent ? " is-selected" : ""}${why ? " is-disabled" : ""}`}
                 onClick={() => why === null && onOpen(p)}
               >
-                <code>{p.path}</code> <span className="muted">{p.component ?? "?"}</span>
+                <span className="page-name">{p.component ? copy.named.pageComponent(p.component) : copy.pages.noName}</span> <span className="muted">{p.path}</span>
               </li>
             </Hinted>
           );

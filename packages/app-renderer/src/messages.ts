@@ -6,6 +6,7 @@
 import type { IpcError, Reason, ReasonCode, ReasonFacts } from "@skeleton/app-main/ipc";
 import { BridgeError } from "./bridge.js";
 import { copy, type Named } from "./copy.js";
+import { themeName } from "./names.js";
 
 /** Refusal: the user asked for something that can't be done here. Problem: the project blocks it. Fault: only a bug could cause it. */
 export type Tier = "refusal" | "problem" | "fault";
@@ -41,8 +42,8 @@ export const tierOf = (code: ReasonCode): Tier => (code in PROBLEMS ? "problem" 
 
 /** What the page shows, for naming elements and the page in a message. */
 export interface MessageContext {
-  /** The element with this data-ui-id on the page on screen, if it's there. */
-  element?: (id: string) => { name: string; text: string | null } | null;
+  /** The element name of the element with this data-ui-id on the page on screen, if it's there. */
+  element?: (id: string) => string | null;
   /** The page file on screen. */
   page?: string | null;
   /** What the user tried, in a few words, for Copy details. */
@@ -62,11 +63,11 @@ export function named(facts: ReasonFacts, ctx: MessageContext = {}): Named {
   const name = str(facts, "name");
   const direction = str(facts, "direction") === "redo" ? "redo" : "undo";
   return {
-    el: element ? copy.named.elementName(element.name, element.text) : copy.named.thatElement,
+    el: element ?? copy.named.thatElement,
     page: page ? copy.named.pageName(page) : name ? copy.named.pageComponent(name) : "",
     path: str(facts, "path"),
     name: name ? copy.named.pageComponent(name) : "",
-    theme: copy.tokens.tokenName(name),
+    theme: themeName(name),
     round: Number(facts["round"] ?? 0),
     max: Number(facts["max"] ?? 0),
     edit: str(facts, "edit"),

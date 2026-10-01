@@ -10,7 +10,7 @@ import { _electron, type ElectronApplication, type Locator, type Page } from "pl
 import { sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, placeFromPalette, waitForCanvas, type Aim } from "./canvas-click.js";
-import { copy, ui } from "./ui.js";
+import { copy, names, pattern, ui } from "./ui.js";
 
 const STEP = process.env["DOGFOOD_STEP"] ?? "";
 const DIR = process.env["DOGFOOD_DIR"] ?? "/home/user/dogfood";
@@ -155,7 +155,7 @@ async function note(id: string, type: "build" | "behaviour" | "question", text: 
 
 async function token(name: string, value: string, dark = false) {
   await ui(page).tab("tokens").click();
-  const input = page.getByTestId(`token-${name}`).getByLabel(dark ? copy.tokens.darkValueLabel(name) : copy.tokens.valueLabel(name));
+  const input = page.getByTestId(`token-${name}`).getByLabel(dark ? copy.tokens.valueLabel(names.themeName(name), "dark") : pattern(/^/, copy.tokens.valueLabel(names.themeName(name)), /(, light mode)?$/));
   await edit(`token ${name}${dark ? " (dark)" : ""} → ${value}`, async () => {
     await input.fill(value);
     await input.press("Enter");

@@ -3,6 +3,7 @@ import type { ThemeToken } from "@skeleton/app-main/ipc";
 import { alphaOf, COLOUR_PROPERTY, cssToHex, hexToOklch } from "./colour.js";
 import { TextInput } from "./PropertiesPanel.js";
 import { copy } from "./copy.js";
+import { themeName } from "./names.js";
 import { IconButton, Tooltip } from "./Tooltip.js";
 import { X } from "lucide-react";
 
@@ -65,10 +66,10 @@ export function ColourPanel({ chip, token, dark, classEdits, onPreview, onToken,
         <IconButton className="quiet" icon={X} size={16} label={copy.colour.close} onClick={onClose} />
       </div>
       <p className="muted small">
-        {copy.colour.summary(chip.utility, name, chip.token)}
+        {copy.colour.summary(chip.utility, themeName(chip.token))}
       </p>
       <div className="segmented" role="group" aria-label={copy.colour.scope}>
-        <Tooltip text={copy.colour.tokenTitle(chip.token, mode)}>
+        <Tooltip text={copy.colour.tokenTitle(themeName(chip.token), mode)}>
           <button type="button" aria-pressed={!instance} onClick={() => setInstance(false)}>
             {copy.colour.token(mode)}
           </button>
@@ -88,7 +89,7 @@ export function ColourPanel({ chip, token, dark, classEdits, onPreview, onToken,
           ref={picker}
           onInput={(e) => onPreview(previewCss(e.currentTarget.value))}
         />
-        {!instance && <TextInput label={copy.colour.valueLabel(chip.token, mode)} value={value} onCommit={(v) => v.trim() !== "" && onToken(v.trim())} />}
+        {!instance && <TextInput label={copy.colour.valueLabel(themeName(chip.token), mode)} value={value} onCommit={(v) => v.trim() !== "" && onToken(v.trim())} />}
       </div>
       {instance && <p className="muted small">{copy.colour.instanceNote(chip.utility)}</p>}
     </section>
