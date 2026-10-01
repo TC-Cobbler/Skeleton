@@ -301,12 +301,13 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Set the native window frame to dark.
   - The result is today's layout in Compact pro.
   - Done: `overlay/src/style.ts` (exported as `@skeleton/overlay/style`); `app-renderer/src/styles/` holds `base.css`, `shell.css`, `canvas.css` and `panels.css`. The overlay draws in the shared colours. The window is dark. Also fixed along the way: KI-2, a handle drag's label going missing. Full unit and e2e suites pass.
-- [~] **T8.5** **Icons and tooltips.**
+- [x] **T8.5** **Icons and tooltips.**
   - Add Lucide (1.5px stroke, 20/16px), IconButton (label required) and Tooltip (hover and focus, Escape to close).
   - Remove `title=` throughout.
   - Add the "icon-only buttons use IconButton" test and the tooltip behaviour tests.
   - Add the licence notice in About.
-- [ ] **T8.6** **Top bar and status bar** (layout D).
+  - Done: `app-renderer/src/Tooltip.tsx` (`useTooltip`, `Tooltip`, `Hinted`, `IconButton`). Hints are also each element's `aria-description`, and the e2e tests read them there. The licence notice sits in the app info line until the ⋯ menu's About exists (T8.6). `tests/icon-buttons.test.ts` and `tests/tooltip.test.tsx`. Full unit and e2e suites pass.
+- [~] **T8.6** **Top bar and status bar** (layout D).
   - Top bar: project name, the page picker (replacing the Pages panel), Undo/Redo, and the ⋯ menu with App preview and its log, Show code and About.
   - Status bar: app state and the workspace's purpose.
 - [ ] **T8.7** **Workspaces and inspector** (layout D).

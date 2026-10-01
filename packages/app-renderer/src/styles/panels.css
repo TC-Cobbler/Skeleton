@@ -56,9 +56,12 @@
   font-size: var(--sk-type-small);
   color: var(--sk-colour-secondary);
 }
+/* Expand and collapse: as narrow as before the icons (14px), so a row is mostly its name. */
 .twisty {
-  display: inline-block;
+  display: inline-flex;
   width: 14px;
+  min-width: 0;
+  height: 16px;
   min-height: 0;
   padding: 0;
   background: none;
@@ -113,7 +116,7 @@
 .palette-item.is-disabled:hover {
   background: var(--sk-colour-control);
 }
-.palette,
+.sidebar .palette,
 .palette + .layers,
 div + .layers {
   margin-top: 14px;
