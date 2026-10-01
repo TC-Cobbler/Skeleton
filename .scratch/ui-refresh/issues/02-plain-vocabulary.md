@@ -1,7 +1,7 @@
 # Choose the plain-language word for every concept
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 01
 Part of: [UI refresh map](../map.md)
 
