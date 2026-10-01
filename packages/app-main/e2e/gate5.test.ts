@@ -151,7 +151,7 @@ describe("Gate 5", () => {
   it("F4: pin a Build note on the Table, hand off: commit, HANDOFF.md task, canvas locked", async () => {
     await page.getByTestId(`layer-${IDS.table}`).click();
     expect(await page.getByTestId("selection-id").textContent()).toBe(IDS.table);
-    await tab(/^Element/).click();
+    await tab(startsWith(copy.app.tabs.element())).click();
     const form = ui(page).addNote();
     await form.getByLabel(copy.notes.type).selectOption("build");
     await form.getByLabel(copy.notes.text).fill("Load orders from /api/orders");
@@ -248,7 +248,7 @@ describe("Gate 5", () => {
     const token = (css: string) => readTokens(css).find((t) => t.name === "--radius-card")?.value;
 
     // --radius-card, in the token panel.
-    await tab(/^Tokens/).click();
+    await tab(startsWith(copy.app.tabs.tokens())).click();
     const input = ui(page).tokens().getByTestId("token---radius-card").getByLabel(copy.tokens.valueLabel(names.themeName("--radius-card")));
     await input.fill("calc(var(--radius) * 2)");
     await input.press("Enter");
@@ -259,7 +259,7 @@ describe("Gate 5", () => {
 
     // The Table, into the second Stack after its paragraph: select it, drag it by its label.
     await ui(page).showLayers();
-    await tab(/^Element/).click();
+    await tab(startsWith(copy.app.tabs.element())).click();
     await page.getByTestId(`layer-${IDS.table}`).click();
     const grip = frame().locator(`skeleton-overlay [data-grab]`);
     await grip.waitFor();
@@ -269,7 +269,8 @@ describe("Gate 5", () => {
     await page.mouse.down();
     await page.mouse.move(from.x + 6, from.y + 6, { steps: 2 });
     await page.mouse.move(to.x, to.y, { steps: 10 });
-    await page.waitForTimeout(100);
+    // Release once the host has answered with the drop target (it can take longer than a frame).
+    await frame().locator("skeleton-overlay [data-drop-indicator]").first().waitFor();
     await page.mouse.up();
     await expect.poll(() => node(IDS.right)?.children.map((c) => c.id), { timeout: 15_000 }).toEqual([IDS.para, IDS.table]);
     expect(node(IDS.content)?.children).toEqual([]);

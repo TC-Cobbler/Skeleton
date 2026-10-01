@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clickOnCanvas } from "./canvas-click.js";
-import { copy, say, ui } from "./ui.js";
+import { copy, pattern, say, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const parentDir = mkdtempSync(path.join(tmpdir(), "skeleton-e2e-"));
@@ -161,7 +161,7 @@ export default function OrdersPage() {
     const list = ui(page).pagesList();
     await ui(page).openPages();
     await list.getByRole("option", { name: /\/orders/ }).waitFor({ timeout: 15_000 });
-    expect(await list.getByRole("option", { name: /^\/ HomePage/ }).getAttribute("aria-selected")).toBe("true");
+    expect(await list.getByRole("option", { name: pattern(/^/, copy.named.pageComponent("HomePage"), " /", /$/) }).getAttribute("aria-selected")).toBe("true");
 
     await list.getByRole("option", { name: /\/orders/ }).click();
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
@@ -177,7 +177,7 @@ export default function OrdersPage() {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await canvas.getByRole("heading", { name: "E2E App" }).waitFor({ timeout: 15_000 });
-    await expect.poll(() => list.getByRole("option", { name: /^\/ HomePage/ }).getAttribute("aria-selected")).toBe("true");
+    await expect.poll(() => list.getByRole("option", { name: pattern(/^/, copy.named.pageComponent("HomePage"), " /", /$/) }).getAttribute("aria-selected")).toBe("true");
     await expect.poll(() => page.getByTestId("layer-ui_ord02").count()).toBe(0);
   }, 60_000);
 

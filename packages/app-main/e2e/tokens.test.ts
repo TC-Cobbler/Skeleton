@@ -253,7 +253,7 @@ describe("colour chip and picker (T4.3, T4.7)", () => {
   it("in dark mode, edits the dark value only (T4.7)", async () => {
     await ui(page).colourMode().getByRole("button", { name: copy.app.dark }).click();
     await clickChip("bg");
-    expect(await panel().getByRole("button", { name: "Token (dark)" }).getAttribute("aria-pressed")).toBe("true");
+    expect(await panel().getByRole("button", { name: copy.colour.token("dark") }).getAttribute("aria-pressed")).toBe("true");
     await panel().getByLabel(copy.colour.pick).fill("#cc3366");
     await expect.poll(() => token("--primary", "dark"), { timeout: 10_000 }).toBe(await hexOklch("#cc3366"));
     expect(token("--primary", "light")).toBe(await hexOklch("#3366cc"));

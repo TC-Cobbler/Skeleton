@@ -628,7 +628,7 @@ export const copy = {
     promoteForm: "Add to theme",
     tokenName: "Theme value name",
     namePlaceholder: "e.g. brand",
-    create: "Add",
+    create: "Save",
   },
   viewSource: {
     show: "Show code",

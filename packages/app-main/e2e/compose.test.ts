@@ -60,14 +60,14 @@ describe("palette (T3.1)", () => {
     await ui(page).showAdd();
     const palette = ui(page).palette();
     await palette.getByTestId("palette-button").waitFor();
-    for (const group of ["Layout", "Inputs", "Display", "Overlay", "Navigation"]) {
-      await expect(palette.getByRole("list", { name: `${group} components` }).count()).resolves.toBe(1);
+    for (const group of ["layout", "inputs", "display", "overlay", "navigation"]) {
+      await expect(palette.getByRole("list", { name: copy.palette.groupList(copy.palette.groups[group] ?? group) }).count()).resolves.toBe(1);
     }
     const items = palette.locator(".palette-item");
     expect(await items.count()).toBe(23);
     const disabled = await palette.locator('.palette-item[aria-disabled="true"]').allTextContents();
-    expect(disabled).toEqual(["Toast"]);
-    expect(await palette.getByTestId("palette-toast").getAttribute("aria-description")).toMatch(/Toaster is already mounted/);
+    expect(disabled).toEqual([copy.palette.items["toast"]?.[0]]);
+    expect(await palette.getByTestId("palette-toast").getAttribute("aria-description")).toBe(copy.palette.notes["toast"]);
     await ui(page).showLayers();
   });
 });

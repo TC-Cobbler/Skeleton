@@ -317,9 +317,10 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - The hand-off bar under the canvas.
   - Navigation goes into the test helpers.
   - Done: the workspaces are in the top bar. Build's Add and Layers tabs both stay in the page (Layers keeps what's open). Style shows Layers and the reach hint; Hand off shows every note. Selecting an element shows Element, which ends with that element's notes (`ElementNotes`). The canvas column has its toolbar above and the hand-off bar, with "Review the agent's work", below. The status bar shows the workspace's purpose. `ui.ts` gained `openWorkspace`, `showLayers` and `showAdd`. Unit tests pass. E2e passes apart from the KI-3 flakes, which show up when the files run in parallel and pass on their own.
-- [~] **T8.8** **Plain words in the panels.**
+- [x] **T8.8** **Plain words in the panels.**
   - Use GLOSSARY.md terms throughout, and element names instead of IDs.
   - Use the name tables (spec §6) for theme values, settings and options, agent controls and element parts, each with its fallback rule.
+  - Done: the name tables are `copy.names` and the palette's `copy.palette.items`, read through `app-renderer/src/names.ts` (theme value names, setting labels and options, agent controls, element kinds and element names, each with its fallback rule). Panels, tabs and the canvas toolbar use glossary words, and messages name elements by element name. IDs and code names stay only as hidden test hooks and `data-ui-id` / `data-nearest` attributes. The pending list is down from 100 to 26 (the messages for T8.9, the overlay for T8.10); glossary terms such as "Agent component" pass the check. Gate 5's Table drag now waits for the drop indicator before releasing.
 - [ ] **T8.9** **Plain messages.**
   - Write every reason code's sentence to spec §4.
   - Rewrite the empty states, progress lines and confirmations.
