@@ -17,3 +17,7 @@ With every decision on the map settled, write the **UI refresh spec** and slice 
 - the test policy
 
 The slices are small, gated by tests, and on-screen presentation only. The agent drafts both, and Johnny approves before this closes. This is where the map reaches its destination.
+
+## Context from other tickets
+
+- [Decide how tests keep up with renamed text](07-tests-and-renames.md): slice 1 of the phase is a pure refactor (copy files, test helpers, every test switched over, nothing visible changed).
