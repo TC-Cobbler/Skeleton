@@ -33,10 +33,11 @@ A written **UI refresh spec** for Skeleton's own app (renderer + overlay chrome)
 - [Decide how tests keep up with renamed text](issues/07-tests-and-renames.md): tests find things by role and visible name through one helper file; the renderer and overlay each keep their words in a copy file, checked by a test against the glossary's Avoid words. Gate tests are updated in place with the same steps and checks, there are no pixel snapshots, and the first build slice is a pure refactor with nothing visible changed.
 - [Name every theme value, setting and agent control](issues/08-name-tables.md): approved tables for about 30 theme value names (Main colour, Card corners, Body text…), every setting label and option (Style: Standard/Danger/Outlined…), agent controls (What happens on click…), each with a fallback rule. Also element part names in Layers (Dialog box, Tab bar, Pick list button); Select is now Pick list.
 - [Decide how the restyle is built: style structure and icon set](issues/09-restyle-build.md): plain CSS with a shared style values file read by the renderer and the overlay's shadow root; Lucide icons at a 1.5px stroke; an IconButton that requires a label, with its own tooltip on hover and focus; the native window frame set to dark.
+- [Write the UI refresh spec and slice it into TASKS.md](issues/10-spec-and-slicing.md): approved. docs/ui-refresh-spec.md, plus TASKS.md phase v1.0.y (T8.1–T8.10), starting with a pure refactor. **Destination reached.**
 
 ## Not yet specified
 
-_Nothing left in the fog: every remaining question is a ticket._
+_Nothing: the map has reached its destination. Building is TASKS.md v1.0.y._
 
 
 ## Out of scope

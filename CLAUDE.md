@@ -17,7 +17,7 @@ Read these before starting any task:
 - The whole loop works in the app: compose, tokens and gizmos (`docs/decisions/007`–`010`), then notes, Hand off, Take back and review (`docs/decisions/011`).
 - Its state is read from git commit subjects, never stored.
 - The dogfood found no integrity failures. Its composing friction (ROADMAP.md, **v1.0.x — Dogfood fixes**) is fixed: T7.1–T7.5, `docs/decisions/012`.
-- Next is v1.1. Don't start it until asked.
+- **v1.0.y — UI refresh** is specified (`docs/ui-refresh-spec.md`, TASKS.md T8.1–T8.10): plain words, an Adobe-style layout and a compact dark style. Presentation only. It comes before v1.1. Don't start either until asked.
 
 ---
 
