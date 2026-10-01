@@ -235,6 +235,10 @@ _Avoid_: Input
 A box for typing several lines of text.
 _Avoid_: Textarea
 
+**Pick list**:
+A field that opens a list of options to choose one from.
+_Avoid_: Select, dropdown
+
 **Menu**:
 A list of actions that opens from a button.
 _Avoid_: Dropdown menu
