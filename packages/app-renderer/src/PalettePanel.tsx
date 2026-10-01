@@ -4,6 +4,7 @@ import { call } from "./bridge.js";
 import { copy } from "./copy.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
+import { Hinted } from "./Tooltip.js";
 
 /** The palette, checked against the project's component files; refreshed when files change. */
 export function usePalette(projectRoot: string, revision: number): { palette: Palette | null; error: Message | null } {
@@ -56,16 +57,16 @@ export function PalettePanel({ palette, error, onStartDrag }: PalettePanelProps)
               {items.map((item) => {
                 const why = unavailableReason(item);
                 return (
-                  <li
-                    key={item.id}
-                    data-testid={`palette-${item.id}`}
-                    aria-disabled={why !== null}
-                    className={`palette-item${why ? " is-disabled" : ""}`}
-                    title={why ?? copy.palette.itemDescription(item.description)}
-                    onPointerDown={why === null ? (e) => onStartDrag(item, e) : undefined}
-                  >
-                    {copy.palette.itemLabel(item.label)}
-                  </li>
+                  <Hinted key={item.id} text={why ?? copy.palette.itemDescription(item.description)}>
+                    <li
+                      data-testid={`palette-${item.id}`}
+                      aria-disabled={why !== null}
+                      className={`palette-item${why ? " is-disabled" : ""}`}
+                      onPointerDown={why === null ? (e) => onStartDrag(item, e) : undefined}
+                    >
+                      {copy.palette.itemLabel(item.label)}
+                    </li>
+                  </Hinted>
                 );
               })}
             </ul>

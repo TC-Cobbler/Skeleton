@@ -4,6 +4,7 @@ import { call } from "./bridge.js";
 import { copy } from "./copy.js";
 import { messageFor, messageForReason, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
+import { Hinted } from "./Tooltip.js";
 
 /** The project's pages, read from its router; refreshed when the app updates. */
 export function usePages(projectRoot: string, revision: number): { list: PageList | null; error: Message | null } {
@@ -75,17 +76,17 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
           const why = unavailable(p);
           const isCurrent = current !== null && p.path === current.path && p.file === current.file;
           return (
-            <li
-              key={`${p.path}#${i}`}
-              role="option"
-              aria-selected={isCurrent}
-              aria-disabled={why !== null}
-              title={why ?? p.file ?? undefined}
-              className={`page${isCurrent ? " is-selected" : ""}${why ? " is-disabled" : ""}`}
-              onClick={() => why === null && onOpen(p)}
-            >
-              <code>{p.path}</code> <span className="muted">{p.component ?? "?"}</span>
-            </li>
+            <Hinted key={`${p.path}#${i}`} text={why ?? p.file ?? undefined}>
+              <li
+                role="option"
+                aria-selected={isCurrent}
+                aria-disabled={why !== null}
+                className={`page${isCurrent ? " is-selected" : ""}${why ? " is-disabled" : ""}`}
+                onClick={() => why === null && onOpen(p)}
+              >
+                <code>{p.path}</code> <span className="muted">{p.component ?? "?"}</span>
+              </li>
+            </Hinted>
           );
         })}
       </ul>

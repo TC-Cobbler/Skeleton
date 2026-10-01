@@ -132,6 +132,8 @@ export const copy = {
     name: "Skeleton",
     closeProject: "Close project",
     info: (i: { appVersion: string; electron: string; node: string; platform: string }) => `v${i.appVersion} · Electron ${i.electron} · Node ${i.node} · ${i.platform}`,
+    /** Licence notices for what Skeleton ships (moves to About with the ⋯ menu). */
+    licences: "Icons: Lucide (ISC licence)",
     classEdits: {
       locked: "it's a locked block: its classes are agent code",
       noId: "it has no data-ui-id",

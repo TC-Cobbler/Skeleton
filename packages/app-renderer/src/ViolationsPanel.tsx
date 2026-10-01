@@ -4,6 +4,7 @@ import { call } from "./bridge.js";
 import { copy } from "./copy.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
+import { Tooltip } from "./Tooltip.js";
 
 /** The project's violations, re-read when files change. */
 export function useViolations(projectRoot: string, revision: number): { report: ViolationReport | null; error: Message | null } {
@@ -81,9 +82,11 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
   return (
     <li className={`violation${item.kept ? " is-kept" : ""}`} data-testid="violation">
       <div className="violation-head">
-        <button type="button" className="link" title={`${item.file}:${item.line}`} onClick={() => onSelect(item)}>
-          {item.element ? copy.violations.element(item.element.name, item.element.id) : `${item.file}:${item.line}`}
-        </button>
+        <Tooltip text={`${item.file}:${item.line}`}>
+          <button type="button" className="link" onClick={() => onSelect(item)}>
+            {item.element ? copy.violations.element(item.element.name, item.element.id) : `${item.file}:${item.line}`}
+          </button>
+        </Tooltip>
         <span className="muted small">{PROPERTY[item.property]}</span>
       </div>
       <code className="violation-value">{value}</code>
@@ -96,18 +99,22 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
       {!item.kept && (
         <div className="row violation-actions">
           {item.editable && item.nearest && (
-            <button type="button" onClick={() => onSnap(item)} title={copy.violations.snapTitle(item.nearest.utility)}>
-              {copy.violations.snap}
-            </button>
+            <Tooltip text={copy.violations.snapTitle(item.nearest.utility)}>
+              <button type="button" onClick={() => onSnap(item)}>
+                {copy.violations.snap}
+              </button>
+            </Tooltip>
           )}
           {item.editable && item.promote && (
             <button type="button" aria-expanded={naming} onClick={() => setNaming((n) => !n)}>
               {copy.violations.promote}
             </button>
           )}
-          <button type="button" onClick={() => onKeep(item)} title={copy.violations.keepTitle}>
-            {copy.violations.keep}
-          </button>
+          <Tooltip text={copy.violations.keepTitle}>
+            <button type="button" onClick={() => onKeep(item)}>
+              {copy.violations.keep}
+            </button>
+          </Tooltip>
         </div>
       )}
       {naming && item.promote && (

@@ -5,6 +5,7 @@ import { TextInput } from "./PropertiesPanel.js";
 import { copy } from "./copy.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
+import { Hinted, Tooltip } from "./Tooltip.js";
 
 /** The project's tokens, re-read when files change. */
 export function useTokens(projectRoot: string, revision: number): { sheet: TokenSheet | null; error: Message | null; set: (sheet: TokenSheet) => void } {
@@ -101,9 +102,11 @@ function TokenRow({
       <div className="token-head">
         <code>{copy.tokens.tokenName(token.name)}</code>
         {count !== null && (
-          <span className="muted small" title={copy.tokens.countTitle} data-testid="token-count">
-            {count}
-          </span>
+          <Hinted text={copy.tokens.countTitle}>
+            <span className="muted small" data-testid="token-count">
+              {count}
+            </span>
+          </Hinted>
         )}
       </div>
       <div className={`token-values${token.dark !== null ? " has-dark" : ""}`}>
@@ -114,23 +117,28 @@ function TokenRow({
         <div className="token-derived muted small">
           {derived ? (
             <>
-              <span title={copy.tokens.derivedTitle}>{copy.tokens.resolved(token.resolved)}</span>
-              <button
-                type="button"
-                className="quiet"
-                disabled={token.resolved === null}
-                title={token.resolved === null ? copy.tokens.cantDetach : copy.tokens.detachTitle(token.resolved)}
-                onClick={() => token.resolved !== null && write(token.resolved, null)}
-              >
-                {copy.tokens.detach}
-              </button>
+              <Hinted text={copy.tokens.derivedTitle}>
+                <span>{copy.tokens.resolved(token.resolved)}</span>
+              </Hinted>
+              <Tooltip text={token.resolved === null ? copy.tokens.cantDetach : copy.tokens.detachTitle(token.resolved)}>
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={token.resolved === null}
+                  onClick={() => token.resolved !== null && write(token.resolved, null)}
+                >
+                  {copy.tokens.detach}
+                </button>
+              </Tooltip>
             </>
           ) : (
             <>
               <span>{copy.tokens.detached}</span>
-              <button type="button" className="quiet" title={copy.tokens.attachTitle(token.defaultFormula)} onClick={() => token.defaultFormula && write(token.defaultFormula, null)}>
-                {copy.tokens.attach}
-              </button>
+              <Tooltip text={copy.tokens.attachTitle(token.defaultFormula)}>
+                <button type="button" className="quiet" onClick={() => token.defaultFormula && write(token.defaultFormula, null)}>
+                  {copy.tokens.attach}
+                </button>
+              </Tooltip>
             </>
           )}
         </div>

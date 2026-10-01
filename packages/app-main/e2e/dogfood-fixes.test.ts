@@ -163,7 +163,7 @@ describe("Move up / Move down (T7.2, F-2)", () => {
     await page.getByTestId(`layer-${IDS.dialog}`).click();
     const down = selection().getByTestId("move-down");
     expect(await down.isDisabled()).toBe(true);
-    expect(await down.getAttribute("title")).toBe(copy.nodes.last);
+    expect(await down.getAttribute("aria-description")).toBe(copy.nodes.last);
     expect(await selection().getByTestId("move-up").isDisabled()).toBe(false);
   });
 });

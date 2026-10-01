@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { copy } from "./copy.js";
 import type { Message, MessageAction } from "./messages.js";
+import { IconButton } from "./Tooltip.js";
+import { X } from "lucide-react";
 
 export interface Toast {
   id: number;
@@ -73,9 +75,7 @@ export function Toasts({
                 {copy.actions[a]}
               </button>
             ))}
-            <button type="button" className="quiet" aria-label={copy.toasts.dismiss} onClick={() => onDismiss(t.id)}>
-              ×
-            </button>
+            <IconButton className="quiet" icon={X} size={16} label={copy.toasts.dismiss} onClick={() => onDismiss(t.id)} />
           </div>
           <MessageDetails message={t.message} onOpen={() => onHold(t.id)} />
         </div>

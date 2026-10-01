@@ -5,6 +5,8 @@ import { copy } from "./copy.js";
 import { filterNotes, looseReplies, repliesFor, TYPE_LABEL, type NoteFilter } from "./notes.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
+import { IconButton, Tooltip } from "./Tooltip.js";
+import { X } from "lucide-react";
 
 /** The project's notes and replies, re-read when files change. */
 export function useNotes(projectRoot: string, revision: number): { view: NotesView | null; error: Message | null; set: (view: NotesView) => void } {
@@ -78,9 +80,7 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
       {focus && (
         <p className="row small">
           {copy.notes.focusOn} <code>{focus}</code> {copy.notes.focusOnly}
-          <button type="button" className="quiet" aria-label={copy.notes.showAll} onClick={() => onFocus(null)}>
-            ×
-          </button>
+          <IconButton className="quiet" icon={X} size={16} label={copy.notes.showAll} onClick={() => onFocus(null)} />
         </p>
       )}
       {view && notes.length === 0 && <p className="muted small">{copy.notes.empty}</p>}
@@ -115,9 +115,11 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
                 <div>{n.text}</div>
                 {!readOnly && (
                   <div className="row note-actions">
-                    <button type="button" disabled={!canPin} title={canPin ? copy.notes.attachTitle(selected?.name, canPin) : copy.notes.attachNeedsId} onClick={() => canPin && void onWrite({ op: "update", id: n.id, target: canPin })}>
-                      {copy.notes.attach}
-                    </button>
+                    <Tooltip text={canPin ? copy.notes.attachTitle(selected?.name, canPin) : copy.notes.attachNeedsId}>
+                      <button type="button" disabled={!canPin} onClick={() => canPin && void onWrite({ op: "update", id: n.id, target: canPin })}>
+                        {copy.notes.attach}
+                      </button>
+                    </Tooltip>
                     <button type="button" className="danger" onClick={() => void onWrite({ op: "delete", id: n.id })}>
                       {copy.notes.discard}
                     </button>
@@ -173,9 +175,11 @@ function NoteRow({ note, replies, readOnly, onWrite, onSelectTarget }: { note: N
     <li className={`note${note.status === "resolved" ? " is-resolved" : ""}`} data-testid="note" data-note-id={note.id}>
       <div className="note-head">
         <span className={`note-type note-${note.type}`}>{TYPE_LABEL[note.type]}</span>
-        <button type="button" className="link" onClick={() => onSelectTarget(note)} title={note.file ?? undefined}>
-          {copy.pass.elementRef(note.element ?? copy.notes.element, note.target)}
-        </button>
+        <Tooltip text={note.file ?? undefined}>
+          <button type="button" className="link" onClick={() => onSelectTarget(note)}>
+            {copy.pass.elementRef(note.element ?? copy.notes.element, note.target)}
+          </button>
+        </Tooltip>
         <span className="muted small" data-testid="note-status">
           {note.status === "resolved" ? copy.notes.resolvedStatus : note.handoff ? copy.notes.sentIn(note.handoff) : copy.notes.openStatus}
         </span>

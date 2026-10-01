@@ -28,6 +28,8 @@ import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
 import { copy } from "./copy.js";
 import { messageFor } from "./messages.js";
+import { Columns3, Hand, Monitor, Moon, MousePointer2, Redo2, Smartphone, Sun, Tablet, Undo2 } from "lucide-react";
+import { IconButton } from "./Tooltip.js";
 import { MessageText } from "./Toasts.js";
 import type { Message } from "./messages.js";
 
@@ -68,7 +70,7 @@ export function App() {
       </header>
       {info && (
         <p className="muted" data-testid="app-info">
-          {copy.app.info(info)}
+          {copy.app.info(info)} · {copy.app.licences}
         </p>
       )}
       {error && <MessageText message={error} />}
@@ -88,6 +90,9 @@ function classEditsBlocked(node: UiNode): string | null {
   if (node.protectedProps.includes("className")) return copy.app.classEdits.agentClassName;
   return null;
 }
+
+/** The preview widths' icons. */
+const LAYOUT_ICONS = { desktop: Monitor, tablet: Tablet, mobile: Smartphone, "side-by-side": Columns3 } as const;
 
 /** Shown until the router has been read. */
 const DEFAULT_PAGE = "src/pages/HomePage.tsx";
@@ -465,37 +470,38 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       <aside className="sidebar">
         <div className="row">
           <strong>{copy.app.canvas}</strong>
-          <button
-            type="button"
+          <IconButton
+            label={mode === "select" ? copy.app.selectMode : copy.app.interactMode}
+            icon={mode === "select" ? MousePointer2 : Hand}
             aria-pressed={mode === "interact"}
             onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
-          >
-            {mode === "select" ? copy.app.selectMode : copy.app.interactMode}
-          </button>
+          />
         </div>
         <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
         <div className="row history" role="group" aria-label={copy.app.history}>
-          <button type="button" disabled={!history.undo || withAgent} title={history.undo ? copy.app.undoTitle(history.undo) : copy.app.nothingToUndo} onClick={() => historyStep("undo")}>
-            {copy.app.undo}
-          </button>
-          <button type="button" disabled={!history.redo || withAgent} title={history.redo ? copy.app.redoTitle(history.redo) : copy.app.nothingToRedo} onClick={() => historyStep("redo")}>
-            {copy.app.redo}
-          </button>
+          <IconButton
+            label={copy.app.undo}
+            icon={Undo2}
+            hint={history.undo ? copy.app.undoTitle(history.undo) : copy.app.nothingToUndo}
+            disabled={!history.undo || withAgent}
+            onClick={() => historyStep("undo")}
+          />
+          <IconButton
+            label={copy.app.redo}
+            icon={Redo2}
+            hint={history.redo ? copy.app.redoTitle(history.redo) : copy.app.nothingToRedo}
+            disabled={!history.redo || withAgent}
+            onClick={() => historyStep("redo")}
+          />
         </div>
         <div className="segmented" role="group" aria-label={copy.app.previewWidth}>
           {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
-            <button key={l} type="button" aria-pressed={layout === l} onClick={() => setLayout(l)}>
-              {copy.app.layouts[l]}
-            </button>
+            <IconButton key={l} label={copy.app.layouts[l]} icon={LAYOUT_ICONS[l]} aria-pressed={layout === l} onClick={() => setLayout(l)} />
           ))}
         </div>
         <div className="segmented" role="group" aria-label={copy.app.colourMode}>
-          <button type="button" aria-pressed={!dark} onClick={() => setDark(false)}>
-            {copy.app.light}
-          </button>
-          <button type="button" aria-pressed={dark} onClick={() => setDark(true)}>
-            {copy.app.dark}
-          </button>
+          <IconButton label={copy.app.light} icon={Sun} aria-pressed={!dark} onClick={() => setDark(false)} />
+          <IconButton label={copy.app.dark} icon={Moon} aria-pressed={dark} onClick={() => setDark(true)} />
         </div>
         {page.error && <MessageText message={page.error} />}
         {fsRevision.error && <MessageText message={fsRevision.error} />}

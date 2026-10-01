@@ -1,6 +1,7 @@
 import type { UiNode } from "@skeleton/app-main/ipc";
 import { ViewSource } from "./ViewSource.js";
 import { copy } from "./copy.js";
+import { Tooltip } from "./Tooltip.js";
 
 export interface SelectionPanelProps {
   projectRoot: string;
@@ -53,29 +54,36 @@ export function SelectionPanel({ projectRoot, file, node, hovered, cannotDelete,
       )}
       {node && (
         <div className="row actions">
-          <button type="button" onClick={() => onMove("up")} disabled={cannotMove.up !== null} title={cannotMove.up ?? copy.selection.moveUpTitle} data-testid="move-up">
-            {copy.selection.moveUp}
-          </button>
-          <button type="button" onClick={() => onMove("down")} disabled={cannotMove.down !== null} title={cannotMove.down ?? copy.selection.moveDownTitle} data-testid="move-down">
-            {copy.selection.moveDown}
-          </button>
-          <button type="button" onClick={onDelete} disabled={cannotDelete !== null} title={cannotDelete ?? copy.selection.deleteTitle}>
-            {copy.common.delete}
-          </button>
+          <Tooltip text={cannotMove.up ?? copy.selection.moveUpTitle}>
+            <button type="button" onClick={() => onMove("up")} disabled={cannotMove.up !== null} data-testid="move-up">
+              {copy.selection.moveUp}
+            </button>
+          </Tooltip>
+          <Tooltip text={cannotMove.down ?? copy.selection.moveDownTitle}>
+            <button type="button" onClick={() => onMove("down")} disabled={cannotMove.down !== null} data-testid="move-down">
+              {copy.selection.moveDown}
+            </button>
+          </Tooltip>
+          <Tooltip text={cannotDelete ?? copy.selection.deleteTitle}>
+            <button type="button" onClick={onDelete} disabled={cannotDelete !== null}>
+              {copy.common.delete}
+            </button>
+          </Tooltip>
         </div>
       )}
       {node && openable && (
         <div className="row actions">
-          <button
-            type="button"
-            aria-pressed={openable.open === true}
-            disabled={openable.open === null}
-            title={openable.open === null ? copy.selection.noTrigger(openable.name) : copy.selection.openTitle}
-            onClick={onToggleOpen}
-            data-testid="open-in-canvas"
-          >
-            {openable.open ? copy.selection.close(openable.name) : copy.selection.open(openable.name)}
-          </button>
+          <Tooltip text={openable.open === null ? copy.selection.noTrigger(openable.name) : copy.selection.openTitle}>
+            <button
+              type="button"
+              aria-pressed={openable.open === true}
+              disabled={openable.open === null}
+              onClick={onToggleOpen}
+              data-testid="open-in-canvas"
+            >
+              {openable.open ? copy.selection.close(openable.name) : copy.selection.open(openable.name)}
+            </button>
+          </Tooltip>
         </div>
       )}
       {node && confirming && (

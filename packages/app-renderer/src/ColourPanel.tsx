@@ -3,6 +3,8 @@ import type { ThemeToken } from "@skeleton/app-main/ipc";
 import { alphaOf, COLOUR_PROPERTY, cssToHex, hexToOklch } from "./colour.js";
 import { TextInput } from "./PropertiesPanel.js";
 import { copy } from "./copy.js";
+import { IconButton, Tooltip } from "./Tooltip.js";
+import { X } from "lucide-react";
 
 export interface ColourChip {
   key: string;
@@ -60,20 +62,22 @@ export function ColourPanel({ chip, token, dark, classEdits, onPreview, onToken,
     <section aria-label={copy.colour.title} className="colour-panel" data-testid="colour-panel">
       <div className="row">
         <h2>{copy.colour.title}</h2>
-        <button type="button" className="quiet" onClick={onClose} aria-label={copy.colour.close}>
-          ×
-        </button>
+        <IconButton className="quiet" icon={X} size={16} label={copy.colour.close} onClick={onClose} />
       </div>
       <p className="muted small">
         {copy.colour.summary(chip.utility, name, chip.token)}
       </p>
       <div className="segmented" role="group" aria-label={copy.colour.scope}>
-        <button type="button" aria-pressed={!instance} onClick={() => setInstance(false)} title={copy.colour.tokenTitle(chip.token, mode)}>
-          {copy.colour.token(mode)}
-        </button>
-        <button type="button" aria-pressed={instance} disabled={classEdits !== null} title={classEdits ?? copy.colour.instanceTitle} onClick={() => setInstance(true)}>
-          {copy.colour.instance}
-        </button>
+        <Tooltip text={copy.colour.tokenTitle(chip.token, mode)}>
+          <button type="button" aria-pressed={!instance} onClick={() => setInstance(false)}>
+            {copy.colour.token(mode)}
+          </button>
+        </Tooltip>
+        <Tooltip text={classEdits ?? copy.colour.instanceTitle}>
+          <button type="button" aria-pressed={instance} disabled={classEdits !== null} onClick={() => setInstance(true)}>
+            {copy.colour.instance}
+          </button>
+        </Tooltip>
       </div>
       <div className="row colour-inputs">
         <input

@@ -65,7 +65,7 @@ describe("palette (T3.1)", () => {
     expect(await items.count()).toBe(23);
     const disabled = await palette.locator('.palette-item[aria-disabled="true"]').allTextContents();
     expect(disabled).toEqual(["Toast"]);
-    expect(await palette.getByTestId("palette-toast").getAttribute("title")).toMatch(/Toaster is already mounted/);
+    expect(await palette.getByTestId("palette-toast").getAttribute("aria-description")).toMatch(/Toaster is already mounted/);
   });
 });
 
@@ -259,7 +259,7 @@ describe("delete (T3.4)", () => {
     await layer("ui_mapr1").click();
     const button = page.getByTestId("selection").getByRole("button", { name: copy.common.delete });
     expect(await button.isDisabled()).toBe(true);
-    expect(await button.getAttribute("title")).toBe(copy.nodes.insideLockedRemove("map"));
+    expect(await button.getAttribute("aria-description")).toBe(copy.nodes.insideLockedRemove("map"));
   });
 
   it("asks before deleting agent code, and Cancel leaves it", async () => {
@@ -480,7 +480,7 @@ describe("undo and redo (T3.8)", () => {
     const before = homeFile();
     await placeFromPalette(page, "badge", canvasFrame(page).getByRole("heading", { name: "Compose" }), { fx: 0.5, fy: 0.9 });
     const placed = homeFile();
-    await expect.poll(() => history().getByRole("button", { name: copy.app.undo }).getAttribute("title")).toBe(copy.app.undoTitle("Insert Badge"));
+    await expect.poll(() => history().getByRole("button", { name: copy.app.undo }).getAttribute("aria-description")).toBe(copy.app.undoTitle("Insert Badge"));
     await history().getByRole("button", { name: copy.app.undo }).click();
     await expect.poll(homeFile).toBe(before);
     await waitForCanvas(page, sourceVersion(before));

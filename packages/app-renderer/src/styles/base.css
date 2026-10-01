@@ -261,3 +261,38 @@ details > summary {
 div.error p {
   margin: 0;
 }
+
+/* Tooltips (T8.5): on hover and keyboard focus, in the window, never taking the pointer. */
+.tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 280px;
+  padding: 4px 8px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-tooltip);
+  color: var(--sk-colour-white);
+  font: var(--sk-type-body) / 1.35 var(--sk-type-font);
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+/* Icon-only buttons: square, the icon centred. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--sk-size-control);
+  padding: 0 3px;
+  background: none;
+  color: var(--sk-colour-text);
+}
+.icon-button[aria-pressed="true"] {
+  background: var(--sk-colour-control-on);
+  color: var(--sk-colour-heading);
+}

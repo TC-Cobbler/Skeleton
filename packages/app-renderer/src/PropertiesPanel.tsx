@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ClassGroup, EditIntent, ElementSchema, PropSchema, UiNode } from "@skeleton/app-main/ipc";
 import { textEditable } from "./canvas/nodes.js";
 import { copy } from "./copy.js";
+import { Hinted } from "./Tooltip.js";
 
 type PropValue = string | number | boolean | null;
 
@@ -41,9 +42,11 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
           {schema.props.map((prop) =>
             node.protectedProps.includes(prop.name) ? (
               <Row key={prop.name} label={copy.properties.propLabel(prop.name)}>
-                <span className="muted" title={copy.properties.agentSetTitle}>
-                  {copy.properties.agentSet}
-                </span>
+                <Hinted text={copy.properties.agentSetTitle}>
+                  <span className="muted">
+                    {copy.properties.agentSet}
+                  </span>
+                </Hinted>
               </Row>
             ) : (
               <Row key={prop.name} label={copy.properties.propLabel(prop.name)}>
