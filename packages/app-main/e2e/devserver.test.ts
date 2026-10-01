@@ -106,6 +106,7 @@ describe("new project → running dev server (PRD F1)", () => {
 
   it("syncs selection between the layers tree and the canvas (T2.3)", async () => {
     const canvas = page.frameLocator('[data-testid="canvas-frame"]');
+    await ui(page).showLayers();
     const tree = ui(page).layersTree();
     const rows = tree.getByRole("treeitem");
     expect(await rows.count()).toBe(3); // Container > Stack > h1

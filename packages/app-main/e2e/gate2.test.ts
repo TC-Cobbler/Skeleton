@@ -73,6 +73,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
       };
       (result.value.roots as N[]).forEach((r, i) => walk(r, String(i)));
       nodes = flat;
+      await ui(page).showLayers();
     }, 180_000);
 
     afterAll(async () => {

@@ -43,6 +43,7 @@ beforeAll(async () => {
     if (!f) throw new Error("canvas frame not found");
     return f;
   };
+  await ui(page).showLayers();
 }, 180_000);
 
 afterAll(async () => {

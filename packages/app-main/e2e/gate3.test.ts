@@ -116,6 +116,7 @@ beforeAll(async () => {
   await ui(page).picker.projectName().fill("Gate Three");
   await ui(page).picker.create().click();
   await canvasFrame(page).getByRole("heading", { name: "Gate Three" }).waitFor({ timeout: 90_000 });
+  await ui(page).showLayers();
 }, 180_000);
 
 afterAll(async () => {

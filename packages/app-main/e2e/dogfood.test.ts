@@ -143,7 +143,7 @@ async function ledger(name: string, value: string) {
 
 async function note(id: string, type: "build" | "behaviour" | "question", text: string) {
   await select(id);
-  await ui(page).tab("notes").click();
+  await ui(page).tab("element").click();
   const form = ui(page).addNote();
   await form.getByLabel(copy.notes.type).selectOption(type);
   await form.getByLabel(copy.notes.text).fill(text);
@@ -220,6 +220,7 @@ beforeAll(async () => {
   }
   await frame().locator("h1").first().waitFor({ timeout: 120_000 });
   await page.waitForTimeout(1500);
+  await ui(page).showLayers();
 }, 240_000);
 
 afterAll(async () => {
@@ -395,7 +396,7 @@ const steps: Record<string, () => Promise<void>> = {
     // (Resumable: a step that already landed is skipped.)
     // Orphan tray: the loop 1 Question's button was deleted in loop 4; discard its note.
     if (read("skeleton/notes.json").includes("What should adding a game ask for?")) {
-      await ui(page).tab("notes").click();
+      await ui(page).openWorkspace("handoff");
       const tray = page.getByTestId("orphan-tray");
       await tray.waitFor();
       await shot("orphan-tray");
@@ -404,7 +405,7 @@ const steps: Record<string, () => Promise<void>> = {
       await expect.poll(() => read("skeleton/notes.json")).not.toBe(notesBefore);
       await expect.poll(() => tray.count()).toBe(0);
       log("orphan note discarded");
-      await ui(page).tab("element").click();
+      await ui(page).openWorkspace("build");
     }
 
     // Edit the agent's form fields inside the closed dialog, from the Layers tree.

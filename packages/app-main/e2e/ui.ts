@@ -19,13 +19,20 @@ export const startsWith = (text: string) => new RegExp(`^${escapeRegExp(text)}`)
 /** A pattern from literal text (escaped) and regex pieces, in order. */
 export const pattern = (...parts: (string | RegExp)[]) => new RegExp(parts.map((p) => (typeof p === "string" ? escapeRegExp(p) : p.source)).join(""));
 
-export type InspectorTab = keyof typeof copy.app.tabs;
+export type InspectorTab = Exclude<keyof typeof copy.app.tabs, "notes">;
 export type PreviewWidth = keyof typeof copy.app.layouts;
+export type Workspace = keyof typeof copy.workspaces.names;
 
 /** Skeleton's window, by what's on screen. Every lookup is lazy, like any Playwright locator. */
 export function ui(page: Page) {
   const button = (name: string) => page.getByRole("button", { name, exact: true });
   const region = (name: string) => page.getByRole("region", { name, exact: true });
+  const openLeft = async (t: "add" | "layers") => {
+    const build = page.getByRole("group", { name: copy.workspaces.title }).getByRole("button", { name: copy.workspaces.names.build, exact: true });
+    if ((await build.getAttribute("aria-pressed")) !== "true") await build.click();
+    const tab = page.getByRole("tablist", { name: copy.left.title }).getByRole("tab", { name: copy.left[t], exact: true });
+    if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  };
   const openMore = async () => {
     const more = button(copy.topBar.more);
     if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
@@ -102,6 +109,22 @@ export function ui(page: Page) {
 
     /** The latest error message's sentence (Details aside). */
     lastError: () => page.getByTestId("edit-error").last().locator(".toast-text"),
+
+    /** A workspace button in the top bar (T8.7). */
+    workspace: (w: Workspace) => page.getByRole("group", { name: copy.workspaces.title }).getByRole("button", { name: copy.workspaces.names[w], exact: true }),
+    /** Switches to a workspace, if it isn't the one showing. */
+    openWorkspace: async (w: Workspace) => {
+      const b = page.getByRole("group", { name: copy.workspaces.title }).getByRole("button", { name: copy.workspaces.names[w], exact: true });
+      if ((await b.getAttribute("aria-pressed")) !== "true") await b.click();
+    },
+    /** Shows the Layers tree: the Build workspace's Layers tab. */
+    showLayers: async () => {
+      await openLeft("layers");
+    },
+    /** Shows the palette: the Build workspace's Add tab. */
+    showAdd: async () => {
+      await openLeft("add");
+    },
 
     /** An inspector tab, whatever count it shows. */
     tab: (tab: InspectorTab) => page.getByRole("tab", { name: startsWith(copy.app.tabs[tab](0)) }),

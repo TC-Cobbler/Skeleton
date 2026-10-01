@@ -88,8 +88,10 @@ export async function placeFromPalette(page: Page, paletteId: string, target: Lo
   // selection changed" isn't enough: after an edit it can briefly show the previous
   // edit's element, which let a drop return before it had landed (KI-1).
   const existing = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="layer-ui_"]')].map((row) => row.getAttribute("data-testid")?.slice(6) ?? ""));
+  await ui(page).showAdd();
   const item = ui(page).palette().getByTestId(`palette-${paletteId}`);
   await dragToCanvas(page, item, target, aim);
+  await ui(page).showLayers();
   const handle = await page.waitForFunction(
     (previous) => {
       const id = document.querySelector('[data-testid="selection-id"]')?.textContent ?? "";

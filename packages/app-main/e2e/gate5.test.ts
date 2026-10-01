@@ -139,6 +139,7 @@ beforeAll(async () => {
   await waitForCanvas(page, sourceVersion(source), "canvas-desktop");
   // The page as the user left it, committed like any work before a first handoff.
   git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "user: orders page");
+  await ui(page).showLayers();
 }, 180_000);
 
 afterAll(async () => {
@@ -150,7 +151,7 @@ describe("Gate 5", () => {
   it("F4: pin a Build note on the Table, hand off: commit, HANDOFF.md task, canvas locked", async () => {
     await page.getByTestId(`layer-${IDS.table}`).click();
     expect(await page.getByTestId("selection-id").textContent()).toBe(IDS.table);
-    await tab(/^Notes/).click();
+    await tab(/^Element/).click();
     const form = ui(page).addNote();
     await form.getByLabel(copy.notes.type).selectOption("build");
     await form.getByLabel(copy.notes.text).fill("Load orders from /api/orders");
@@ -231,7 +232,7 @@ describe("Gate 5", () => {
 
     // The note is resolved and the reply pinned to the Table.
     expect(readNotes(read("skeleton/notes.json")).notes[0]?.status).toBe("resolved");
-    await tab(/^Notes/).click();
+    await ui(page).openWorkspace("handoff");
     await page.getByRole("group", { name: copy.notes.status }).getByRole("button", { name: copy.notes.all }).click();
     const note = page.getByTestId("note").first();
     expect(await note.getByTestId("note-status").textContent()).toBe(copy.notes.resolvedStatus);
@@ -257,6 +258,7 @@ describe("Gate 5", () => {
     expect(changedCss).toEqual(["  --radius-card: calc(var(--radius) * 2);"]);
 
     // The Table, into the second Stack after its paragraph: select it, drag it by its label.
+    await ui(page).showLayers();
     await tab(/^Element/).click();
     await page.getByTestId(`layer-${IDS.table}`).click();
     const grip = frame().locator(`skeleton-overlay [data-grab]`);

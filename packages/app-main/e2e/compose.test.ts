@@ -47,6 +47,7 @@ beforeAll(async () => {
   await ui(page).picker.projectName().fill("Compose");
   await ui(page).picker.create().click();
   await page.frameLocator('[data-testid="canvas-frame"]').getByRole("heading", { name: "Compose" }).waitFor({ timeout: 90_000 });
+  await ui(page).showLayers();
 }, 180_000);
 
 afterAll(async () => {
@@ -56,6 +57,7 @@ afterAll(async () => {
 
 describe("palette (T3.1)", () => {
   it("lists the curated set by group, all placeable in a new project except Toast", async () => {
+    await ui(page).showAdd();
     const palette = ui(page).palette();
     await palette.getByTestId("palette-button").waitFor();
     for (const group of ["Layout", "Inputs", "Display", "Overlay", "Navigation"]) {

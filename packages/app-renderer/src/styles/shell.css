@@ -34,6 +34,16 @@ main > header code {
 .history {
   gap: 2px;
 }
+.workspaces {
+  margin: 0;
+}
+.workspaces button[aria-pressed="true"] {
+  background: var(--sk-colour-accent);
+  color: var(--sk-colour-white);
+}
+.reach-hint {
+  margin-top: 10px;
+}
 .page-picker {
   display: inline-flex;
   align-items: center;

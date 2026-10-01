@@ -61,8 +61,7 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
       <h2>{copy.notes.title}</h2>
       {error && <MessageText message={error} />}
       {readOnly && <p className="muted small">{copy.notes.readOnly}</p>}
-      {!readOnly && selected && (canPin ? <AddNote target={canPin} name={selected.name} onWrite={onWrite} /> : <p className="muted small">{copy.notes.cantPin(selected.name)}</p>)}
-      {!readOnly && !selected && <p className="muted small">{copy.notes.selectToPin}</p>}
+      {!readOnly && <p className="muted small">{copy.notes.selectToPin}</p>}
       <div className="segmented" role="group" aria-label={copy.notes.type}>
         {(["all", ...TYPES] as const).map((t) => (
           <button key={t} type="button" aria-pressed={filter.type === t} onClick={() => setFilter((f) => ({ ...f, type: t }))}>
@@ -130,6 +129,32 @@ export function NotesPanel({ view, error, selected, focus, onFocus, readOnly, on
           </ul>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * The selected element's notes, at the end of the Element tab (layout D): every note on
+ * it, open or not, and the form to add one.
+ */
+export function ElementNotes({
+  view,
+  selected,
+  readOnly,
+  onWrite,
+  onSelectTarget,
+}: Pick<NotesPanelProps, "view" | "readOnly" | "onWrite" | "onSelectTarget"> & { selected: { id: string | null; name: string } }) {
+  const notes = view && selected.id ? view.notes.filter((n) => n.target === selected.id && !n.orphaned) : [];
+  return (
+    <section aria-label={copy.notes.onElement} className="notes element-notes" data-testid="element-notes">
+      <h2>{copy.notes.onElement}</h2>
+      {readOnly && <p className="muted small">{copy.notes.readOnly}</p>}
+      {!readOnly && (selected.id ? <AddNote target={selected.id} name={selected.name} onWrite={onWrite} /> : <p className="muted small">{copy.notes.cantPin(selected.name)}</p>)}
+      <ul role="list" className="note-list">
+        {notes.map((n) => (
+          <NoteRow key={n.id} note={n} replies={view ? repliesFor(view.replies, n.target) : []} readOnly={readOnly} onWrite={onWrite} onSelectTarget={onSelectTarget} />
+        ))}
+      </ul>
     </section>
   );
 }

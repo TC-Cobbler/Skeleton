@@ -169,11 +169,27 @@ export const copy = {
       element: () => "Element",
       tokens: () => "Tokens",
       violations: (n: number) => `Violations${count(n)}`,
-      notes: (n: number) => `Notes${count(n)}`,
       pass: () => "Pass",
     },
     dialogFallback: "Dialog",
   },
+  workspaces: {
+    title: "Workspace",
+    names: { build: "Build", style: "Style", handoff: "Hand off" },
+    /** What each workspace is for, in the status bar. */
+    purpose: {
+      build: "Build: add elements and arrange them on the page",
+      style: "Style: set the theme and fine-tune how elements look",
+      handoff: "Hand off: review notes, hand the project to the agent, and review its work",
+    },
+  },
+  left: {
+    title: "Side panel",
+    add: "Add",
+    layers: "Layers",
+    reach: "Drag a handle: every element of that kind changes. Hold Shift: the whole theme. Hold Alt: just this one.",
+  },
+  canvasBar: "Canvas",
   topBar: {
     page: (name: string) => `Page: ${name}`,
     noPage: "none",
@@ -392,10 +408,11 @@ export const copy = {
   },
   notes: {
     title: "Notes",
+    onElement: "Notes on this element",
     types: { build: "Build", behaviour: "Behaviour", question: "Question" },
     readOnly: "With the agent: notes can be changed again after Take back.",
     cantPin: (name: string) => `${name} has no data-ui-id, so notes can't be pinned to it.`,
-    selectToPin: "Select an element to pin a note to it.",
+    selectToPin: "To add a note, select an element: its notes are at the end of the Element tab.",
     type: "Note type",
     status: "Note status",
     all: "All",
@@ -440,6 +457,7 @@ export const copy = {
     handOffHint: (next: number, open: number) =>
       `Handoff #${next}: ${open} open ${plural(open, "note")} ${plural(open, "goes", "go")} to the agent as tasks in HANDOFF.md.`,
     takeBack: "Take back",
+    review: "Review the agent's work",
     takeBackHint: "Run your agent on the project (its tasks are in HANDOFF.md), then take it back here.",
   },
   pass: {

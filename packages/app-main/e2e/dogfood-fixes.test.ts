@@ -111,6 +111,7 @@ beforeAll(async () => {
   renameSync(tmp, path.join(projectRoot, HOME));
   await waitForCanvas(page, sourceVersion(source));
   pageStack = /<Stack data-ui-id="(ui_[a-z0-9]{5})" className="gap-6/.exec(source)?.[1] as string;
+  await ui(page).showLayers();
 }, 180_000);
 
 afterAll(async () => {

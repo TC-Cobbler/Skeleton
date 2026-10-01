@@ -46,7 +46,7 @@ export function useLoop(projectRoot: string, revision: number) {
 const BUSY: Record<LoopAction, string> = copy.loop.busy;
 
 /** Hand off and Take back (T5.2, T5.3), with where the loop stands. */
-export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBack }: {
+export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBack, onReview }: {
   status: LoopStatus | null;
   error: Message | null;
   busy: LoopAction | null;
@@ -54,6 +54,8 @@ export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBac
   openNotes: number;
   onHandoff: () => void;
   onTakeBack: () => void;
+  /** Show the agent's latest work in the inspector. */
+  onReview: () => void;
 }) {
   const withAgent = status?.state === "with-agent";
   return (
@@ -78,6 +80,11 @@ export function LoopPanel({ status, error, busy, openNotes, onHandoff, onTakeBac
           </button>
           <p className="muted small">{copy.loop.takeBackHint}</p>
         </>
+      )}
+      {status?.pass && !withAgent && (
+        <button type="button" className="link" onClick={onReview}>
+          {copy.loop.review}
+        </button>
       )}
       {busy && <p className="muted small" role="status">{BUSY[busy]}</p>}
       {error && (

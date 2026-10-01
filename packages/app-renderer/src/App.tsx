@@ -23,7 +23,7 @@ import { ProjectPicker } from "./ProjectPicker.js";
 import { TokensPanel, useTokens } from "./TokensPanel.js";
 import { useViolations, ViolationsPanel } from "./ViolationsPanel.js";
 import { LoopPanel, PassPanel, useLoop } from "./LoopPanel.js";
-import { NotesPanel, useNotes } from "./NotesPanel.js";
+import { ElementNotes, NotesPanel, useNotes } from "./NotesPanel.js";
 import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
 import { copy } from "./copy.js";
@@ -83,6 +83,11 @@ function classEditsBlocked(node: UiNode): string | null {
   return null;
 }
 
+type Workspace = "build" | "style" | "handoff";
+type InspectorTab = "element" | "tokens" | "violations" | "pass";
+/** The inspector tab each workspace opens on (layout D). */
+const WORKSPACE_TAB: Record<Workspace, InspectorTab> = { build: "element", style: "tokens", handoff: "pass" };
+
 /** The preview widths' icons. */
 const LAYOUT_ICONS = { desktop: Monitor, tablet: Tablet, mobile: Smartphone, "side-by-side": Columns3 } as const;
 
@@ -121,6 +126,8 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     (key: string | null) => {
       selectionEpoch.current++;
       setSelectedRaw(key);
+      // Selecting an element always shows the Element tab (layout D).
+      if (key !== null) setInspectorTab("element");
     },
     [setSelectedRaw],
   );
@@ -203,7 +210,14 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     },
     [project.projectRoot, setTokenSheet, setEditError],
   );
-  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens" | "violations" | "notes" | "pass">("element");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("element");
+  // Build | Style | Hand off (T8.7): each has its own left panel and opens its own inspector tab.
+  const [workspace, setWorkspaceRaw] = useState<Workspace>("build");
+  const [leftTab, setLeftTab] = useState<"add" | "layers">("add");
+  const setWorkspace = (w: Workspace) => {
+    setWorkspaceRaw(w);
+    setInspectorTab(WORKSPACE_TAB[w]);
+  };
   const [noteFocus, setNoteFocus] = useState<string | null>(null);
   // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
   const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
@@ -493,6 +507,14 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
           )}
         </PagePicker>
         <span className="spacer" />
+        <div className="segmented workspaces" role="group" aria-label={copy.workspaces.title}>
+          {(["build", "style", "handoff"] as const).map((w) => (
+            <button key={w} type="button" aria-pressed={workspace === w} onClick={() => setWorkspace(w)}>
+              {copy.workspaces.names[w]}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
         <div className="row history" role="group" aria-label={copy.app.history}>
           <IconButton
             label={copy.app.undo}
@@ -512,55 +534,56 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
         <MoreMenu appPreview={appPreview} onAppPreview={() => setAppPreview((o) => !o)} onClose={onClose} about={<About info={info} projectRoot={project.projectRoot} />} />
       </header>
       <div className="project">
-      <aside className="sidebar">
-        <div className="row">
-          <strong>{copy.app.canvas}</strong>
-          <IconButton
-            label={mode === "select" ? copy.app.selectMode : copy.app.interactMode}
-            icon={mode === "select" ? MousePointer2 : Hand}
-            aria-pressed={mode === "interact"}
-            onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
-          />
-        </div>
-        <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
-        <div className="segmented" role="group" aria-label={copy.app.previewWidth}>
-          {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
-            <IconButton key={l} label={copy.app.layouts[l]} icon={LAYOUT_ICONS[l]} aria-pressed={layout === l} onClick={() => setLayout(l)} />
-          ))}
-        </div>
-        <div className="segmented" role="group" aria-label={copy.app.colourMode}>
-          <IconButton label={copy.app.light} icon={Sun} aria-pressed={!dark} onClick={() => setDark(false)} />
-          <IconButton label={copy.app.dark} icon={Moon} aria-pressed={dark} onClick={() => setDark(true)} />
-        </div>
+      <aside className="sidebar" aria-label={copy.left.title}>
         {page.error && <MessageText message={page.error} />}
         {fsRevision.error && <MessageText message={fsRevision.error} />}
         {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
         {!file && pages.list && <p className="muted">{copy.app.noPageFile(pathname)}</p>}
-        <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
-          <PalettePanel
-            palette={palette.palette}
-            error={palette.error}
-            onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
-          />
-        </div>
-        <LayersPanel
-          nodes={page.nodes}
-          selected={selected}
-          hovered={treeHover ?? hovered}
-          onScreen={onScreen}
-          onSelect={setSelected}
-          onHover={setTreeHover}
-        />
-      </aside>
-      <aside className="inspector-panel" aria-label={copy.app.inspector}>
-        <div className="segmented tabs" role="tablist" aria-label={copy.app.inspector}>
-          {(["element", "tokens", "violations", "notes", "pass"] as const).map((tab) => (
-            <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
-              {copy.app.tabs[tab](tab === "violations" ? activeViolations : tab === "notes" ? openNotes : 0)}
-            </button>
-          ))}
-        </div>
-        {inspectorTab === "notes" && (
+        {workspace === "build" && (
+          <>
+            <div className="segmented tabs" role="tablist" aria-label={copy.left.title}>
+              {(["add", "layers"] as const).map((t) => (
+                <button key={t} type="button" role="tab" aria-selected={leftTab === t} onClick={() => setLeftTab(t)}>
+                  {copy.left[t]}
+                </button>
+              ))}
+            </div>
+            {/* Both stay in the page, so the tree keeps what's open. */}
+            <div hidden={leftTab !== "add"}>
+              <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
+                <PalettePanel
+                  palette={palette.palette}
+                  error={palette.error}
+                  onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
+                />
+              </div>
+            </div>
+            <div hidden={leftTab !== "layers"}>
+              <LayersPanel
+                nodes={page.nodes}
+                selected={selected}
+                hovered={treeHover ?? hovered}
+                onScreen={onScreen}
+                onSelect={setSelected}
+                onHover={setTreeHover}
+              />
+            </div>
+          </>
+        )}
+        {workspace === "style" && (
+          <>
+            <LayersPanel
+              nodes={page.nodes}
+              selected={selected}
+              hovered={treeHover ?? hovered}
+              onScreen={onScreen}
+              onSelect={setSelected}
+              onHover={setTreeHover}
+            />
+            <p className="muted small reach-hint">{copy.left.reach}</p>
+          </>
+        )}
+        {workspace === "handoff" && (
           <NotesPanel
             view={notes.view}
             error={notes.error}
@@ -572,6 +595,15 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
             onSelectTarget={(n: NoteView) => n.file && goTo(n.file, n.target)}
           />
         )}
+      </aside>
+      <aside className="inspector-panel" aria-label={copy.app.inspector}>
+        <div className="segmented tabs" role="tablist" aria-label={copy.app.inspector}>
+          {(["element", "tokens", "violations", "pass"] as const).map((tab) => (
+            <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
+              {copy.app.tabs[tab](tab === "violations" ? activeViolations : 0)}
+            </button>
+          ))}
+        </div>
         {inspectorTab === "pass" && (
           <PassPanel projectRoot={project.projectRoot} status={loop.status} busy={loop.busy} onRevert={() => afterLoop("revert")} onSelectId={(id, inFile) => goTo(inFile, id)} />
         )}
@@ -632,62 +664,103 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
           </>
         )}
         </div>
+        {inspectorTab === "element" && selectedNode && (
+          <ElementNotes
+            view={notes.view}
+            selected={{ id: selectedNode.node.id, name: selectedNode.node.name }}
+            readOnly={withAgent}
+            onWrite={writeNote}
+            onSelectTarget={(n: NoteView) => n.file && goTo(n.file, n.target)}
+          />
+        )}
       </aside>
-      <Canvas
-        status={server.status}
-        file={page.tree ? file : null}
-        version={page.tree?.version ?? null}
-        nodes={page.overlayNodes}
-        selected={selected}
-        highlighted={treeHover}
-        mode={mode}
-        onSelect={setSelected}
-        onHover={setHovered}
-        onUpdated={() => {
-          page.reload();
-          setRevision((r) => r + 1);
-        }}
-        onLocation={setPathname}
-        navigate={navigate}
-        layout={layout}
-        dark={dark}
-        onMapped={(boxes, version) => setMapped({ version, keys: new Set(boxes.map((b) => b.key)) })}
-        synced={synced}
-        drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, seq: canvasDrag.drag.seq, moving: null } : null}
-        onDropTarget={canvasDrag.report}
-        onMove={moveNode}
-        onKey={onShortcut}
-        tokenUsage={tokenUsage}
-        tokenHighlight={tokenHover}
-        onTokenCounts={setTokenCounts}
-        gizmos={gizmos}
-        gizmoDone={gizmoDone}
-        preview={preview}
-        onGizmoCommit={onGizmoCommit}
-        onColourChip={(chip) => {
-          setInspectorTab("element");
-          setColourChip(chip);
-        }}
-        pins={pins}
-        onPin={(key) => {
-          setSelected(key);
-          setNoteFocus(page.nodes.find((n) => n.key === key)?.node.id ?? null);
-          setInspectorTab("notes");
-        }}
-        withAgent={withAgent ? (loop.status?.handoff?.number ?? 0) : null}
-        openWatch={openable}
-        openRequest={openRequest}
-        onOpenState={(key, open) => setOpenState({ key, open })}
-        onTextRequest={(key) => {
-          const node = page.nodes.find((n) => n.key === key)?.node;
-          if (withAgent || !node || !textEditable(node, palette.palette?.elements[node.name] ?? null)) return null;
-          return node.text ?? "";
-        }}
-        onTextCommit={(key, text) => {
-          const id = page.nodes.find((n) => n.key === key)?.node.id;
-          if (id && !withAgent) edit({ op: "setText", id, text });
-        }}
-      />
+      <section className="stage" aria-label={copy.canvasBar}>
+        <div className="canvas-bar row" role="toolbar" aria-label={copy.canvasBar}>
+          <div className="row mode">
+            <IconButton
+              label={mode === "select" ? copy.app.selectMode : copy.app.interactMode}
+              icon={mode === "select" ? MousePointer2 : Hand}
+              aria-pressed={mode === "interact"}
+              onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
+            />
+          </div>
+          <div className="segmented" role="group" aria-label={copy.app.previewWidth}>
+            {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
+              <IconButton key={l} label={copy.app.layouts[l]} icon={LAYOUT_ICONS[l]} aria-pressed={layout === l} onClick={() => setLayout(l)} />
+            ))}
+          </div>
+          <div className="segmented" role="group" aria-label={copy.app.colourMode}>
+            <IconButton label={copy.app.light} icon={Sun} aria-pressed={!dark} onClick={() => setDark(false)} />
+            <IconButton label={copy.app.dark} icon={Moon} aria-pressed={dark} onClick={() => setDark(true)} />
+          </div>
+        </div>
+        <Canvas
+          status={server.status}
+          file={page.tree ? file : null}
+          version={page.tree?.version ?? null}
+          nodes={page.overlayNodes}
+          selected={selected}
+          highlighted={treeHover}
+          mode={mode}
+          onSelect={setSelected}
+          onHover={setHovered}
+          onUpdated={() => {
+            page.reload();
+            setRevision((r) => r + 1);
+          }}
+          onLocation={setPathname}
+          navigate={navigate}
+          layout={layout}
+          dark={dark}
+          onMapped={(boxes, version) => setMapped({ version, keys: new Set(boxes.map((b) => b.key)) })}
+          synced={synced}
+          drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, seq: canvasDrag.drag.seq, moving: null } : null}
+          onDropTarget={canvasDrag.report}
+          onMove={moveNode}
+          onKey={onShortcut}
+          tokenUsage={tokenUsage}
+          tokenHighlight={tokenHover}
+          onTokenCounts={setTokenCounts}
+          gizmos={gizmos}
+          gizmoDone={gizmoDone}
+          preview={preview}
+          onGizmoCommit={onGizmoCommit}
+          onColourChip={(chip) => {
+            setInspectorTab("element");
+            setColourChip(chip);
+          }}
+          pins={pins}
+          onPin={(key) => {
+            setSelected(key);
+            setNoteFocus(page.nodes.find((n) => n.key === key)?.node.id ?? null);
+            setInspectorTab("element");
+          }}
+          withAgent={withAgent ? (loop.status?.handoff?.number ?? 0) : null}
+          openWatch={openable}
+          openRequest={openRequest}
+          onOpenState={(key, open) => setOpenState({ key, open })}
+          onTextRequest={(key) => {
+            const node = page.nodes.find((n) => n.key === key)?.node;
+            if (withAgent || !node || !textEditable(node, palette.palette?.elements[node.name] ?? null)) return null;
+            return node.text ?? "";
+          }}
+          onTextCommit={(key, text) => {
+            const id = page.nodes.find((n) => n.key === key)?.node.id;
+            if (id && !withAgent) edit({ op: "setText", id, text });
+          }}
+        />
+        <div className="handoff-bar">
+          <LoopPanel
+            status={loop.status}
+            error={loop.error}
+            busy={loop.busy}
+            openNotes={openNotes}
+            onHandoff={() => afterLoop("handoff")}
+            onTakeBack={() => afterLoop("takeBack")}
+            onReview={() => setInspectorTab("pass")}
+          />
+        </div>
+      </section>
       <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} onHold={toasts.hold} onAction={(action) => action === "undo" && historyStep("undo")} />
       {canvasDrag.drag && (
         <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>
@@ -701,6 +774,8 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
       <footer className="statusbar row" data-testid="status">
         <span className={`status-dot status-${server.status?.state ?? "stopped"}`} aria-hidden="true" />
         <span>{copy.status.app(server.status?.state ?? "stopped")}</span>
+        <span className="spacer" />
+        <span>{copy.workspaces.purpose[workspace]}</span>
       </footer>
     </>
   );

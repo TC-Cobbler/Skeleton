@@ -98,6 +98,7 @@ beforeAll(async () => {
   );
   await buttons().nth(2).waitFor({ timeout: 20_000 });
   expect(await buttons().count()).toBe(3);
+  await ui(page).showLayers();
   await page.getByTestId(`layer-${ids.third}`).waitFor({ timeout: 20_000 });
 }, 180_000);
 
