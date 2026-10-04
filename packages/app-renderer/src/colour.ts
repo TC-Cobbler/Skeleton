@@ -1,5 +1,5 @@
-// Colour helpers for the colour picker (T4.3, T4.7): the native picker speaks hex,
-// the tokens speak oklch.
+// Colour helpers for the colour picker (T4.3, T4.7): the picker speaks hex, RGB, HSL
+// and HSV, the tokens speak oklch.
 
 /** `#3366cc` → `oklch(0.534 0.157 262.3)`, keeping `alpha` (e.g. " / 10%") if given. */
 export function hexToOklch(hex: string, alpha = ""): string {
@@ -55,4 +55,88 @@ function toLinear(c: number): number {
 
 function fmt(n: number, places: number): string {
   return String(Math.round(n * 10 ** places) / 10 ** places);
+}
+
+export interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/** `#3366cc` or `#36c` → { r: 51, g: 102, b: 204 }; null if it isn't a hex colour. */
+export function hexToRgb(hex: string): Rgb | null {
+  const t = hex.trim().replace(/^#/, "");
+  const full = /^[0-9a-f]{3}$/i.test(t) ? t.replace(/./g, (c) => c + c) : t;
+  if (!/^[0-9a-f]{6}$/i.test(full)) return null;
+  return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) };
+}
+
+/** { r, g, b } (0–255, clamped and rounded) → `#rrggbb`. */
+export function rgbToHex({ r, g, b }: Rgb): string {
+  return `#${[r, g, b].map((n) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** RGB → hue (0–360), saturation and lightness (0–100). */
+export function rgbToHsl({ r, g, b }: Rgb): { h: number; s: number; l: number } {
+  const [rr, gg, bb] = [r / 255, g / 255, b / 255];
+  const max = Math.max(rr, gg, bb);
+  const min = Math.min(rr, gg, bb);
+  const l = (max + min) / 2;
+  const d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  return { h: hueOf(rr, gg, bb, max, d), s: s * 100, l: l * 100 };
+}
+
+/** Hue (0–360), saturation and lightness (0–100) → RGB. */
+export function hslToRgb(h: number, s: number, l: number): Rgb {
+  const ss = clamp(s, 0, 100) / 100;
+  const ll = clamp(l, 0, 100) / 100;
+  const c = (1 - Math.abs(2 * ll - 1)) * ss;
+  return fromChroma(h, c, ll - c / 2);
+}
+
+/** RGB → hue (0–360), saturation and value (0–100): the picker area's axes. */
+export function rgbToHsv({ r, g, b }: Rgb): { h: number; s: number; v: number } {
+  const [rr, gg, bb] = [r / 255, g / 255, b / 255];
+  const max = Math.max(rr, gg, bb);
+  const d = max - Math.min(rr, gg, bb);
+  return { h: hueOf(rr, gg, bb, max, d), s: max === 0 ? 0 : (d / max) * 100, v: max * 100 };
+}
+
+/** Hue (0–360), saturation and value (0–100) → RGB. */
+export function hsvToRgb(h: number, s: number, v: number): Rgb {
+  const vv = clamp(v, 0, 100) / 100;
+  const c = vv * (clamp(s, 0, 100) / 100);
+  return fromChroma(h, c, vv - c);
+}
+
+/** Opacity (0–100) from a colour's alpha part (" / 10%" or " / 0.1"); 100 when opaque. */
+export function opacityOf(alpha: string): number {
+  const m = /([\d.]+)(%?)/.exec(alpha);
+  if (!m) return 100;
+  const n = Number(m[1]);
+  return clamp(m[2] ? n : n * 100, 0, 100);
+}
+
+/** The alpha part for an opacity (0–100): "" when opaque, else " / 40%". */
+export function alphaFor(opacity: number): string {
+  const o = clamp(Math.round(opacity), 0, 100);
+  return o >= 100 ? "" : ` / ${o}%`;
+}
+
+function hueOf(r: number, g: number, b: number, max: number, d: number): number {
+  if (d === 0) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+function fromChroma(h: number, c: number, m: number): Rgb {
+  const hh = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hh % 2) - 1));
+  const [r, g, b] = hh < 1 ? [c, x, 0] : hh < 2 ? [x, c, 0] : hh < 3 ? [0, c, x] : hh < 4 ? [0, x, c] : hh < 5 ? [x, 0, c] : [c, 0, x];
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
 }

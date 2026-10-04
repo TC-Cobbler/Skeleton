@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { ThemeToken, TokenGroup, TokenSheet, TokenWrite } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { TextInput } from "./PropertiesPanel.js";
+import { alphaFor, hexToOklch } from "./colour.js";
+import { ColourSwatch } from "./ColourPicker.js";
 import { copy } from "./copy.js";
 import { themeName } from "./names.js";
 import { messageFor, type Message } from "./messages.js";
@@ -41,6 +43,8 @@ export interface TokensPanelProps {
   onWrite: (writes: TokenWrite[]) => void;
   /** A token row is hovered: highlight what it affects on the canvas (T4.2). */
   onHover: (name: string | null) => void;
+  /** A colour being picked, as CSS to preview on the canvas; null to stop. */
+  onPreview?: (css: string | null) => void;
 }
 
 /**
@@ -48,7 +52,7 @@ export interface TokensPanelProps {
  * inputs. A derived token shows its formula and what it comes to, and can be
  * detached to that literal, or re-attached to the template's formula.
  */
-export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover }: TokensPanelProps) {
+export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover, onPreview }: TokensPanelProps) {
   const [filter, setFilter] = useState("");
   return (
     <section aria-label={copy.tokens.title} className="tokens" data-testid="tokens">
@@ -72,7 +76,7 @@ export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover }: To
                 )}
                 <ul role="list">
                   {tokens.map((token) => (
-                    <TokenRow key={token.name} token={token} count={counts?.[token.name] ?? null} onWrite={onWrite} onHover={onHover} />
+                    <TokenRow key={token.name} token={token} count={counts?.[token.name] ?? null} onWrite={onWrite} onHover={onHover} onPreview={onPreview} />
                   ))}
                 </ul>
               </div>
@@ -89,15 +93,33 @@ function TokenRow({
   count,
   onWrite,
   onHover,
+  onPreview,
 }: {
   token: ThemeToken;
   count: number | null;
   onWrite: (writes: TokenWrite[]) => void;
   onHover: (name: string | null) => void;
+  onPreview?: ((css: string | null) => void) | undefined;
 }) {
   const derived = token.references.length > 0;
   const detached = !derived && token.defaultFormula !== null;
   const write = (value: string, mode: TokenWrite["mode"]) => value.trim() !== "" && onWrite([{ name: token.name, value, mode }]);
+  /** A colour value: its swatch opens the picker, which previews on the canvas and writes oklch. */
+  const colour = (mode: TokenWrite["mode"], value: string) => {
+    // Previews only the mode it belongs to: a light value never shows over dark mode.
+    const scope = mode === "dark" ? ":root.dark" : mode === "light" ? ":root:not(.dark)" : ":root";
+    const css = (hex: string, opacity: number) => hexToOklch(hex, alphaFor(opacity));
+    return (
+      <span className="token-value">
+        <ColourSwatch
+          label={copy.tokens.valueLabel(themeName(token.name), mode)}
+          value={value}
+          onPreview={(hex, opacity) => onPreview?.(hex === null ? null : `${scope}{${token.name}:${css(hex, opacity)}!important}`)}
+          onCommit={(hex, opacity) => write(css(hex, opacity), mode)}
+        />
+      </span>
+    );
+  };
   return (
     <li className="token" data-testid={`token-${token.name}`} onPointerEnter={() => onHover(token.name)} onPointerLeave={() => onHover(null)}>
       <div className="token-head">
@@ -111,8 +133,14 @@ function TokenRow({
         )}
       </div>
       <div className={`token-values${token.dark !== null ? " has-dark" : ""}`}>
-        <TokenValue label={copy.tokens.valueLabel(themeName(token.name), token.dark !== null ? "light" : null)} value={token.value} swatch={token.group === "colour"} onCommit={(v) => write(v, token.dark !== null ? "light" : null)} />
-        {token.dark !== null && <TokenValue label={copy.tokens.valueLabel(themeName(token.name), "dark")} value={token.dark} swatch onCommit={(v) => write(v, "dark")} />}
+        {token.group === "colour" ? (
+          <>
+            {colour(token.dark !== null ? "light" : null, token.value)}
+            {token.dark !== null && colour("dark", token.dark)}
+          </>
+        ) : (
+          <TokenValue label={copy.tokens.valueLabel(themeName(token.name), token.dark !== null ? "light" : null)} value={token.value} onCommit={(v) => write(v, token.dark !== null ? "light" : null)} />
+        )}
       </div>
       {(derived || detached) && (
         <div className="token-derived muted small">
@@ -148,10 +176,9 @@ function TokenRow({
   );
 }
 
-function TokenValue({ label, value, swatch, onCommit }: { label: string; value: string; swatch: boolean; onCommit: (value: string) => void }) {
+function TokenValue({ label, value, onCommit }: { label: string; value: string; onCommit: (value: string) => void }) {
   return (
     <span className="token-value">
-      {swatch && <span className="swatch" style={{ background: value }} aria-hidden="true" />}
       <TextInput label={label} value={value} onCommit={onCommit} />
     </span>
   );

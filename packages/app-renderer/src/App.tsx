@@ -621,7 +621,15 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
         <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
         {inspectorTab === "violations" && <ViolationsPanel report={violations.report} error={violations.error} {...violationActions} />}
         {inspectorTab === "tokens" && (
-          <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={tokenCounts} onWrite={writeTokens} onHover={setTokenHover} />
+          <TokensPanel
+            sheet={tokens.sheet}
+            error={tokens.error}
+            dark={dark}
+            counts={tokenCounts}
+            onWrite={(writes) => writeTokens(writes, () => setPreview(null))}
+            onHover={setTokenHover}
+            onPreview={setPreview}
+          />
         )}
         {inspectorTab === "element" && (
           <>

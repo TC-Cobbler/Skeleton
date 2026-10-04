@@ -72,6 +72,8 @@ Seen in the v1.0.y runs (2026-10-01), each passing on its own and on rerun:
 
 - **`devserver.test.ts`, in one full run (T8.10):** the canvas didn't show an edit on disk within 15 s (HMR), and the next two tests followed from it. The file passed 12 of 12 on its own.
 
+- **`gate4.test.ts`, dark mode plain drag, in one full run (colour picker change):** the handle drag never started (the label still showed the hover text). The file passed 8 of 8 twice on its own.
+
 **Likely cause:** a short window while the overlay maps the updated page, in which a press on the canvas doesn't find its element. A person clicking again is unaffected. It's in the canvas code from v1.0 and v1.0.x, not the UI refresh.
 
 **Next step if it recurs at the v1.0.y gate:** log the overlay's target lookup for the missed press.

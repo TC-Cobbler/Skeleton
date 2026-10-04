@@ -8,7 +8,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, readTokens } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, clickOnCanvas, dragGizmo, placeFromPalette } from "./canvas-click.js";
-import { canvasCopy, copy, names, pattern, startsWith, ui } from "./ui.js";
+import { canvasCopy, copy, names, pattern, pickHex, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-tokens-"));
@@ -59,6 +59,8 @@ afterAll(async () => {
 describe("token panel (T4.1)", () => {
   const panel = () => ui(page).tokens();
   const row = (name: string) => panel().getByTestId(`token-${name}`);
+  /** A colour's swatch button, which opens its picker. */
+  const swatch = (name: string, mode: "light" | "dark") => row(name).getByRole("button", { name: copy.tokens.valueLabel(names.themeName(name), mode) });
 
   it("lists every token by group, colours with light and dark side by side", async () => {
     await ui(page).tab("tokens").click();
@@ -66,8 +68,8 @@ describe("token panel (T4.1)", () => {
     for (const name of ["--radius", "--radius-button", "--spacing", "--type-base", "--text-lg", "--font-sans", "--primary", "--border-width"]) {
       expect(await row(name).count(), name).toBe(1);
     }
-    expect(await row("--primary").getByLabel(copy.tokens.valueLabel(names.themeName("--primary"), "light")).inputValue()).toBe("oklch(0.205 0 0)");
-    expect(await row("--primary").getByLabel(copy.tokens.valueLabel(names.themeName("--primary"), "dark")).inputValue()).toBe("oklch(0.922 0 0)");
+    expect(await swatch("--primary", "light").getAttribute("data-value")).toBe("oklch(0.205 0 0)");
+    expect(await swatch("--primary", "dark").getAttribute("data-value")).toBe("oklch(0.922 0 0)");
     expect(await row("--radius-button").textContent()).toContain(copy.tokens.resolved("0.5rem"));
   });
 
@@ -88,15 +90,23 @@ describe("token panel (T4.1)", () => {
     await expect.poll(() => token("--radius-button")).toBe("calc(var(--radius) * 0.8)");
   });
 
-  it("writes a dark value to .dark only", async () => {
-    const input = row("--primary").getByLabel(copy.tokens.valueLabel(names.themeName("--primary"), "dark"));
-    await input.fill("oklch(0.7 0.15 250)");
-    await input.press("Enter");
-    await expect.poll(() => token("--primary", "dark")).toBe("oklch(0.7 0.15 250)");
+  it("writes a dark value to .dark only, from the swatch's colour picker", async () => {
+    await swatch("--primary", "dark").click();
+    const picker = page.getByRole("dialog", { name: copy.tokens.valueLabel(names.themeName("--primary"), "dark") });
+    await pickHex(picker, "#3366cc");
+    await expect.poll(() => token("--primary", "dark")).toBe(await hexOklch("#3366cc"));
     expect(token("--primary", "light")).toBe("oklch(0.205 0 0)");
+    // RGB fields write too.
+    await picker.getByLabel(copy.colour.red, { exact: true }).fill("0");
+    await picker.getByLabel(copy.colour.red, { exact: true }).press("Enter");
+    await expect.poll(() => token("--primary", "dark")).toBe(await hexOklch("#0066cc"));
+    await page.keyboard.press("Escape");
+    await expect.poll(() => picker.count()).toBe(0);
   });
 
   it("undoes a token write", async () => {
+    await ui(page).undo().click();
+    await expect.poll(() => token("--primary", "dark")).toBe(await hexOklch("#3366cc"));
     await ui(page).undo().click();
     await expect.poll(() => token("--primary", "dark")).toBe("oklch(0.922 0 0)");
   });
@@ -244,7 +254,7 @@ describe("colour chip and picker (T4.3, T4.7)", () => {
     expect(await panel().textContent()).toContain(names.themeName("--primary"));
     expect(await panel().getByRole("button", { name: copy.colour.token("light") }).getAttribute("aria-pressed")).toBe("true");
     const before = await bg();
-    await panel().getByLabel(copy.colour.pick).fill("#3366cc");
+    await pickHex(panel(), "#3366cc");
     await expect.poll(() => token("--primary", "light"), { timeout: 10_000 }).toBe(await hexOklch("#3366cc"));
     expect(token("--primary", "dark")).toBe("oklch(0.922 0 0)");
     await expect.poll(bg, { timeout: 10_000 }).not.toBe(before);
@@ -254,7 +264,7 @@ describe("colour chip and picker (T4.3, T4.7)", () => {
     await ui(page).colourMode().getByRole("button", { name: copy.app.dark }).click();
     await clickChip("bg");
     expect(await panel().getByRole("button", { name: copy.colour.token("dark") }).getAttribute("aria-pressed")).toBe("true");
-    await panel().getByLabel(copy.colour.pick).fill("#cc3366");
+    await pickHex(panel(), "#cc3366");
     await expect.poll(() => token("--primary", "dark"), { timeout: 10_000 }).toBe(await hexOklch("#cc3366"));
     expect(token("--primary", "light")).toBe(await hexOklch("#3366cc"));
     await ui(page).colourMode().getByRole("button", { name: copy.app.light }).click();
@@ -265,7 +275,7 @@ describe("colour chip and picker (T4.3, T4.7)", () => {
     const id = (await page.getByTestId("selection-id").textContent()) ?? "";
     await clickChip("bg");
     await panel().getByRole("button", { name: copy.colour.instance }).click();
-    await panel().getByLabel(copy.colour.pick).fill("#ff0000");
+    await pickHex(panel(), "#ff0000");
     await expect.poll(() => classNameOf(id), { timeout: 10_000 }).toBe("bg-[#ff0000]");
     expect(css()).toBe(cssBefore);
   });

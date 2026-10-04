@@ -3,7 +3,7 @@
 // so a wording change is made there once. Things with no words (canvas frames, layer
 // rows, handles) keep their data-testid.
 
-import type { Page } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import { copy } from "../../app-renderer/src/copy.js";
 import { say } from "../../app-renderer/src/messages.js";
 import * as names from "../../app-renderer/src/names.js";
@@ -19,6 +19,13 @@ export const startsWith = (text: string) => new RegExp(`^${escapeRegExp(text)}`)
 
 /** A pattern from literal text (escaped) and regex pieces, in order. */
 export const pattern = (...parts: (string | RegExp)[]) => new RegExp(parts.map((p) => (typeof p === "string" ? escapeRegExp(p) : p.source)).join(""));
+
+/** Types a colour into a colour picker's Hex field (any CSS colour works) and presses Enter. */
+export async function pickHex(picker: Locator, colour: string): Promise<void> {
+  const hex = picker.getByLabel(copy.colour.hex, { exact: true });
+  await hex.fill(colour);
+  await hex.press("Enter");
+}
 
 export type InspectorTab = Exclude<keyof typeof copy.app.tabs, "notes">;
 export type PreviewWidth = keyof typeof copy.app.layouts;

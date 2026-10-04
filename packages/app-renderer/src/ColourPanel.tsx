@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ThemeToken } from "@skeleton/app-main/ipc";
-import { alphaOf, COLOUR_PROPERTY, cssToHex, hexToOklch } from "./colour.js";
-import { TextInput } from "./PropertiesPanel.js";
+import { alphaFor, COLOUR_PROPERTY, hexToOklch } from "./colour.js";
+import { ColourEditor } from "./ColourPicker.js";
 import { copy } from "./copy.js";
 import { themeName } from "./names.js";
 import { IconButton, Tooltip } from "./Tooltip.js";
@@ -39,26 +39,14 @@ export function ColourPanel({ chip, token, dark, classEdits, onPreview, onToken,
   useEffect(() => setInstance(chip.alt && classEdits === null), [chip, classEdits]);
   const mode = dark && token?.dark !== null ? "dark" : "light";
   const value = token ? (mode === "dark" ? (token.dark ?? token.value) : token.value) : "";
-  const hex = cssToHex(value) ?? "#000000";
   const property = COLOUR_PROPERTY[chip.utility] ?? "color";
-  const name = chip.token.slice(2);
-  const previewCss = (picked: string) =>
-    instance ? `[data-skeleton-gizmo]{${property}:${picked}!important}` : `:root{${chip.token}:${hexToOklch(picked, alphaOf(value))}!important}`;
-  const commit = (picked: string) => {
-    if (instance) onInstance(chip.utility, `${chip.utility}-[${picked}]`);
-    else onToken(hexToOklch(picked, alphaOf(value)));
+  const themeValue = (hex: string, opacity: number) => hexToOklch(hex, alphaFor(opacity));
+  const previewCss = (hex: string, opacity: number) =>
+    instance ? `[data-skeleton-gizmo]{${property}:${hex}!important}` : `:root{${chip.token}:${themeValue(hex, opacity)}!important}`;
+  const commit = (hex: string, opacity: number) => {
+    if (instance) onInstance(chip.utility, `${chip.utility}-[${hex}]`);
+    else onToken(themeValue(hex, opacity));
   };
-  // React's onChange fires on every input; the native change event is the picker's release.
-  const picker = useRef<HTMLInputElement>(null);
-  const latestCommit = useRef(commit);
-  latestCommit.current = commit;
-  useEffect(() => {
-    const input = picker.current;
-    if (!input) return;
-    const onChange = () => latestCommit.current(input.value);
-    input.addEventListener("change", onChange);
-    return () => input.removeEventListener("change", onChange);
-  });
   return (
     <section aria-label={copy.colour.title} className="colour-panel" data-testid="colour-panel">
       <div className="row">
@@ -80,17 +68,14 @@ export function ColourPanel({ chip, token, dark, classEdits, onPreview, onToken,
           </button>
         </Tooltip>
       </div>
-      <div className="row colour-inputs">
-        <input
-          type="color"
-          aria-label={copy.colour.pick}
-          defaultValue={hex}
-          key={`${chip.key}${chip.utility}${hex}${instance}`}
-          ref={picker}
-          onInput={(e) => onPreview(previewCss(e.currentTarget.value))}
-        />
-        {!instance && <TextInput label={copy.colour.valueLabel(themeName(chip.token), mode)} value={value} onCommit={(v) => v.trim() !== "" && onToken(v.trim())} />}
-      </div>
+      <ColourEditor
+        key={`${chip.key}${chip.utility}${instance}`}
+        label={instance ? copy.colour.instance : copy.colour.valueLabel(themeName(chip.token), mode)}
+        value={value || "#000000"}
+        opacity={!instance}
+        onChange={(hex, opacity) => onPreview(previewCss(hex, opacity))}
+        onCommit={commit}
+      />
       {instance && <p className="muted small">{copy.colour.instanceNote(chip.utility)}</p>}
     </section>
   );

@@ -10,7 +10,7 @@ import { _electron, type ElectronApplication, type Locator, type Page } from "pl
 import { sourceVersion } from "@skeleton/core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, placeFromPalette, waitForCanvas, type Aim } from "./canvas-click.js";
-import { copy, names, pattern, ui } from "./ui.js";
+import { copy, names, pattern, pickHex, ui } from "./ui.js";
 
 const STEP = process.env["DOGFOOD_STEP"] ?? "";
 const DIR = process.env["DOGFOOD_DIR"] ?? "/home/user/dogfood";
@@ -157,12 +157,26 @@ async function note(id: string, type: "build" | "behaviour" | "question", text: 
 
 async function token(name: string, value: string, dark = false) {
   await ui(page).tab("tokens").click();
-  const input = page.getByTestId(`token-${name}`).getByLabel(dark ? copy.tokens.valueLabel(names.themeName(name), "dark") : pattern(/^/, copy.tokens.valueLabel(names.themeName(name)), /(, light mode)?$/));
-  await edit(`token ${name}${dark ? " (dark)" : ""} → ${value}`, async () => {
-    await input.fill(value);
-    await input.press("Enter");
-  }, "src/styles/globals.css");
-  await ledger(dark ? `${name}.dark` : name, value);
+  const label = dark ? copy.tokens.valueLabel(names.themeName(name), "dark") : pattern(/^/, copy.tokens.valueLabel(names.themeName(name)), /(, light mode)?$/);
+  const row = page.getByTestId(`token-${name}`);
+  const swatch = row.getByRole("button", { name: label });
+  let written = value;
+  if (await swatch.count()) {
+    // A colour: typed into its picker's Hex field, which writes the nearest hex as oklch.
+    const before = await swatch.getAttribute("data-value");
+    await swatch.click();
+    await edit(`token ${name}${dark ? " (dark)" : ""} → ${value}`, () => pickHex(page.getByRole("dialog", { name: label }), value), "src/styles/globals.css");
+    await page.keyboard.press("Escape");
+    await expect.poll(() => swatch.getAttribute("data-value")).not.toBe(before);
+    written = (await swatch.getAttribute("data-value")) ?? value;
+  } else {
+    const input = row.getByLabel(label);
+    await edit(`token ${name}${dark ? " (dark)" : ""} → ${value}`, async () => {
+      await input.fill(value);
+      await input.press("Enter");
+    }, "src/styles/globals.css");
+  }
+  await ledger(dark ? `${name}.dark` : name, written);
   await ui(page).tab("element").click();
 }
 
