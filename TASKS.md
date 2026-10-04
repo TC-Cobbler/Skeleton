@@ -274,7 +274,7 @@ See `docs/decisions/012-dogfood-fixes.md`.
 
 ---
 
-## v1.0.y — UI refresh (docs/ui-refresh-spec.md)
+## v1.0.y — UI refresh (docs/ui-refresh-spec.md): done, gate passed
 
 Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't know HTML or CSS. It covers the vocabulary, layout D, the Compact pro dark style and the plain messages. **On-screen presentation only:** no new features, no behaviour changes, and nothing different written into user projects. Every slice keeps the full unit suite and every e2e gate test green, with **the same steps and assertions** (spec §7).
 
@@ -343,7 +343,7 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
 - [x] Every reason code has a sentence (`messages.test.ts`).
 - [x] Icon-only buttons go through IconButton, and its tooltip shows on hover and on focus (`icon-buttons.test.ts`, `tooltip.test.tsx`).
 - [x] Unit suite: 437 of 437. e2e: gate1–5 and dogfood-fixes pass in the full run; the last full run's one failure (a canvas click in `compose.test.ts`) is KI-3 and the file passes 28 of 28 alone. Dogfood: its last two steps (`after5`, `takeback6`) were replayed through the reworded UI on a copy of the dogfood project reset to round 5, and wrote the same code as the original run. The replay found that the driver still looked settings up by their old labels; its lookup now uses the name tables (steps and assertions unchanged).
-- [ ] Johnny's sign-off on the workspace screenshots.
+- [x] Johnny's sign-off on the workspace screenshots (2026-10-04, after the colour picker change below).
 - From the review: theme colours have no text box any more. A colour's swatch (with its hex) opens a colour picker: a colour area, a hue slider, and Hex, R/G/B, H/S/L and Opacity fields. It previews on the canvas while picking and writes oklch as before. The canvas colour panel uses the same picker (`app-renderer/src/ColourPicker.tsx`).
 
 ---

@@ -45,6 +45,8 @@ The roadmap is organised by milestone, not by date. A milestone ships when its g
 
 **Thesis:** Skeleton's own UI should make sense to someone who doesn't know HTML or CSS. It needs plain words, an Adobe-style layout (Build | Style | Hand off workspaces with a tabbed inspector), a compact dark style, and messages that say what happened and what to do. This is presentation only: no new features and no behaviour changes. The spec is `docs/ui-refresh-spec.md`, and the tasks are T8.1–T8.10 in TASKS.md.
 
+**Done** (T8.1–T8.10, gate passed 2026-10-04). From the sign-off review, theme colours are edited with a colour picker (hex, RGB, HSL, opacity) instead of an oklch text box.
+
 ---
 
 ## v1.1 — Fill the system out

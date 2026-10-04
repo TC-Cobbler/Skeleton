@@ -17,7 +17,8 @@ Read these before starting any task:
 - The whole loop works in the app: compose, tokens and gizmos (`docs/decisions/007`–`010`), then notes, Hand off, Take back and review (`docs/decisions/011`).
 - Its state is read from git commit subjects, never stored.
 - The dogfood found no integrity failures. Its composing friction (ROADMAP.md, **v1.0.x — Dogfood fixes**) is fixed: T7.1–T7.5, `docs/decisions/012`.
-- **v1.0.y — UI refresh** is specified (`docs/ui-refresh-spec.md`, TASKS.md T8.1–T8.10): plain words, an Adobe-style layout and a compact dark style. Presentation only. It comes before v1.1. Don't start either until asked.
+- **v1.0.y — UI refresh** is done and its gate passed (`docs/ui-refresh-spec.md`, TASKS.md T8.1–T8.10, `docs/decisions/013`): plain words from GLOSSARY.md, layout D, the Compact pro dark style and plain messages. On-screen words live in the copy files (`app-renderer/src/copy.ts`, `overlay/src/copy.ts`) and plain names in `app-renderer/src/names.ts`; the plain-words check keeps jargon out.
+- **v1.1** is next (ROADMAP.md). Don't start it until asked.
 
 ---
 
