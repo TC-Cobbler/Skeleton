@@ -51,3 +51,29 @@ Result: 5 of 5 runs, 350 canvas clicks, none missed. The elements selected from 
 - **A different palette entry is occasionally placed** than the one aimed at (Gate 4 setups). This may be the same helper race as (1): the next drag started while the previous edit was still in flight.
 - **A gizmo press can be lost** (`dragGizmo` retries it). The handle race in (2) is a likely cause.
 Neither was reproduced in this investigation.
+
+## KI-2: a handle drag's label sometimes went missing (fixed)
+
+Seen twice in about 7 full e2e runs (2026-10-01): mid-drag, the drag had started (its live preview was on the page) but no handle label was drawn. It happened once each in `gate4.test.ts` (Alt-drag) and `tokens.test.ts` (plain drag). It wasn't caused by the UI refresh.
+
+- **Cause (likely):** the overlay treated any `lostpointercapture` as the drag's release, which is meant for a button let go outside the frame. When the capture was lost while the button was still held, the drag ended early: its commit was sent and its label disappeared, while the preview waited for the page to update.
+- **Fix:** a lost capture with a button still held (`event.buttons !== 0`) takes the capture back, so the drag goes on. Only a lost capture with no button held releases.
+- **Check:** `tokens.test.ts` and `gate4.test.ts` together, 4 runs after the fix: no missing label. Watch for it in later full runs.
+
+## KI-3: a canvas click or double-click right after an edit is sometimes missed (open, intermittent)
+
+Seen in the v1.0.y runs (2026-10-01), each passing on its own and on rerun:
+
+- **`dogfood-fixes.test.ts`, "edit text on the canvas":** after one text edit lands, a second double-click at the same point sometimes doesn't open the text editor (2 of 6 runs). Adding about 100 ms before it (a diagnostic run) made it pass 3 of 3. The element hadn't moved and was still selected.
+- **`tokens.test.ts`, "colour chip and picker":** a click on a colour chip sometimes doesn't open the colour picker (2 of about 10 runs).
+
+- **`compose.test.ts`, in one full run:** a palette drop wasn't placed, and after a delete nothing was selected. The file passed 3 of 3 on its own.
+- **`gate5.test.ts`, F6, in one full run (T8.8):** the Table drag never got a drop target (no drop indicator within 30 s). The file passed 3 of 3 on its own. On its own, before T8.8 added a wait for the drop indicator, the release sometimes came before the host's drop-target answer (2 of 2 runs), which the wait fixes.
+
+- **`devserver.test.ts`, in one full run (T8.10):** the canvas didn't show an edit on disk within 15 s (HMR), and the next two tests followed from it. The file passed 12 of 12 on its own.
+
+- **`gate4.test.ts`, dark mode plain drag, in one full run (colour picker change):** the handle drag never started (the label still showed the hover text). The file passed 8 of 8 twice on its own.
+
+**Likely cause:** a short window while the overlay maps the updated page, in which a press on the canvas doesn't find its element. A person clicking again is unaffected. It's in the canvas code from v1.0 and v1.0.x, not the UI refresh.
+
+**Next step if it recurs at the v1.0.y gate:** log the overlay's target lookup for the missed press.

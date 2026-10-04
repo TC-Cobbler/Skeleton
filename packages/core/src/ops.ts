@@ -2,6 +2,7 @@ import { parse as babelParse } from "@babel/parser";
 import * as t from "@babel/types";
 import { diffSources, type SourceDiff } from "./diff.js";
 import { EditOpError, ParseError } from "./errors.js";
+import { reason } from "./reasons.js";
 import { collectIds, UI_ID_ATTR } from "./ids.js";
 import { parseJsxExpression, parseModule, printModule } from "./parse.js";
 import {
@@ -105,7 +106,7 @@ export function move(source: string, ref: NodeRef, newParentId: string, index: n
     ctx.requireMovableParent(node, parent);
     const dest = ctx.editable(newParentId);
     if (node === dest || isAncestor(ctx.indexed, node, dest)) {
-      throw new EditOpError(op, target, `cannot move a node into itself or its own descendant (${newParentId})`);
+      throw new EditOpError(op, target, `cannot move a node into itself or its own descendant (${newParentId})`, { reason: reason("move-into-itself", { id: node.id ?? target }) });
     }
     const child = ctx.ast(node);
     return {
@@ -281,7 +282,9 @@ export function remove(source: string, ref: NodeRef, options: RemoveOptions = {}
     const { node, parent } = ctx.resolve(ref);
     ctx.requireMovableParent(node, parent);
     if (!options.allowLocked && containsLogic(node)) {
-      throw new EditOpError(op, target, "node is or contains agent logic (a locked block or logic-bearing props); pass allowLocked to confirm");
+      throw new EditOpError(op, target, "node is or contains agent logic (a locked block or logic-bearing props); pass allowLocked to confirm", {
+        reason: reason("is-agent-code", { id: node.id ?? target }),
+      });
     }
     const removedIds: string[] = [];
     t.traverseFast(ctx.ast(node), (n) => {
@@ -304,7 +307,7 @@ export function setProp(source: string, id: string, key: string, value: PropValu
     }
     const node = ctx.editable(id);
     if (node.protectedProps.includes(key)) {
-      throw new EditOpError(op, id, `prop "${key}" carries agent logic and is protected`);
+      throw new EditOpError(op, id, `prop "${key}" carries agent logic and is protected`, { reason: reason("agent-control", { id, prop: key }) });
     }
     const el = ctx.element(node);
     return {
@@ -327,7 +330,7 @@ export function setClass(source: string, id: string, add: string[], removeClasse
     let current: string[] = [];
     if (existing) {
       if (!t.isStringLiteral(existing.value)) {
-        throw new EditOpError(op, id, "className is not a string literal (it carries agent logic and is protected)");
+        throw new EditOpError(op, id, "className is not a string literal (it carries agent logic and is protected)", { reason: reason("agent-style", { id }) });
       }
       current = existing.value.value.split(/\s+/).filter(Boolean);
     }
@@ -368,7 +371,7 @@ const MAX_TEXT = 10_000;
 export function setText(source: string, id: string, text: string, options: OpOptions = {}): EditResult {
   const op = "setText";
   return runOp(op, id, source, options, (ctx) => {
-    if (text.length > MAX_TEXT) throw new EditOpError(op, id, `text is too long (${text.length} > ${MAX_TEXT} characters)`);
+    if (text.length > MAX_TEXT) throw new EditOpError(op, id, `text is too long (${text.length} > ${MAX_TEXT} characters)`, { reason: reason("text-too-long", { id, max: MAX_TEXT }) });
     const el = ctx.element(ctx.editable(id));
     if (el.openingElement.selfClosing || !el.closingElement) {
       throw new EditOpError(op, id, `<${nameOf(el)}> is self-closing and has no text content`);
@@ -378,11 +381,11 @@ export function setText(source: string, id: string, text: string, options: OpOpt
       if (t.isJSXExpressionContainer(child)) {
         if (t.isStringLiteral(child.expression)) continue;
         if (t.isJSXEmptyExpression(child.expression)) {
-          throw new EditOpError(op, id, "its content has a comment; edit it in code so the comment isn't lost");
+          throw new EditOpError(op, id, "its content has a comment; edit it in code so the comment isn't lost", { reason: reason("text-has-comment", { id }) });
         }
-        throw new EditOpError(op, id, "its text includes an expression (agent logic) and is protected");
+        throw new EditOpError(op, id, "its text includes an expression (agent logic) and is protected", { reason: reason("agent-value", { id }) });
       }
-      throw new EditOpError(op, id, `<${nameOf(el)}> has child elements; edit their text instead`);
+      throw new EditOpError(op, id, `<${nameOf(el)}> has child elements; edit their text instead`, { reason: reason("text-has-elements", { id }) });
     }
     const from = el.openingElement.end;
     const to = el.closingElement.start;
@@ -439,8 +442,8 @@ function runOp(op: string, target: string, source: string, options: OpOptions, p
   const find = (id: string): UiNode => {
     const node = findNodeById(roots, id);
     if (node) return node;
-    if (idsBefore.has(id)) throw new EditOpError(op, target, `${id} is inside a locked block`);
-    throw new EditOpError(op, target, `${id} not found`);
+    if (idsBefore.has(id)) throw new EditOpError(op, target, `${id} is inside a locked block`, { reason: reason("inside-agent-code", { id }) });
+    throw new EditOpError(op, target, `${id} not found`, { reason: reason("element-gone", { id }) });
   };
   const ctx: OpContext = {
     source,
@@ -448,7 +451,7 @@ function runOp(op: string, target: string, source: string, options: OpOptions, p
     indexed,
     editable(id) {
       const node = find(id);
-      if (node.kind === "locked") throw new EditOpError(op, target, `${id} is a locked block (${node.lockReason ?? "locked"})`);
+      if (node.kind === "locked") throw new EditOpError(op, target, `${id} is a locked block (${node.lockReason ?? "locked"})`, { reason: reason("is-agent-code", { id }) });
       return node;
     },
     resolve(ref) {
@@ -469,6 +472,7 @@ function runOp(op: string, target: string, source: string, options: OpOptions, p
           op,
           target,
           `${node.id ?? node.name} is wrapped by locked ${parent.name} (${parent.lockReason ?? "locked"}); it can be edited in place but not moved out or removed`,
+          { reason: reason("inside-agent-code", { id: node.id ?? target }) },
         );
       }
     },
@@ -554,7 +558,7 @@ function insertChild(source: string, op: string, target: string, parent: t.JSXEl
 
   if (nodeIdx.length === 0) {
     if (kids.some((k) => t.isJSXText(k) && k.value.trim() !== "")) {
-      throw new EditOpError(op, target, "parent has text content; inserting next to text is not supported");
+      throw new EditOpError(op, target, "parent has text content; inserting next to text is not supported", { reason: reason("next-to-text", { id: target }) });
     }
     if (parent.openingElement.selfClosing) {
       parent.openingElement.selfClosing = false;

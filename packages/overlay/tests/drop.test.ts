@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "../src/drop.js";
+import { besideSide, dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "../src/drop.js";
 
 const r = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
 
@@ -106,5 +106,57 @@ describe("edgeScroll", () => {
     expect(edgeScroll(-50, 600)).toBe(-18);
     expect(edgeScroll(590, 600)).toBeGreaterThan(0);
     expect(edgeScroll(700, 600)).toBe(18);
+  });
+});
+
+describe("besideSide", () => {
+  const card = r(100, 100, 200, 120);
+  // A Card's content, inset by its padding.
+  const padded = { rect: card, flow: "vertical" as const, children: [r(124, 124, 152, 72)] };
+
+  it("goes before or after at the edges along the parent's flow (F-1, F-4)", () => {
+    // In a column: the top and bottom bands.
+    expect(besideSide("vertical", padded, 200, 103)).toBe("before");
+    expect(besideSide("vertical", padded, 200, 216)).toBe("after");
+    expect(besideSide("vertical", padded, 102, 160)).toBeNull();
+    // In a row or a grid: the left and right bands.
+    expect(besideSide("horizontal", padded, 104, 160)).toBe("before");
+    expect(besideSide("grid", padded, 295, 160)).toBe("after");
+    expect(besideSide("grid", padded, 200, 103)).toBeNull();
+  });
+
+  it("goes into the middle", () => {
+    expect(besideSide("vertical", padded, 200, 160)).toBeNull();
+    expect(besideSide("horizontal", padded, 200, 160)).toBeNull();
+  });
+
+  it("across axes, counts the band even over a child: a toolbar's bottom edge (F-1)", () => {
+    const toolbar = { rect: r(0, 0, 400, 36), flow: "horizontal" as const, children: [r(0, 0, 300, 36), r(308, 0, 92, 36)] };
+    expect(besideSide("vertical", toolbar, 150, 32)).toBe("after");
+    expect(besideSide("vertical", toolbar, 150, 18)).toBeNull();
+    // A Card (a column) in a grid, its content flush to the right edge.
+    const card = { rect: r(0, 0, 200, 120), flow: "vertical" as const, children: [r(0, 0, 200, 120)] };
+    expect(besideSide("grid", card, 196, 60)).toBe("after");
+  });
+
+  it("along the same axis, only where no child is under the point: last-in vs after", () => {
+    // A column of one paragraph, flush with the column's bottom, in a column.
+    const column = { rect: r(0, 0, 400, 24), flow: "vertical" as const, children: [r(0, 0, 400, 24)] };
+    expect(besideSide("vertical", column, 200, 22)).toBeNull();
+    // With padding below it, the padding is "after the column".
+    const paddedColumn = { rect: r(0, 0, 400, 40), flow: "vertical" as const, children: [r(0, 0, 400, 24)] };
+    expect(besideSide("vertical", paddedColumn, 200, 36)).toBe("after");
+    // A grid container is both axes.
+    const grid = { rect: r(0, 0, 400, 100), flow: "grid" as const, children: [r(0, 0, 200, 100), r(200, 0, 200, 100)] };
+    expect(besideSide("vertical", grid, 100, 96)).toBeNull();
+    expect(besideSide("horizontal", grid, 398, 50)).toBeNull();
+  });
+
+  it("keeps a middle in a small container: the band is at most a quarter of it", () => {
+    const thin = { rect: r(0, 0, 100, 16), flow: "vertical" as const, children: [] };
+    expect(besideSide("vertical", thin, 50, 3)).toBe("before");
+    expect(besideSide("vertical", thin, 50, 5)).toBeNull();
+    expect(besideSide("vertical", thin, 50, 12)).toBe("after");
+    expect(besideSide("vertical", { ...thin, rect: r(0, 0, 100, 0) }, 50, 0)).toBeNull();
   });
 });

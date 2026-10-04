@@ -8,6 +8,8 @@ export interface OverlayNode {
   key: string;
   kind: "palette" | "primitive" | "plain" | "locked";
   name: string;
+  /** What the canvas calls it: its element name, worded by the host (e.g. Button "Add game"). */
+  label: string;
   id: string | null;
   /** Why it's locked; null unless kind is "locked". */
   lockReason: string | null;
@@ -39,6 +41,8 @@ export interface TokenUsage {
 /** A token as the gizmos need it (T4.3): the value in the mode shown, and what it comes to. */
 export interface GizmoToken {
   name: string;
+  /** Its theme value name, worded by the host (e.g. Card corners). */
+  label: string;
   value: string;
   /** The literal the value comes to (e.g. "0.5rem"), or null. */
   resolved: string | null;
@@ -93,13 +97,21 @@ export type HostMessage =
    * What the gizmos on the selected element (`key`) can do (T4.3): the tokens, the
    * spacing scale, and why its classes can't be edited (null when they can).
    */
-  | { source: "skeleton-host"; type: "gizmos"; key: string; tokens: GizmoToken[]; spacingSteps: number[]; classEdits: string | null }
+  | { source: "skeleton-host"; type: "gizmos"; key: string; tokens: GizmoToken[]; spacingSteps: number[]; classEdits: string | null; kind: string }
   /** The last gizmo commit was written (the preview stays until the page updates) or failed (it goes now). */
   | { source: "skeleton-host"; type: "gizmo-done"; ok: boolean }
   /** Preview CSS on the page, with the selected element as the instance target (the colour picker, T4.4); null clears. */
   | { source: "skeleton-host"; type: "preview"; css: string | null }
   /** The note pins to draw in select mode (T5.1); an empty list clears them. */
-  | { source: "skeleton-host"; type: "pins"; pins: NotePin[] };
+  | { source: "skeleton-host"; type: "pins"; pins: NotePin[] }
+  /**
+   * Watch whether the Dialog or Sheet at `key` is open, reporting `open-state` (null key
+   * stops), and open or close it by clicking its own trigger (`open`; null only watches).
+   * No code changes: it's how the app would open it (F-6).
+   */
+  | { source: "skeleton-host"; type: "open"; key: string | null; open: boolean | null }
+  /** Edit the text of the node at `key` on the canvas, starting from `text` (its source text), in answer to `text-request` (F-5). */
+  | { source: "skeleton-host"; type: "text-editor"; key: string; text: string };
 
 export interface NodeBox {
   key: string;
@@ -128,8 +140,8 @@ export type OverlayMessage =
   | { source: "skeleton-overlay"; type: "drop-target"; target: DropTarget | null; seq: number }
   /** The user dragged the node at `key` on the canvas and dropped it at `target` (T3.3). */
   | { source: "skeleton-overlay"; type: "move"; key: string; target: DropTarget }
-  /** A Skeleton shortcut pressed while the frame has focus, in select mode (Delete, undo…). */
-  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean }
+  /** A Skeleton shortcut pressed while the frame has focus, in select mode (Delete, undo, Alt+↑/↓…). */
+  | { source: "skeleton-overlay"; type: "key"; key: string; mod: boolean; shift: boolean; alt: boolean }
   /** How many rendered elements each token affects (T4.2): after `token-usage`, and when it changes. */
   | { source: "skeleton-overlay"; type: "token-counts"; counts: Record<string, number> }
   /** A gizmo drag on the node at `key` was released (T4.4): write this. */
@@ -137,7 +149,13 @@ export type OverlayMessage =
   /** The colour chip for `utility` (bg, text, border) on the node at `key` was clicked; `alt` asks for this element only. */
   | { source: "skeleton-overlay"; type: "colour-chip"; key: string; utility: string; token: string; alt: boolean }
   /** The note pin on the node at `key` was clicked (T5.1). */
-  | { source: "skeleton-overlay"; type: "pin"; key: string };
+  | { source: "skeleton-overlay"; type: "pin"; key: string }
+  /** Whether the watched Dialog or Sheet at `key` is open; null when its trigger isn't on screen (F-6). */
+  | { source: "skeleton-overlay"; type: "open-state"; key: string; open: boolean | null }
+  /** The node at `key` was double-clicked in select mode: may its text be edited here (F-5)? */
+  | { source: "skeleton-overlay"; type: "text-request"; key: string }
+  /** The text editor on the node at `key` was committed with a changed `text` (F-5). */
+  | { source: "skeleton-overlay"; type: "text-commit"; key: string; text: string };
 
 export function isOverlayMessage(value: unknown): value is OverlayMessage {
   if (typeof value !== "object" || value === null) return false;
@@ -159,7 +177,7 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
     case "move":
       return typeof v["key"] === "string" && isDropTarget(v["target"]);
     case "key":
-      return typeof v["key"] === "string" && typeof v["mod"] === "boolean" && typeof v["shift"] === "boolean";
+      return typeof v["key"] === "string" && typeof v["mod"] === "boolean" && typeof v["shift"] === "boolean" && typeof v["alt"] === "boolean";
     case "token-counts":
       return isRecordOf(v["counts"], (n) => Number.isInteger(n));
     case "gizmo-commit":
@@ -168,6 +186,12 @@ export function isOverlayMessage(value: unknown): value is OverlayMessage {
       return typeof v["key"] === "string" && typeof v["utility"] === "string" && typeof v["token"] === "string" && typeof v["alt"] === "boolean";
     case "pin":
       return typeof v["key"] === "string";
+    case "open-state":
+      return typeof v["key"] === "string" && (v["open"] === null || typeof v["open"] === "boolean");
+    case "text-request":
+      return typeof v["key"] === "string";
+    case "text-commit":
+      return typeof v["key"] === "string" && typeof v["text"] === "string";
     default:
       return false;
   }
@@ -188,7 +212,7 @@ function isTokenUsage(value: unknown): boolean {
 function isGizmoToken(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const t = value as Record<string, unknown>;
-  return typeof t["name"] === "string" && typeof t["value"] === "string" && (t["resolved"] === null || typeof t["resolved"] === "string") && typeof t["colour"] === "boolean";
+  return typeof t["name"] === "string" && typeof t["label"] === "string" && typeof t["value"] === "string" && (t["resolved"] === null || typeof t["resolved"] === "string") && typeof t["colour"] === "boolean";
 }
 
 function isGizmoCommit(value: unknown): boolean {
@@ -253,7 +277,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
         v["tokens"].every(isGizmoToken) &&
         Array.isArray(v["spacingSteps"]) &&
         v["spacingSteps"].every((n) => Number.isFinite(n)) &&
-        (v["classEdits"] === null || typeof v["classEdits"] === "string")
+        (v["classEdits"] === null || typeof v["classEdits"] === "string") &&
+        typeof v["kind"] === "string"
       );
     case "gizmo-done":
       return typeof v["ok"] === "boolean";
@@ -261,14 +286,18 @@ export function isHostMessage(value: unknown): value is HostMessage {
       return v["css"] === null || (typeof v["css"] === "string" && v["css"].length < 10_000);
     case "pins":
       return Array.isArray(v["pins"]) && v["pins"].every(isNotePin);
+    case "open":
+      return (v["key"] === null || typeof v["key"] === "string") && (v["open"] === null || typeof v["open"] === "boolean");
+    case "text-editor":
+      return typeof v["key"] === "string" && typeof v["text"] === "string";
     default:
       return false;
   }
 }
 
-/** Keys the overlay forwards to the host in select mode (with Ctrl or Cmd for letters). */
-export function isShortcut(key: string, mod: boolean): boolean {
-  return key === "Delete" || key === "Backspace" || (mod && ["z", "Z", "y", "Y"].includes(key));
+/** Keys the overlay forwards to the host in select mode (with Ctrl or Cmd for letters, Alt for arrows). */
+export function isShortcut(key: string, mod: boolean, alt = false): boolean {
+  return key === "Delete" || key === "Backspace" || (mod && ["z", "Z", "y", "Y"].includes(key)) || (alt && !mod && (key === "ArrowUp" || key === "ArrowDown"));
 }
 
 /**

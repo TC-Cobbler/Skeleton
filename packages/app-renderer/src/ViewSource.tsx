@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { UiNode } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
 
 /** Read-only source of a locked block (T2.4): what the agent wrote, exactly. */
 export function ViewSource({ projectRoot, file, node }: { projectRoot: string; file: string; node: UiNode }) {
@@ -47,13 +48,13 @@ export function ViewSource({ projectRoot, file, node }: { projectRoot: string; f
   return (
     <div className="view-source">
       <button ref={button} type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {open ? "Hide source" : "View source"}
+        {open ? copy.viewSource.hide : copy.viewSource.show}
       </button>
       {open && (
-        <div ref={panel} popover="manual" role="dialog" aria-label="Source" className="popover">
+        <div ref={panel} popover="manual" role="dialog" aria-label={copy.viewSource.title} className="popover">
           <header className="row">
             <span className="muted">
-              {file}:{node.range.startLine}–{node.range.endLine} · read-only
+              {copy.viewSource.where(file, node.range.startLine, node.range.endLine)}
             </span>
           </header>
           {error && <p className="error">{error}</p>}

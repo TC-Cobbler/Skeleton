@@ -2,6 +2,7 @@
 // Pure functions only. No Electron, DOM or filesystem imports.
 
 export { EditOpError, ParseError } from "./errors.js";
+export { REASON_CODES, reason, reasonOf, type Reason, type ReasonCode, type ReasonFacts } from "./reasons.js";
 export { parseModule, printModule, parseJsxExpression } from "./parse.js";
 export { diffSources, type SourceDiff, type DiffHunk } from "./diff.js";
 export {

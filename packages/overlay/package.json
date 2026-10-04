@@ -9,7 +9,12 @@
       "types": "./dist/types/protocol.d.ts",
       "default": "./dist/types/protocol.js"
     },
-    "./bundle": "./dist/overlay.js"
+    "./bundle": "./dist/overlay.js",
+    "./style": {
+      "source": "./src/style.ts",
+      "types": "./dist/types/style.d.ts",
+      "default": "./dist/types/style.js"
+    }
   },
   "scripts": {
     "build": "tsx scripts/build.ts",

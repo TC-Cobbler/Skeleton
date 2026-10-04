@@ -4,7 +4,7 @@
 import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, shell } from "electron";
+import { app, BrowserWindow, dialog, nativeTheme, shell } from "electron";
 import { createDispatch } from "./ipc/handlers.js";
 import { registerIpc } from "./ipc/register.js";
 import { DevServerManager } from "./devserver/manager.js";
@@ -17,6 +17,7 @@ import { WorkerChecker } from "./project/checker.js";
 import { scaffoldProject } from "./project/scaffold.js";
 import { Loop, pnpmBuild } from "./project/loop.js";
 import type { RendererLocation } from "./ipc/trust.js";
+import { STYLE } from "@skeleton/overlay/style";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,10 +32,13 @@ function rendererLocation(): RendererLocation {
 }
 
 function createWindow(renderer: RendererLocation): BrowserWindow {
+  // Skeleton's chrome is dark only (T8.4): the OS frame follows where the system allows.
+  nativeTheme.themeSource = "dark";
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     title: "Skeleton",
+    backgroundColor: STYLE.colour.surround,
     webPreferences: {
       preload: path.join(here, "preload.cjs"),
       contextIsolation: true,

@@ -1,0 +1,488 @@
+/* Panels: layers, pages, add, properties, theme, colour, off-theme, notes and the agent's work (T8.4). */
+
+/* Selection: what the selected element is. */
+.inspector {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+}
+.inspector dt {
+  color: var(--sk-colour-secondary);
+}
+.inspector dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Rows in a list: layers and pages. Selected is the blue at 16% with a 2px blue edge. */
+.layers ul,
+.pages ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pages ul {
+  margin-bottom: 10px;
+}
+.layer,
+.page {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: 2px;
+  cursor: default;
+  white-space: nowrap;
+}
+.layer.is-hovered,
+.page:hover {
+  background: var(--sk-colour-hover-row);
+}
+.layer.is-selected,
+.page.is-selected {
+  background: var(--sk-colour-selected-row);
+  box-shadow: inset 2px 0 0 var(--sk-colour-accent);
+  color: var(--sk-colour-heading);
+}
+.layer-locked .layer-name {
+  color: var(--sk-colour-agent);
+}
+.layer.is-offscreen,
+.page.is-disabled {
+  opacity: 0.45;
+}
+/* Expand and collapse: as narrow as before the icons (14px), so a row is mostly its name. */
+.twisty {
+  display: inline-flex;
+  width: 14px;
+  min-width: 0;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  background: none;
+  font-size: 10px;
+  color: var(--sk-colour-secondary);
+}
+.twisty:hover:not(:disabled) {
+  background: none;
+  color: var(--sk-colour-heading);
+}
+
+/* Pages: add, rename, delete. */
+.page-actions {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.page-form {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.page-form label {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 6px;
+  color: var(--sk-colour-secondary);
+}
+
+/* Add: drag an element onto the canvas. */
+.palette ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.palette-item {
+  padding: 3px 8px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-control);
+  cursor: grab;
+}
+.palette-item:hover {
+  background: var(--sk-colour-control-hover);
+}
+.palette-item.is-disabled {
+  opacity: 0.45;
+  cursor: help;
+}
+.palette-item.is-disabled:hover {
+  background: var(--sk-colour-control);
+}
+.sidebar .palette,
+.palette + .layers,
+div + .layers {
+  margin-top: 14px;
+}
+
+/* The page code of a block of agent code, read-only. */
+.view-source {
+  margin-top: 8px;
+}
+.popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(640px, 70vw);
+  padding: 8px;
+  border: 0;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+  color: var(--sk-colour-text);
+  box-shadow:
+    inset 0 2px 0 var(--sk-colour-agent),
+    0 6px 20px rgb(0 0 0 / 0.5);
+}
+.popover pre {
+  margin: 6px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  line-height: 1.5;
+}
+.popover .ln {
+  display: inline-block;
+  width: 3ch;
+  margin-right: 8px;
+  text-align: right;
+  color: var(--sk-colour-secondary);
+  user-select: none;
+}
+
+/* Properties: label, then control. */
+.prop-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.prop-label {
+  color: var(--sk-colour-secondary);
+}
+.prop-value select,
+.prop-value input:not([type="checkbox"]) {
+  width: 100%;
+}
+
+/* The theme: every value, light and dark side by side. */
+.tokens input[aria-label] {
+  width: 100%;
+}
+.tokens ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.token {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--sk-colour-separator);
+}
+.token-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.token-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin-top: 3px;
+}
+.token-values.has-dark,
+.token-modes {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.token-modes {
+  display: grid;
+  gap: 4px;
+  font-size: var(--sk-type-small);
+}
+.token-modes .is-shown {
+  color: var(--sk-colour-heading);
+  font-weight: 600;
+}
+.token-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.token-value input {
+  min-width: 0;
+  font: var(--sk-type-small) var(--sk-type-mono);
+}
+.swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--sk-colour-input-border);
+}
+.token-derived {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* The colour a chip on the canvas opens. */
+.colour-panel {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sk-colour-separator);
+}
+.colour-panel h2 {
+  margin: 0;
+  flex: 1;
+}
+.colour-panel .colour-editor {
+  margin-top: 8px;
+}
+
+/* A theme colour's swatch: a button that opens the picker. */
+.swatch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: var(--sk-size-control);
+  padding: 3px;
+  background: var(--sk-colour-input);
+  border: 1px solid var(--sk-colour-input-border);
+  border-radius: var(--sk-size-radius);
+  cursor: pointer;
+}
+.swatch-button:hover {
+  border-color: var(--sk-colour-secondary);
+}
+.swatch-button[aria-expanded="true"] {
+  border-color: var(--sk-colour-accent);
+}
+.swatch-button .swatch {
+  width: 16px;
+  height: 16px;
+}
+.swatch-hex {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--sk-type-small) var(--sk-type-mono);
+  color: var(--sk-colour-text);
+}
+.colour-popover {
+  position: fixed;
+  width: 236px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* The picker: a colour area, a hue slider, then hex, RGB and HSL fields. */
+.colour-editor {
+  display: grid;
+  gap: 8px;
+}
+.colour-area {
+  position: relative;
+  height: 140px;
+  border-radius: var(--sk-size-radius);
+  cursor: crosshair;
+  touch-action: none;
+}
+.colour-area:focus-visible {
+  outline: var(--sk-size-focus-ring) solid var(--sk-colour-accent);
+  outline-offset: var(--sk-size-focus-gap);
+}
+.colour-area-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid var(--sk-colour-white);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+  pointer-events: none;
+}
+.colour-hue {
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  appearance: none;
+  border-radius: 6px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.colour-hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--sk-colour-white);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+}
+.colour-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.colour-preview {
+  flex: none;
+  width: 24px;
+  height: var(--sk-size-control);
+  border-radius: var(--sk-size-radius);
+  box-shadow: 0 0 0 1px var(--sk-colour-input-border);
+}
+.colour-field {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--sk-type-small);
+  color: var(--sk-colour-secondary);
+}
+.colour-field-hex {
+  flex: 2;
+}
+.colour-field input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: var(--sk-type-small) var(--sk-type-mono);
+}
+
+/* Off-theme values. */
+.violations ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.violation {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--sk-colour-separator);
+}
+.violation.is-kept {
+  opacity: 0.55;
+}
+.violation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.violation-value {
+  display: block;
+  margin: 2px 0;
+  word-break: break-all;
+}
+.violation-actions {
+  gap: 4px;
+  margin-top: 4px;
+}
+.violation form input {
+  min-width: 0;
+}
+
+/* Notes. */
+.note-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.note {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--sk-colour-separator);
+}
+.note.is-resolved .note-text {
+  color: var(--sk-colour-secondary);
+  text-decoration: line-through;
+}
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.note-head .muted {
+  margin-left: auto;
+}
+.note-type {
+  padding: 0 6px;
+  border-radius: 2px;
+  background: var(--sk-colour-notes);
+  color: var(--sk-colour-surround);
+  font-size: var(--sk-type-small);
+  font-weight: 600;
+}
+.note-text {
+  margin: 2px 0;
+}
+.note-reply {
+  margin: 4px 0 0;
+  padding-left: 8px;
+  box-shadow: inset 2px 0 0 var(--sk-colour-control-on);
+}
+.note-actions {
+  gap: 4px;
+  margin-top: 4px;
+}
+.note-form {
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.note-form input {
+  min-width: 0;
+}
+.notes .segmented {
+  margin: 4px 0;
+}
+.orphans {
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+  box-shadow: inset 2px 0 0 var(--sk-colour-notes);
+}
+.orphans h3 {
+  margin-top: 0;
+}
+
+/* The agent's work. */
+.pass-summary p {
+  margin: 4px 0;
+}
+.pass-group {
+  margin: 4px 0;
+}
+.pass-group ul,
+.diffs ul {
+  list-style: none;
+  padding-left: 12px;
+  margin: 4px 0;
+}
+.patch {
+  max-height: 300px;
+  overflow: auto;
+  margin: 4px 0;
+  padding: 6px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-input);
+}
+.patch .add {
+  color: var(--sk-colour-success);
+}
+.patch .del {
+  color: var(--sk-colour-danger);
+}
+.patch .hunk {
+  color: var(--sk-colour-secondary);
+}
+.pass-revert {
+  margin-top: 12px;
+}
+.token-value > .popover-anchor,
+.token-value .tooltip-wrap {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}

@@ -14,6 +14,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, diffSources, findNodeById, readTokens } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, clickOnCanvas, dragGizmo } from "./canvas-click.js";
+import { canvasCopy, copy, names, pattern, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-gate4-"));
@@ -57,7 +58,7 @@ const changedLines = (before: string, after: string) => {
   expect(a.length).toBe(b.length);
   return a.filter((line, i) => line !== b[i]);
 };
-const violationsTab = () => page.getByRole("tab", { name: /^Violations/ });
+const violationsTab = () => ui(page).tab("violations");
 
 let first = "";
 
@@ -76,9 +77,9 @@ beforeAll(async () => {
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
   }, scratch);
-  await page.getByRole("button", { name: "Change…" }).click();
-  await page.getByLabel("Project name").fill("Gate Four");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await ui(page).picker.changeFolder().click();
+  await ui(page).picker.projectName().fill("Gate Four");
+  await ui(page).picker.create().click();
   await frame().getByRole("heading", { name: "Gate Four" }).waitFor({ timeout: 90_000 });
   // Three Buttons, one in a Card (whose radius is derived from --radius too). Gate 3
   // covers placing them from the palette; here the page is written as an agent would.
@@ -97,6 +98,7 @@ beforeAll(async () => {
   );
   await buttons().nth(2).waitFor({ timeout: 20_000 });
   expect(await buttons().count()).toBe(3);
+  await ui(page).showLayers();
   await page.getByTestId(`layer-${ids.third}`).waitFor({ timeout: 20_000 });
 }, 180_000);
 
@@ -107,8 +109,8 @@ afterAll(async () => {
 
 describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
   it("shows the mode", async () => {
-    await page.getByRole("tab", { name: "Element" }).click();
-    await page.getByRole("group", { name: "Colour mode" }).getByRole("button", { name: mode === "dark" ? "Dark" : "Light" }).click();
+    await ui(page).tab("element").click();
+    await ui(page).colourMode().getByRole("button", { name: mode === "dark" ? copy.app.dark : copy.app.light }).click();
     await expect.poll(() => frame().locator("html").evaluate((el) => el.classList.contains("dark"))).toBe(mode === "dark");
     await clickOnCanvas(page, "canvas-frame", frame().locator(`[data-ui-id="${first}"]`));
     expect(await page.getByTestId("selection-id").textContent()).toBe(first);
@@ -130,13 +132,13 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
         },
         { timeout: 10_000 },
       )
-      .toMatch(/^Drag: --radius-button/);
+      .toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.radiusComponent(names.themeName("--radius-button"), names.kindOf("Button")))));
     await dragGizmo(page, radiusHandle(), 12, 12, {
       during: async () => {
         const live = await radii();
         expect(live[0]).toBeGreaterThan(before[0] as number);
         expect(new Set(live).size).toBe(1); // all three Buttons, the one in the Card too
-        expect(await label()).toMatch(/^--radius-button: .* · 3 elements$/);
+        expect(await label()).toMatch(pattern(/^/, canvasCopy.gizmos.readout(names.themeName("--radius-button"), ""), /.*/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.elements(3)), /$/));
         expect(css()).toBe(cssBefore); // live only: nothing written during the drag
       },
     });
@@ -156,7 +158,7 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
     await dragGizmo(page, radiusHandle(), -8, -8, {
       modifier: "Shift",
       during: async () => {
-        expect(await label()).toMatch(/^--radius: [\d.]+rem · \d+ elements$/);
+        expect(await label()).toMatch(pattern(/^/, canvasCopy.gizmos.readout(names.themeName("--radius"), ""), /[\d.]+px · \d+ elements$/));
         expect(await cardRadius()).toBeLessThan(cardBefore); // a derived radius follows live
       },
     });
@@ -180,7 +182,7 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
     const before = await radiiBy(first);
     await dragGizmo(page, radiusHandle(), 10, 10, {
       modifier: "Alt",
-      during: async () => expect(await label()).toMatch(/^rounded-\[\d+px\] · this element$/),
+      during: async () => expect(await label()).toMatch(pattern(/^[\d.]+px/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.thisElement), /$/)),
     });
     await expect.poll(() => findNodeById(buildTree(home()).roots, first)?.props["className"], { timeout: 10_000 }).toMatch(/^rounded-\[\d+px\]$/);
     expect(css()).toBe(cssBefore);
@@ -196,11 +198,12 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
     await expect.poll(async () => (await radiiBy(first)).own, { timeout: 10_000 }).toBeGreaterThan(before.own);
     expect((await radiiBy(first)).others).toEqual(before.others);
     await violationsTab().click();
-    await expect.poll(() => violationsTab().textContent(), { timeout: 10_000 }).toBe("Violations (1)");
-    expect(await page.getByTestId("violation").first().textContent()).toContain(`Button #${first}`);
+    await expect.poll(() => violationsTab().textContent(), { timeout: 10_000 }).toBe(copy.app.tabs.violations(1));
+    expect(await page.getByTestId("violation").first().textContent()).toContain(names.kindOf("Button"));
+    expect(await page.getByTestId("violation").first().locator("[data-ui-id]").getAttribute("data-ui-id")).toBe(first);
     // Undo it, so the next mode starts from the same page.
-    await page.getByRole("button", { name: "Undo" }).click();
+    await ui(page).undo().click();
     await expect.poll(() => home(), { timeout: 10_000 }).toBe(pageBefore);
-    await expect.poll(() => violationsTab().textContent(), { timeout: 10_000 }).toBe("Violations");
+    await expect.poll(() => violationsTab().textContent(), { timeout: 10_000 }).toBe(copy.app.tabs.violations(0));
   });
 });

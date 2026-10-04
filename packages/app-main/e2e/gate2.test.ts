@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Frame, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { STYLE, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FILE = "src/pages/HomePage.tsx";
@@ -55,7 +56,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
       await app.evaluate(({ dialog }, folder) => {
         dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
       }, projectRoot);
-      await page.getByRole("button", { name: "Open…" }).click();
+      await ui(page).picker.openFolder().click();
       await page.frameLocator('[data-testid="canvas-frame"]').getByRole("heading", { name: "Orders" }).waitFor({ timeout: 60_000 });
 
       // The same tree the UI uses, through the same IPC.
@@ -72,6 +73,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
       };
       (result.value.roots as N[]).forEach((r, i) => walk(r, String(i)));
       nodes = flat;
+      await ui(page).showLayers();
     }, 180_000);
 
     afterAll(async () => {
@@ -109,7 +111,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
       const labels = [...html.matchAll(/<div class="label"[^>]*>🔒 ([^<]+)<\/div>/g)].map((m) => m[1]);
       expect(locked.length).toBeGreaterThan(0);
       expect(labels.length).toBeGreaterThanOrEqual(locked.length);
-      expect(html).toMatch(/dashed #ea580c/);
+      expect(html).toContain(`dashed ${STYLE.colour.agent}`);
       report.push(`locked: ${locked.length} rendered locked blocks, ${labels.length} 🔒 labels drawn`);
     });
 
@@ -201,7 +203,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
           if (target) {
             await expect
               .poll(() => frame().evaluate(() => document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? ""))
-              .toContain(`#${n.id}</div>`);
+              .toContain(`data-label-for="${n.id}"`);
           }
           byTree++;
         }

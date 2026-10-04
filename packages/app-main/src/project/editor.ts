@@ -30,7 +30,10 @@ import {
   TokenError,
   describeViolations,
   promoteViolation,
+  reason,
+  reasonOf,
   type EditResult,
+  type Reason,
   type TokenWrite,
   type RouteInfo,
 } from "@skeleton/core";
@@ -48,16 +51,24 @@ export interface EditorIO {
   listSources(projectRoot: string): Promise<string[]>;
 }
 
-/** An edit the op refused (bad target, locked block, …). The message names the op and node. */
+/**
+ * An edit the op refused (bad target, locked block, …). The message names the op and
+ * node; the reason, when the user could have caused it, is for the UI's words (ADR 013).
+ */
 export class EditRefused extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
+  readonly reason: Reason | null;
+
+  constructor(message: string, options?: { cause?: unknown; reason?: Reason }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = "EditRefused";
+    this.reason = options?.reason ?? reasonOf(options?.cause);
   }
 }
 
 /** The edit broke the typecheck, so it was undone (T3.7). */
 export class EditRolledBack extends Error {
+  readonly reason: Reason = reason("edit-undone");
+
   constructor(readonly diagnostics: Diagnostic[]) {
     const shown = diagnostics.slice(0, 3).map((d) => `${d.file}${d.line ? `:${d.line}` : ""}: ${d.message}`);
     const more = diagnostics.length > 3 ? `\n…and ${diagnostics.length - 3} more` : "";
@@ -135,9 +146,9 @@ export class Editor {
       const absolute = path.join(projectRoot, ref.file);
       const source = await this.io.readFile(absolute);
       const detail = describeViolations(source, ref.file, ctx).find((v) => v.offset === ref.offset && v.value === ref.value);
-      if (!detail) throw new EditRefused(`${ref.value} is no longer at that place in ${ref.file}; the list was out of date`);
+      if (!detail) throw new EditRefused(`${ref.value} is no longer at that place in ${ref.file}; the list was out of date`, { reason: reason("off-theme-moved", { value: ref.value }) });
       const id = detail.element?.id;
-      if (!detail.editable || !id) throw new EditRefused(`${ref.value} is in agent code, so it can't be changed from here`);
+      if (!detail.editable || !id) throw new EditRefused(`${ref.value} is in agent code, so it can't be changed from here`, { reason: reason("off-theme-in-agent-code", { value: ref.value }) });
       let css: string;
       let utility: string;
       let page: string;
@@ -165,7 +176,7 @@ export class Editor {
       const source = await this.io.readFile(path.join(projectRoot, ref.file));
       // Only the element is needed here, not the nearest token.
       const found = describeViolations(source, ref.file, { css: "", palette: {} }).find((v) => v.offset === ref.offset && v.value === ref.value);
-      if (!found) throw new EditRefused(`${ref.value} is no longer at that place in ${ref.file}; the list was out of date`);
+      if (!found) throw new EditRefused(`${ref.value} is no longer at that place in ${ref.file}; the list was out of date`, { reason: reason("off-theme-moved", { value: ref.value }) });
       const id = found.element?.id ?? null;
       const configPath = path.join(projectRoot, CONFIG_FILE);
       const before = await this.io.readFile(configPath);
@@ -200,7 +211,7 @@ export class Editor {
     const from = direction === "undo" ? stack.undo : stack.redo;
     const to = direction === "undo" ? stack.redo : stack.undo;
     const entry = from.at(-1);
-    if (!entry) throw new EditRefused(`nothing to ${direction}`);
+    if (!entry) throw new EditRefused(`nothing to ${direction}`, { reason: reason("nothing-to-undo", { direction }) });
     // Undo turns each change around, newest first; redo replays them as they were.
     const changes =
       direction === "undo" ? [...entry.changes].reverse().map((c) => ({ file: c.file, before: c.after, after: c.before })) : entry.changes;
@@ -211,7 +222,9 @@ export class Editor {
         throw err;
       });
       if (now !== change.before) {
-        throw new EditRefused(`can't ${direction} "${entry.label}": ${change.file} changed since, and ${direction === "undo" ? "undoing" : "redoing"} would overwrite that`);
+        throw new EditRefused(`can't ${direction} "${entry.label}": ${change.file} changed since, and ${direction === "undo" ? "undoing" : "redoing"} would overwrite that`, {
+          reason: reason("changed-since", { direction, edit: entry.label, page: change.file }),
+        });
       }
     }
     const unchecked = await this.commitChecked(projectRoot, changes);
@@ -253,8 +266,8 @@ export class Editor {
   /** An edit: queued, and refused while the project is with the agent. */
   private enqueue<T>(projectRoot: string, task: () => Promise<T>): Promise<T> {
     return this.queue(projectRoot, async () => {
-      const reason = (await this.options.locked?.(projectRoot)) ?? null;
-      if (reason !== null) throw new EditRefused(reason);
+      const locked = (await this.options.locked?.(projectRoot)) ?? null;
+      if (locked !== null) throw new EditRefused(locked, { reason: reason("with-agent") });
       return task();
     });
   }
@@ -388,13 +401,13 @@ export class Editor {
         },
       );
     const router = await read(ROUTER).catch((err: unknown) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new EditRefused(`${ROUTER} not found`);
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new EditRefused(`${ROUTER} not found`, { reason: reason("pages-unreadable") });
       throw err;
     });
     const routes = readRoutes(router, ROUTER).routes;
     const pageAt = async (p: string): Promise<RouteInfo & { file: string; component: string }> => {
       const route = routes.find((r) => r.path === p && r.file !== null && r.component !== null);
-      if (!route?.file || !route.component || !(await exists(route.file))) throw new EditRefused(`no page file for ${p}`);
+      if (!route?.file || !route.component || !(await exists(route.file))) throw new EditRefused(`no page file for ${p}`, { reason: reason("page-missing", { path: p }) });
       return { ...route, file: route.file, component: route.component };
     };
     /** Files other than the router that import `file`: renaming or deleting it would break them. */
@@ -407,7 +420,7 @@ export class Editor {
     };
     const nameError = (name: string) => {
       const error = pageNameError(name);
-      if (error) throw new EditRefused(`"${name}" can't name a page: ${error}`);
+      if (error) throw new EditRefused(`"${name}" can't name a page: ${error}`, { reason: reason("bad-page-name", { name }) });
     };
 
     return this.refusing(async () => {
@@ -418,7 +431,7 @@ export class Editor {
           const nextRouter = addRoute(router, { path: intent.path, component }).source;
           const file = readRoutes(nextRouter, ROUTER).routes.find((r) => r.path === intent.path)?.file;
           if (!file) throw new EditRefused(`the new route for ${intent.path} doesn't resolve to a page file`);
-          if (await exists(file)) throw new EditRefused(`${file} already exists`);
+          if (await exists(file)) throw new EditRefused(`${file} already exists`, { reason: reason("page-file-taken", { page: file }) });
           const page = renderPage(intent.name, await this.projectIds(projectRoot));
           const changes = [
             { file, before: null, after: page },
@@ -439,11 +452,11 @@ export class Editor {
             const component = componentFor(intent.name);
             if (component !== page.component) {
               const users = await importers(page.file);
-              if (users.length > 0) throw new EditRefused(`${page.file} is imported by ${users.join(", ")}; rename it in code`);
+              if (users.length > 0) throw new EditRefused(`${page.file} is imported by ${users.join(", ")}; rename it in code`, { reason: reason("page-used-elsewhere", { page: page.file }) });
               nextRouter = renameRouteComponent(nextRouter, page.component, component).source;
               const file = readRoutes(nextRouter, ROUTER).routes.find((r) => r.path === target)?.file;
               if (!file) throw new EditRefused(`the renamed route doesn't resolve to a page file`);
-              if (await exists(file)) throw new EditRefused(`${file} already exists`);
+              if (await exists(file)) throw new EditRefused(`${file} already exists`, { reason: reason("page-file-taken", { page: file }) });
               const source = await read(page.file);
               changes.push({ file, before: null, after: renameDefaultComponent(source, component).source });
               changes.push({ file: page.file, before: source, after: null });
@@ -457,9 +470,9 @@ export class Editor {
         case "deletePage": {
           const page = await pageAt(intent.path);
           const others = routes.filter((r) => r.file !== null && r.file !== page.file && r.component !== null);
-          if (others.length === 0) throw new EditRefused("it's the only page; add another one first");
+          if (others.length === 0) throw new EditRefused("it's the only page; add another one first", { reason: reason("only-page") });
           const users = await importers(page.file);
-          if (users.length > 0) throw new EditRefused(`${page.file} is imported by ${users.join(", ")}; remove those imports first`);
+          if (users.length > 0) throw new EditRefused(`${page.file} is imported by ${users.join(", ")}; remove those imports first`, { reason: reason("page-used-elsewhere", { page: page.file }) });
           const source = await read(page.file);
           const nextRouter = removeRoute(router, intent.path).source;
           const changes = [

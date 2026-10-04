@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyedNode } from "./canvas/nodes.js";
+import { copy } from "./copy.js";
+import { elementName } from "./names.js";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Hinted, IconButton } from "./Tooltip.js";
 
 export interface LayersPanelProps {
   nodes: KeyedNode[];
@@ -45,49 +49,47 @@ export function LayersPanel({ nodes, selected, hovered, onScreen, onSelect, onHo
     });
 
   return (
-    <section aria-label="Layers" className="layers">
-      <h2>Layers</h2>
-      <ul ref={list} role="tree" aria-label="Layers tree" onMouseLeave={() => onHover(null)}>
+    <section aria-label={copy.layers.title} className="layers">
+      <h2>{copy.layers.title}</h2>
+      <ul ref={list} role="tree" aria-label={copy.layers.tree} onMouseLeave={() => onHover(null)}>
         {nodes.map(({ key, node, depth }, i) =>
           hidden(key) ? null : (
-            <li
-              key={key}
-              role="treeitem"
-              aria-selected={key === selected}
-              aria-expanded={hasChildren(i) ? !collapsed.has(key) : undefined}
-              data-key={key}
-              data-testid={node.id ? `layer-${node.id}` : undefined}
-              className={[
-                "layer",
-                `layer-${node.kind}`,
-                key === selected ? "is-selected" : "",
-                key === hovered ? "is-hovered" : "",
-                onScreen && !onScreen.has(key) ? "is-offscreen" : "",
-              ].join(" ")}
-              style={{ paddingLeft: 8 + depth * 14 }}
-              onClick={() => onSelect(key)}
-              onMouseEnter={() => onHover(key)}
-              title={onScreen && !onScreen.has(key) ? "Not rendered on the canvas right now" : undefined}
-            >
-              {hasChildren(i) ? (
-                <button
-                  type="button"
-                  className="twisty"
-                  aria-label={collapsed.has(key) ? "Expand" : "Collapse"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle(key);
-                  }}
-                >
-                  {collapsed.has(key) ? "▸" : "▾"}
-                </button>
-              ) : (
-                <span className="twisty" />
-              )}
-              {node.kind === "locked" && <span aria-label="locked">🔒</span>}
-              <span className="layer-name">{node.name}</span>
-              {node.id && <code className="layer-id">{node.id}</code>}
-            </li>
+            <Hinted key={key} text={onScreen && !onScreen.has(key) ? copy.layers.offscreen : null}>
+              <li
+                role="treeitem"
+                aria-selected={key === selected}
+                aria-expanded={hasChildren(i) ? !collapsed.has(key) : undefined}
+                data-key={key}
+                data-testid={node.id ? `layer-${node.id}` : undefined}
+                className={[
+                  "layer",
+                  `layer-${node.kind}`,
+                  key === selected ? "is-selected" : "",
+                  key === hovered ? "is-hovered" : "",
+                  onScreen && !onScreen.has(key) ? "is-offscreen" : "",
+                ].join(" ")}
+                style={{ paddingLeft: 8 + depth * 14 }}
+                onClick={() => onSelect(key)}
+                onMouseEnter={() => onHover(key)}
+              >
+                {hasChildren(i) ? (
+                  <IconButton
+                    className="twisty"
+                    size={16}
+                    icon={collapsed.has(key) ? ChevronRight : ChevronDown}
+                    label={collapsed.has(key) ? copy.layers.expand : copy.layers.collapse}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle(key);
+                    }}
+                  />
+                ) : (
+                  <span className="twisty" />
+                )}
+                {node.kind === "locked" && <span aria-label={copy.layers.locked}>🔒</span>}
+                <span className="layer-name">{elementName(node)}</span>
+              </li>
+            </Hinted>
           ),
         )}
       </ul>

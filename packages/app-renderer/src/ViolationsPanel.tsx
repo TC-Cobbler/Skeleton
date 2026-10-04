@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import type { ViolationItem, ViolationReport } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
+import { copy } from "./copy.js";
+import { kindOf, themeName } from "./names.js";
+import { messageFor, type Message } from "./messages.js";
+import { MessageText } from "./Toasts.js";
+import { Tooltip } from "./Tooltip.js";
 
 /** The project's violations, re-read when files change. */
-export function useViolations(projectRoot: string, revision: number): { report: ViolationReport | null; error: string | null } {
+export function useViolations(projectRoot: string, revision: number): { report: ViolationReport | null; error: Message | null } {
   const [report, setReport] = useState<ViolationReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   useEffect(() => {
     let cancelled = false;
     call("violations:list", { projectRoot }).then(
@@ -14,7 +19,7 @@ export function useViolations(projectRoot: string, revision: number): { report: 
         setReport(next);
         setError(null);
       },
-      (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setError(messageFor(err)),
     );
     return () => {
       cancelled = true;
@@ -23,21 +28,13 @@ export function useViolations(projectRoot: string, revision: number): { report: 
   return { report, error };
 }
 
-const PROPERTY: Record<ViolationItem["property"], string> = {
-  radius: "radius",
-  spacing: "spacing",
-  "font-size": "font size",
-  "border-width": "border width",
-  colour: "colour",
-  style: "inline style",
-  other: "arbitrary value",
-};
+const PROPERTY: Record<ViolationItem["property"], string> = copy.violations.property;
 
 const PROMOTE_PREFIX: Record<NonNullable<ViolationItem["promote"]>, string> = { radius: "--radius-", spacing: "--spacing-", text: "--text-", colour: "--" };
 
 export interface ViolationsPanelProps {
   report: ViolationReport | null;
-  error: string | null;
+  error: Message | null;
   onSelect: (item: ViolationItem) => void;
   onSnap: (item: ViolationItem) => void;
   onPromote: (item: ViolationItem, name: string) => void;
@@ -55,18 +52,18 @@ export function ViolationsPanel({ report, error, onSelect, onSnap, onPromote, on
   const kept = items.filter((v) => v.kept).length;
   const shown = items.filter((v) => showKept || !v.kept);
   return (
-    <section aria-label="Violations" className="violations" data-testid="violations">
-      <h2>Violations</h2>
-      {error && <p className="error">{error}</p>}
+    <section aria-label={copy.violations.title} className="violations" data-testid="violations">
+      <h2>{copy.violations.title}</h2>
+      {error && <MessageText message={error} />}
       {report?.errors.map((e) => (
         <p key={e} className="error small">
           {e}
         </p>
       ))}
-      {report && items.length - kept === 0 && <p className="muted">No overrides: everything is styled with tokens.</p>}
+      {report && items.length - kept === 0 && <p className="muted">{copy.violations.empty}</p>}
       {kept > 0 && (
         <label className="row small muted">
-          <input type="checkbox" checked={showKept} onChange={(e) => setShowKept(e.target.checked)} /> Show kept ({kept})
+          <input type="checkbox" checked={showKept} onChange={(e) => setShowKept(e.target.checked)} /> {copy.violations.showKept(kept)}
         </label>
       )}
       <ul role="list">
@@ -86,39 +83,45 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
   return (
     <li className={`violation${item.kept ? " is-kept" : ""}`} data-testid="violation">
       <div className="violation-head">
-        <button type="button" className="link" title={`${item.file}:${item.line}`} onClick={() => onSelect(item)}>
-          {item.element ? `${item.element.name}${item.element.id ? ` #${item.element.id}` : ""}` : `${item.file}:${item.line}`}
-        </button>
+        <Tooltip text={copy.pass.onPage(copy.named.pageName(item.file))}>
+          <button type="button" className="link" data-ui-id={item.element?.id ?? undefined} onClick={() => onSelect(item)}>
+            {item.element ? kindOf(item.element.name) : copy.violations.noElement}
+          </button>
+        </Tooltip>
         <span className="muted small">{PROPERTY[item.property]}</span>
       </div>
       <code className="violation-value">{value}</code>
       {item.nearest && (
-        <div className="muted small">
-          nearest: <code>{item.nearest.utility}</code> ({item.nearest.token} = {item.nearest.value})
+        <div className="muted small" data-nearest={item.nearest.utility}>
+          {copy.violations.nearest} {copy.violations.nearestValue(themeName(item.nearest.token), item.nearest.value)}
         </div>
       )}
-      {!item.editable && !item.kept && <div className="muted small">In agent code: fix it in code, or keep it.</div>}
+      {!item.editable && !item.kept && <div className="muted small">{copy.violations.inAgentCode}</div>}
       {!item.kept && (
         <div className="row violation-actions">
           {item.editable && item.nearest && (
-            <button type="button" onClick={() => onSnap(item)} title={`Replace with ${item.nearest.utility}`}>
-              Snap
-            </button>
+            <Tooltip text={copy.violations.snapTitle(themeName(item.nearest.token))}>
+              <button type="button" onClick={() => onSnap(item)}>
+                {copy.violations.snap}
+              </button>
+            </Tooltip>
           )}
           {item.editable && item.promote && (
             <button type="button" aria-expanded={naming} onClick={() => setNaming((n) => !n)}>
-              Promote
+              {copy.violations.promote}
             </button>
           )}
-          <button type="button" onClick={() => onKeep(item)} title="Acknowledge it and leave it (skeleton/config.json)">
-            Keep
-          </button>
+          <Tooltip text={copy.violations.keepTitle}>
+            <button type="button" onClick={() => onKeep(item)}>
+              {copy.violations.keep}
+            </button>
+          </Tooltip>
         </div>
       )}
       {naming && item.promote && (
         <form
           className="row"
-          aria-label="Promote to token"
+          aria-label={copy.violations.promoteForm}
           onSubmit={(e) => {
             e.preventDefault();
             if (!valid) return;
@@ -127,10 +130,12 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
           }}
         >
           <span className="muted small">{PROMOTE_PREFIX[item.promote]}</span>
-          <input aria-label="Token name" placeholder="name" value={name} onChange={(e) => setName(e.target.value.trim())} />
-          <button type="submit" disabled={!valid}>
-            Create
-          </button>
+          <input aria-label={copy.violations.tokenName} placeholder={copy.violations.namePlaceholder} value={name} onChange={(e) => setName(e.target.value.trim())} />
+          <Tooltip text={name === "" ? copy.violations.needName : valid ? null : copy.violations.badName}>
+            <button type="submit" disabled={!valid}>
+              {copy.violations.create}
+            </button>
+          </Tooltip>
         </form>
       )}
     </li>

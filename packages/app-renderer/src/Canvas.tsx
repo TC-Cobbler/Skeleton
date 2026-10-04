@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DevServerStatus } from "@skeleton/app-main/ipc";
+import { copy } from "./copy.js";
 import {
   isOverlayMessage,
   type DropTarget,
@@ -34,7 +35,7 @@ export interface CanvasEvents {
   /** A node was dragged to a new place on the canvas (T3.3). */
   onMove?: (key: string, target: DropTarget) => void;
   /** A Skeleton shortcut pressed while the canvas had focus. */
-  onKey?: (key: string, mod: boolean, shift: boolean) => void;
+  onKey?: (key: string, mod: boolean, shift: boolean, alt: boolean) => void;
   /** How many elements on the page each token affects (T4.2), while `tokenUsage` is set. */
   onTokenCounts?: (counts: Record<string, number>) => void;
   /** A gizmo drag was released (T4.4): write this, then answer through `gizmoDone`. */
@@ -43,6 +44,12 @@ export interface CanvasEvents {
   onColourChip?: (chip: { key: string; utility: string; token: string; alt: boolean }) => void;
   /** A note pin was clicked (T5.1). */
   onPin?: (key: string) => void;
+  /** Whether the watched Dialog or Sheet is open on the canvas; null: no trigger on screen (F-6). */
+  onOpenState?: (key: string, open: boolean | null) => void;
+  /** A double-click on the node at `key` (F-5): its source text if it can be edited on the canvas, else null. */
+  onTextRequest?: (key: string) => string | null;
+  /** Its text was edited on the canvas. */
+  onTextCommit?: (key: string, text: string) => void;
 }
 
 /** What the selected element's gizmos can do (T4.3). */
@@ -51,6 +58,8 @@ export interface GizmoContext {
   tokens: GizmoToken[];
   spacingSteps: number[];
   classEdits: string | null;
+  /** The selection's element kind, for naming the reach "All buttons". */
+  kind: string;
 }
 
 /** A drag in progress over the canvas, in window coordinates (T3.2). */
@@ -94,6 +103,10 @@ export interface CanvasProps extends CanvasEvents {
   pins: NotePin[];
   /** With the agent (T5.2): the canvas is veiled and takes no input; shows this handoff. */
   withAgent: number | null;
+  /** The Dialog or Sheet whose open state to report (F-6), or null. */
+  openWatch: string | null;
+  /** Open or close it on the canvas; a new object is sent to the frames. */
+  openRequest: { key: string; open: boolean } | null;
 }
 
 /**
@@ -107,13 +120,7 @@ export function Canvas(props: CanvasProps) {
 
   if (!url) {
     const state = status?.state ?? "stopped";
-    const message: Record<string, string> = {
-      starting: "Starting the dev server…",
-      installing: "Installing dependencies…",
-      stopped: "The dev server isn't running.",
-      crashed: "The dev server stopped unexpectedly. See the log below.",
-      failed: "The dev server couldn't start. See the log below.",
-    };
+    const message: Record<string, string> = copy.canvas.server;
     return (
       <div className="canvas canvas-empty" data-testid="canvas-empty">
         <p className={state === "crashed" || state === "failed" ? "error" : "muted"}>{message[state]}</p>
@@ -128,8 +135,8 @@ export function Canvas(props: CanvasProps) {
       {props.withAgent !== null && (
         <div className="agent-veil" data-testid="agent-veil">
           <div>
-            <strong>With agent · handoff #{props.withAgent}</strong>
-            <p>The canvas is locked while your agent works. Press Take back when it's done.</p>
+            <strong>{copy.canvas.withAgent(props.withAgent)}</strong>
+            <p>{copy.canvas.veil}</p>
           </div>
         </div>
       )}
@@ -238,6 +245,7 @@ function CanvasFrame(props: FrameProps) {
           post({ source: "skeleton-host", type: "token-highlight", name: p.tokenHighlight });
           if (p.gizmos) post({ source: "skeleton-host", type: "gizmos", ...p.gizmos });
           post({ source: "skeleton-host", type: "pins", pins: p.pins });
+          post({ source: "skeleton-host", type: "open", key: p.openWatch, open: null });
           p.onLocation?.(msg.pathname);
           break;
         }
@@ -263,7 +271,7 @@ function CanvasFrame(props: FrameProps) {
           p.onMove?.(msg.key, msg.target);
           break;
         case "key":
-          p.onKey?.(msg.key, msg.mod, msg.shift);
+          p.onKey?.(msg.key, msg.mod, msg.shift, msg.alt);
           break;
         case "token-counts":
           if (p.primary) p.onTokenCounts?.(msg.counts);
@@ -276,6 +284,18 @@ function CanvasFrame(props: FrameProps) {
           break;
         case "pin":
           p.onPin?.(msg.key);
+          break;
+        case "text-request": {
+          // Only the frame that asked edits.
+          const text = p.onTextRequest?.(msg.key) ?? null;
+          if (text !== null) post({ source: "skeleton-host", type: "text-editor", key: msg.key, text });
+          break;
+        }
+        case "text-commit":
+          p.onTextCommit?.(msg.key, msg.text);
+          break;
+        case "open-state":
+          if (p.primary) p.onOpenState?.(msg.key, msg.open);
           break;
       }
     };
@@ -299,6 +319,10 @@ function CanvasFrame(props: FrameProps) {
   }, [props.gizmoDone]);
   useEffect(() => post({ source: "skeleton-host", type: "preview", css: props.preview }), [props.preview]);
   useEffect(() => post({ source: "skeleton-host", type: "pins", pins: props.pins }), [props.pins]);
+  useEffect(() => post({ source: "skeleton-host", type: "open", key: props.openWatch, open: null }), [props.openWatch]);
+  useEffect(() => {
+    if (props.openRequest) post({ source: "skeleton-host", type: "open", key: props.openRequest.key, open: props.openRequest.open });
+  }, [props.openRequest]);
   // Escape cancels any drag, including a move inside the frame: keyboard focus stays in
   // Skeleton's window, so the overlay doesn't see the key itself.
   useEffect(() => {
@@ -350,12 +374,12 @@ function CanvasFrame(props: FrameProps) {
       style={{ width: pixels * scale }}
     >
       <div className="frame-label muted">
-        {width} · {pixels}px{scale < 1 ? ` · ${Math.round(scale * 100)}%` : ""}
-        {!props.synced && " · updating…"}
+        {copy.canvas.frameLabel(width, pixels, scale)}
+        {!props.synced && copy.canvas.updating}
       </div>
       <iframe
         ref={frame}
-        title={`Preview (${width})`}
+        title={copy.canvas.frameTitle(width)}
         data-testid={props.primary ? "canvas-frame" : `canvas-frame-${width}`}
         src={url}
         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"

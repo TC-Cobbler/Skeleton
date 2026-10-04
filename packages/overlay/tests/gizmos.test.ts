@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { copy } from "../src/copy.js";
 import { factorOf, handlesFor, planDrag, scopeOf, toPx, typeScale, type Drag, type GizmoData, type Handle, type Measured } from "../src/gizmos.js";
 import type { GizmoToken } from "../src/protocol.js";
 
-const token = (name: string, value: string, resolved: string | null = null, colour = false): GizmoToken => ({ name, value, resolved, colour });
+const token = (name: string, value: string, resolved: string | null = null, colour = false): GizmoToken => ({ name, label: `Name of ${name}`, value, resolved, colour });
 const tokens: GizmoToken[] = [
   token("--radius", "0.625rem"),
   token("--radius-button", "calc(var(--radius) * 0.8)", "0.5rem"),
@@ -15,7 +16,7 @@ const tokens: GizmoToken[] = [
   token("--border-width", "1px"),
   token("--primary", "oklch(0.205 0 0)", null, true),
 ];
-const data: GizmoData = { tokens, spacingSteps: [0, 1, 2, 3, 4, 6, 8], classEdits: null };
+const data: GizmoData = { tokens, spacingSteps: [0, 1, 2, 3, 4, 6, 8], classEdits: null, kind: "Button" };
 
 function measured(over: Partial<Measured> = {}): Measured {
   return {
@@ -91,7 +92,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     });
 
     it("says why a scope isn't available", () => {
-      expect(planDrag(handle("radius"), "component", measured({ classes: ["rounded-full"] }), data)).toEqual({ unavailable: expect.stringMatching(/no radius token/) });
+      expect(planDrag(handle("radius"), "component", measured({ classes: ["rounded-full"] }), data)).toEqual({ unavailable: copy.gizmos.noRadiusToken("Button") });
       expect(planDrag(handle("radius"), "instance", button, { ...data, classEdits: "it's a locked block" })).toEqual({ unavailable: "it's a locked block" });
     });
   });
@@ -102,7 +103,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     it("plain drag steps the gap through the spacing scale", () => {
       const d = plan(handle("gap", 0), "component", stack);
       expect(d.valueAt(0, 9)).toBe(25); // along the column
-      expect(d.at(25)).toMatchObject({ commit: { kind: "class", add: "gap-6" }, text: "gap-6", css: "[data-skeleton-gizmo]{gap:24px!important}" });
+      expect(d.at(25)).toMatchObject({ commit: { kind: "class", add: "gap-6" }, text: "24px", css: "[data-skeleton-gizmo]{gap:24px!important}" });
     });
 
     it("Shift scales --spacing so this gap lands where dragged; Alt writes px", () => {
@@ -120,7 +121,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     });
 
     it("Shift needs a scale step to scale from", () => {
-      expect(planDrag(handle("gap", 0), "global", measured({ flow: "row", gap: 13, classes: ["gap-[13px]"] }), data)).toEqual({ unavailable: expect.stringMatching(/spacing scale/) });
+      expect(planDrag(handle("gap", 0), "global", measured({ flow: "row", gap: 13, classes: ["gap-[13px]"] }), data)).toEqual({ unavailable: copy.gizmos.notSpacingStep(copy.gizmos.spacingWhat.gap) });
     });
   });
 

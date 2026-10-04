@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import type { ClassGroup, EditIntent, ElementSchema, PropSchema, UiNode } from "@skeleton/app-main/ipc";
+import { textEditable } from "./canvas/nodes.js";
+import { copy } from "./copy.js";
+import { elementKind, elementName, layoutLabel, layoutOptionLabel, optionLabel, settingLabel, settingShown } from "./names.js";
+import { Hinted } from "./Tooltip.js";
 
 type PropValue = string | number | boolean | null;
 
@@ -11,9 +15,6 @@ export interface PropertiesPanelProps {
   onEdit: (edit: EditIntent) => void;
 }
 
-/** Plain elements that can't hold text. */
-const VOID = new Set(["area", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
-
 /**
  * Properties of the selected element (T3.5): its schema props, text content and, for
  * Stacks and Grids, layout properties as classes. Every change is one edit op.
@@ -23,53 +24,55 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
   const id = node.id;
   if (!id) {
     return (
-      <section aria-label="Properties" className="properties">
-        <h2>Properties</h2>
-        <p className="muted">This element has no data-ui-id, so Skeleton can't edit it.</p>
+      <section aria-label={copy.properties.title} className="properties">
+        <h2>{copy.properties.title}</h2>
+        <p className="muted">{copy.properties.noId(elementName(node))}</p>
       </section>
     );
   }
-  const textEditable = node.children.length === 0 && (schema ? schema.children === "text" : !VOID.has(node.name));
+  const hasText = textEditable(node, schema);
   const groups = schema?.layout === "stack" ? layout?.stack : schema?.layout === "grid" ? layout?.grid : undefined;
   const classNameProtected = node.protectedProps.includes("className");
   const classes = typeof node.props["className"] === "string" ? node.props["className"].split(/\s+/).filter(Boolean) : [];
 
   return (
-    <section aria-label="Properties" className="properties" data-testid="properties">
-      <h2>Properties</h2>
+    <section aria-label={copy.properties.title} className="properties" data-testid="properties">
+      <h2>{copy.properties.title}</h2>
       {schema && schema.props.length > 0 && (
         <div className="prop-grid">
-          {schema.props.map((prop) =>
+          {schema.props.filter((prop) => settingShown(prop.name)).map((prop) =>
             node.protectedProps.includes(prop.name) ? (
-              <Row key={prop.name} label={prop.name}>
-                <span className="muted" title="Set by agent code; edit it in code">
-                  set by agent code
-                </span>
+              <Row key={prop.name} label={settingLabel(prop.name, node.name)}>
+                <Hinted text={copy.properties.agentSetTitle}>
+                  <span className="muted">
+                    {copy.properties.agentSet}
+                  </span>
+                </Hinted>
               </Row>
             ) : (
-              <Row key={prop.name} label={prop.name}>
-                <PropControl prop={prop} value={node.props[prop.name]} onChange={(value) => onEdit({ op: "setProp", id, key: prop.name, value })} />
+              <Row key={prop.name} label={settingLabel(prop.name, node.name)}>
+                <PropControl prop={prop} element={node.name} value={node.props[prop.name]} onChange={(value) => onEdit({ op: "setProp", id, key: prop.name, value })} />
               </Row>
             ),
           )}
         </div>
       )}
-      {textEditable && (
+      {hasText && (
         <div className="prop-grid">
-          <Row label="Text">
-            <TextInput label="Text" value={node.text ?? ""} onCommit={(text) => onEdit({ op: "setText", id, text })} />
+          <Row label={copy.properties.text}>
+            <TextInput label={copy.properties.text} value={node.text ?? ""} onCommit={(text) => onEdit({ op: "setText", id, text })} />
           </Row>
         </div>
       )}
       {groups && (
         <>
-          <h3>{schema?.layout === "grid" ? "Grid" : "Stack"}</h3>
+          <h3>{schema?.layout === "grid" ? copy.properties.grid : elementKind(node)}</h3>
           {classNameProtected ? (
-            <p className="muted">Its classes are set by agent code, so layout is edited in code.</p>
+            <p className="muted">{copy.properties.agentLayout}</p>
           ) : (
             <div className="prop-grid">
               {groups.map((group) => (
-                <Row key={group.id} label={group.label}>
+                <Row key={group.id} label={layoutLabel(group.label)}>
                   <ClassControl group={group} classes={classes} onChange={(add, remove) => onEdit({ op: "setClass", id, add, remove })} />
                 </Row>
               ))}
@@ -77,7 +80,7 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
           )}
         </>
       )}
-      {!schema && !textEditable && !groups && <p className="muted">No properties to edit here.</p>}
+      {!schema && !textEditable && !groups && <p className="muted">{copy.properties.empty}</p>}
     </section>
   );
 }
@@ -92,28 +95,29 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** Choosing the prop's default removes the attribute, keeping the code minimal. */
-function PropControl({ prop, value, onChange }: { prop: PropSchema; value: PropValue | undefined; onChange: (value: PropValue) => void }) {
+function PropControl({ prop, element, value, onChange }: { prop: PropSchema; element: string; value: PropValue | undefined; onChange: (value: PropValue) => void }) {
+  const label = settingLabel(prop.name, element);
   const set = (next: PropValue) => onChange(next === prop.default ? null : next);
   switch (prop.type) {
     case "enum": {
       const current = typeof value === "string" ? value : prop.default;
       return (
-        <select aria-label={prop.name} value={current} onChange={(e) => set(e.target.value)}>
-          {!prop.options.includes(current) && <option value={current}>{current} (custom)</option>}
+        <select aria-label={label} value={current} onChange={(e) => set(e.target.value)}>
+          {!prop.options.includes(current) && <option value={current}>{copy.properties.custom(current)}</option>}
           {prop.options.map((o) => (
             <option key={o} value={o}>
-              {o}
+              {optionLabel(prop.name, o, element)}
             </option>
           ))}
         </select>
       );
     }
     case "boolean":
-      return <input type="checkbox" aria-label={prop.name} checked={typeof value === "boolean" ? value : prop.default} onChange={(e) => set(e.target.checked)} />;
+      return <input type="checkbox" aria-label={label} checked={typeof value === "boolean" ? value : prop.default} onChange={(e) => set(e.target.checked)} />;
     case "string":
       return (
         <TextInput
-          label={prop.name}
+          label={label}
           value={typeof value === "string" ? value : (prop.default ?? "")}
           // Clearing an optional prop removes it; a required one (non-null default) is never removed.
           onCommit={(text) => onChange(text === "" && prop.default === null ? null : text)}
@@ -122,7 +126,7 @@ function PropControl({ prop, value, onChange }: { prop: PropSchema; value: PropV
     case "number":
       return (
         <TextInput
-          label={prop.name}
+          label={label}
           type="number"
           value={typeof value === "number" ? String(value) : prop.default === null ? "" : String(prop.default)}
           onCommit={(text) => {
@@ -167,14 +171,14 @@ function ClassControl({ group, classes, onChange }: { group: ClassGroup; classes
   const listed = group.options.some((o) => (o.class ?? "") === selected);
   return (
     <select
-      aria-label={group.label}
+      aria-label={layoutLabel(group.label)}
       value={selected}
       onChange={(e) => onChange(e.target.value ? [e.target.value] : [], current)}
     >
-      {!listed && <option value={selected}>{selected} (custom)</option>}
+      {!listed && <option value={selected}>{copy.properties.custom(selected)}</option>}
       {group.options.map((o) => (
         <option key={o.class ?? ""} value={o.class ?? ""}>
-          {o.label}
+          {layoutOptionLabel(o.label)}
         </option>
       ))}
     </select>

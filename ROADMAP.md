@@ -32,16 +32,20 @@ The roadmap is organised by milestone, not by date. A milestone ships when its g
 
 **Thesis:** Phase 6 passed its gate: no loop lost code, IDs or tokens. What it did turn up is friction in composing, mostly placing things where you mean (see `docs/dogfood-log.md`, F-1 to F-6). These are fixes to v1's own features, not new scope, so they come before v1.1.
 
-**Next (hit in most loops):**
-- **Drop beside a container, not only into it (F-1, F-4).** Today a drop goes into the nearest container under the pointer. So a Card aimed at the edge of another Card nests inside it, and a Grid aimed below a toolbar lands inside the toolbar. Proposal: near a container's edge (for example, the outer 8 px in its parent's flow direction), offer "before/after this" instead of "into this", and draw the insertion line in the parent. The overlay's `dropAt` owns this. It must keep `insert`'s minimal diff and never target a locked parent.
-- **Reorder without seeing both ends (F-2).** On long pages, the element's grip and its destination aren't on screen together. Options: move from the Layers tree (drag a row onto another), or move up/down buttons in the Selection panel. Both would call the same `move` op.
+**Done** (T7.1–T7.5, `docs/decisions/012-dogfood-fixes.md`):
+- **Drop beside a container, not only into it (F-1, F-4).** Near a container's edge along its parent's flow (8 px, at most a quarter of it), a drop goes before or after it in the parent, never into a locked one. The insertion line is drawn in the parent, and the label says "After Card in Grid".
+- **Reorder without seeing both ends (F-2).** Move up / Move down in the Selection panel, and Alt+↑/↓. Both call the same `move` op. Dragging rows in the Layers tree was left out (see ADR 012).
+- **Compose inside overlays (F-6).** "Open Dialog in canvas" on a selected Dialog or Sheet clicks its own trigger, so the code doesn't change. While it's open, its content takes drops, selection and edits.
+- **No text selection in Skeleton's chrome (F-3).** `user-select: none`, except text fields, code views, the dev-server log and errors.
+- **Lighter templates (F-5).** Double-click an element's text on the canvas to edit it in place: one action per text.
 
-**Soon:**
-- **Compose inside overlays (F-6).** A closed Dialog or Sheet shows nothing on the canvas, so nothing can be dropped into it. Proposal: an "open in canvas" toggle on a selected Dialog or Sheet that renders its content for editing. The alternative is dropping onto its Layers row.
-- **No text selection in Skeleton's chrome (F-3).** `user-select: none` on panels and headings, with an exception for the dev-server log and code views.
+---
 
-**Later:**
-- **Lighter templates (F-5).** Cards arrive as "Card title / Card description / Card content". Consider editing text on the canvas (double-click) so each one is a single action.
+## v1.0.y — UI refresh
+
+**Thesis:** Skeleton's own UI should make sense to someone who doesn't know HTML or CSS. It needs plain words, an Adobe-style layout (Build | Style | Hand off workspaces with a tabbed inspector), a compact dark style, and messages that say what happened and what to do. This is presentation only: no new features and no behaviour changes. The spec is `docs/ui-refresh-spec.md`, and the tasks are T8.1–T8.10 in TASKS.md.
+
+**Done** (T8.1–T8.10, gate passed 2026-10-04). From the sign-off review, theme colours are edited with a colour picker (hex, RGB, HSL, opacity) instead of an oklch text box.
 
 ---
 

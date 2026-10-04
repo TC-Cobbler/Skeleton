@@ -4,8 +4,9 @@
 import type { NoteType, NoteView, NotesView, Reply } from "@skeleton/app-main/ipc";
 import type { NotePin } from "@skeleton/overlay/protocol";
 import type { KeyedNode } from "./canvas/nodes.js";
+import { copy } from "./copy.js";
 
-export const TYPE_LABEL: Record<NoteType, string> = { build: "Build", behaviour: "Behaviour", question: "Question" };
+export const TYPE_LABEL: Record<NoteType, string> = copy.notes.types;
 
 export interface NoteFilter {
   type: NoteType | "all";

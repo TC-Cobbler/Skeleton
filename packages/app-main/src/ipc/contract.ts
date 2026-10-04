@@ -11,6 +11,7 @@ import type {
   Note,
   NoteOp,
   PageTree,
+  Reason,
   Reply,
   RouteInfo,
   Theme,
@@ -21,7 +22,7 @@ import type {
 } from "@skeleton/core";
 import type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem } from "@skeleton/templates";
 
-export type { ContractBreach, ElementRef, HandoffTask, IdRepair, LockedBlock, Note, NoteOp, NoteStatus, NoteType, Reply, Violation } from "@skeleton/core";
+export type { ContractBreach, ElementRef, HandoffTask, IdRepair, LockedBlock, Note, NoteOp, NoteStatus, NoteType, Reason, ReasonCode, ReasonFacts, Reply, Violation } from "@skeleton/core";
 export type { PageTree, UiNode, NodeKind, RouteInfo, ColourMode, Theme, ThemeToken, TokenGroup, TokenUsage, TokenWrite, ViolationDetail, ViolationProperty, PromoteKind } from "@skeleton/core";
 export type { ClassGroup, ElementSchema, PaletteGroup, PaletteItem, PropSchema } from "@skeleton/templates";
 
@@ -515,7 +516,10 @@ export type IpcErrorCode = "bad-request" | "untrusted-sender" | "not-found" | "e
 export interface IpcError {
   code: IpcErrorCode;
   channel: string;
+  /** Technical: names the op, node or file. Shown only under Details. */
   message: string;
+  /** Why, as a code and facts the UI words in plain language (ADR 013); absent or null when only a bug could cause it. */
+  reason?: Reason | null;
 }
 
 /**

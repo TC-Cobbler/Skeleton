@@ -1,0 +1,313 @@
+/* The shell: the window's areas, the start screen, the hand-off box, notices (T8.4). */
+
+main {
+  box-sizing: border-box;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+/* The top bar: project name, page picker, undo and redo, the ⋯ menu (T8.6). */
+.topbar {
+  gap: 4px;
+}
+.spacer {
+  flex: 1;
+}
+main > header {
+  flex: none;
+  min-height: var(--sk-size-bar);
+  padding: 0 12px;
+  background: var(--sk-colour-panel);
+  border-bottom: 1px solid var(--sk-colour-separator);
+}
+main > header h1 {
+  margin: 0 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+main > header code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history {
+  gap: 2px;
+}
+.workspaces {
+  margin: 0;
+}
+.workspaces button[aria-pressed="true"] {
+  background: var(--sk-colour-accent);
+  color: var(--sk-colour-white);
+}
+.reach-hint {
+  margin-top: 10px;
+}
+.page-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+}
+
+/* Pop-overs that open from the top bar: the pages list and the ⋯ menu. */
+.popover-anchor {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.5);
+}
+.page-menu {
+  left: 0;
+  width: 300px;
+}
+.more-menu {
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.menu[hidden] {
+  display: none;
+}
+.more-menu > button {
+  justify-content: flex-start;
+  text-align: left;
+  background: none;
+}
+.more-menu > button:hover:not(:disabled),
+.more-menu > button[aria-checked="true"] {
+  background: var(--sk-colour-control-hover);
+}
+.about {
+  padding: 4px 6px 0;
+}
+.about p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+/* The status bar: only what Skeleton already knows (spec §2). */
+.statusbar {
+  flex: none;
+  min-height: 24px;
+  padding: 0 12px;
+  gap: 6px;
+  background: var(--sk-colour-panel);
+  border-top: 1px solid var(--sk-colour-separator);
+  color: var(--sk-colour-secondary);
+  font-size: var(--sk-type-small);
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sk-colour-secondary);
+}
+.status-running {
+  background: var(--sk-colour-success);
+}
+.status-starting,
+.status-installing {
+  background: var(--sk-colour-warning);
+}
+.status-crashed,
+.status-failed {
+  background: var(--sk-colour-danger);
+}
+
+/* The start screen: new project, open, recent. */
+.picker {
+  padding: 16px 24px;
+  max-width: 640px;
+}
+.picker section {
+  padding: 12px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-panel);
+}
+.recent {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.recent li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A project: side panel, canvas, inspector, and the app preview underneath. */
+.project {
+  display: grid;
+  grid-template-columns: var(--sk-size-panel) 1fr var(--sk-size-inspector);
+  grid-template-rows: 1fr auto;
+  grid-template-areas: "sidebar canvas inspector" "bottom bottom bottom";
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  background: var(--sk-colour-separator);
+}
+.sidebar,
+.inspector-panel {
+  overflow: auto;
+  padding: 10px;
+  background: var(--sk-colour-panel);
+}
+.sidebar {
+  grid-area: sidebar;
+}
+.inspector-panel {
+  grid-area: inspector;
+}
+.sidebar section,
+.inspector-panel section {
+  margin-top: 0;
+}
+.sidebar section + section,
+.sidebar > * + section {
+  margin-top: 14px;
+}
+.inspector-panel section + section {
+  margin-top: 16px;
+}
+.bottom[hidden] {
+  display: none;
+}
+.bottom {
+  grid-area: bottom;
+  padding: 6px 10px;
+  background: var(--sk-colour-panel);
+}
+.bottom section {
+  margin-top: 0;
+}
+.history {
+  margin-top: 6px;
+}
+.is-inert {
+  opacity: 0.45;
+}
+
+/* The app preview: state, address, start and stop, and its log. */
+.devserver header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.devserver h2 {
+  margin: 0 4px 0 0;
+}
+.state {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--sk-colour-control);
+  font-size: var(--sk-type-small);
+}
+.state-running {
+  color: var(--sk-colour-success);
+}
+.state-crashed,
+.state-failed {
+  color: var(--sk-colour-danger);
+}
+.log {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  max-height: 140px;
+  overflow: auto;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-input);
+  font: var(--sk-type-small) / 1.5 var(--sk-type-mono);
+  white-space: pre-wrap;
+}
+.log:empty {
+  display: none;
+}
+.log-error {
+  color: var(--sk-colour-danger);
+}
+.log-skeleton {
+  color: var(--sk-colour-secondary);
+}
+
+/* Hand off and Take back. */
+.loop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 10px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+}
+.loop.is-with-agent {
+  box-shadow: inset 2px 0 0 var(--sk-colour-agent);
+}
+.loop p {
+  margin: 0;
+}
+.loop-error {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0;
+  font-size: var(--sk-type-small);
+}
+
+/* Notices: never block what's under them; only their buttons and Details take clicks. */
+.toasts {
+  pointer-events: none;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(480px, 60vw);
+}
+.toast {
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--sk-size-radius);
+  background: var(--sk-colour-toolbar);
+  color: var(--sk-colour-heading);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.5);
+}
+.toast-error {
+  box-shadow:
+    inset 3px 0 0 var(--sk-colour-danger),
+    0 6px 20px rgb(0 0 0 / 0.5);
+}
+.toast-warning {
+  box-shadow:
+    inset 3px 0 0 var(--sk-colour-warning),
+    0 6px 20px rgb(0 0 0 / 0.5);
+}
+.toast button,
+.toast details {
+  pointer-events: auto;
+}
+.toast-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.toast-text {
+  flex: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

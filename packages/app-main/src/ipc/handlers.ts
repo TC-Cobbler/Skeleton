@@ -2,7 +2,22 @@
 // without Electron. `register.ts` wires them to ipcMain.
 
 import path from "node:path";
-import { buildTree, exportedNames, NOTE_TEXT_MAX, NOTE_TYPES, readRoutes, readTheme, sourceVersion, tokenUsage, type NoteOp, type NoteType, type TokenWrite } from "@skeleton/core";
+import {
+  buildTree,
+  exportedNames,
+  NOTE_TEXT_MAX,
+  NOTE_TYPES,
+  readRoutes,
+  readTheme,
+  reason,
+  reasonOf,
+  sourceVersion,
+  tokenUsage,
+  type NoteOp,
+  type NoteType,
+  type Reason,
+  type TokenWrite,
+} from "@skeleton/core";
 import {
   ELEMENTS,
   GLOBALS_CSS,
@@ -103,11 +118,12 @@ function projectRootOf(raw: unknown): string {
   return path.resolve(projectRoot);
 }
 
-/** Thrown inside a handler to answer with a specific error code. */
+/** Thrown inside a handler to answer with a specific error code, and the reason the UI words it by (ADR 013). */
 export class HandlerError extends Error {
   constructor(
     readonly code: IpcErrorCode,
     message: string,
+    readonly reason: Reason | null = null,
   ) {
     super(message);
     this.name = "HandlerError";
@@ -166,7 +182,7 @@ const validators: Validators = {
     }
     if (typeof name !== "string") throw new HandlerError("bad-request", "name must be a string");
     const nameError = projectNameError(name);
-    if (nameError) throw new HandlerError("bad-request", nameError);
+    if (nameError) throw new HandlerError("bad-request", nameError, reason("bad-project-name", { name }));
     return { parentDir, name };
   },
   "project:list": (raw) => {
@@ -445,7 +461,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
       return await deps.readFile(absolute);
     } catch (err) {
       if (isNodeError(err) && err.code === "ENOENT") {
-        throw new HandlerError("not-found", `no such page: ${file}`);
+        throw new HandlerError("not-found", `no such page: ${file}`, reason("page-missing", { page: file }));
       }
       throw err;
     }
@@ -507,7 +523,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
       try {
         css = await deps.readFile(resolveInside(projectRoot, GLOBALS_CSS));
       } catch (err) {
-        if (isNodeError(err) && err.code === "ENOENT") throw new HandlerError("not-found", `${GLOBALS_CSS} not found`);
+        if (isNodeError(err) && err.code === "ENOENT") throw new HandlerError("not-found", `${GLOBALS_CSS} not found`, reason("theme-unreadable"));
         throw err;
       }
       return sheetOf(css);
@@ -564,7 +580,11 @@ function createHandlers(deps: HandlerDeps): Handlers {
     },
     "page:tree": async ({ projectRoot, file }) => {
       const source = await readPage(projectRoot, file);
-      return { ...buildTree(source), version: sourceVersion(source) };
+      try {
+        return { ...buildTree(source), version: sourceVersion(source) };
+      } catch (cause) {
+        throw new HandlerError("failed", `${file} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, reason("page-unreadable", { page: file }));
+      }
     },
     "project:create": async (request) => {
       const created = await deps.createProject(request);
@@ -575,7 +595,7 @@ function createHandlers(deps: HandlerDeps): Handlers {
     "project:list": async () => deps.projects.list(),
     "project:open": async ({ projectRoot }) => {
       const info = await deps.projects.info(projectRoot);
-      if (!info) throw new HandlerError("not-found", `${projectRoot} isn't a Skeleton project (no skeleton/config.json)`);
+      if (!info) throw new HandlerError("not-found", `${projectRoot} isn't a Skeleton project (no skeleton/config.json)`, reason("not-a-skeleton-project", { folder: projectRoot }));
       await deps.projects.touch(info);
       deps.opened?.(projectRoot);
       return info;
@@ -597,7 +617,7 @@ function sheetOf(css: string): TokenSheet {
   try {
     return { file: GLOBALS_CSS, ...readTheme(css, templateTokens()), usage: tokenUsage(css) };
   } catch (cause) {
-    throw new HandlerError("failed", `${GLOBALS_CSS} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new HandlerError("failed", `${GLOBALS_CSS} doesn't parse: ${cause instanceof Error ? cause.message : String(cause)}`, reason("theme-unreadable"));
   }
 }
 
@@ -606,8 +626,8 @@ async function editing<T>(task: () => Promise<T>): Promise<T> {
   try {
     return await task();
   } catch (cause) {
-    if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message);
-    if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message);
+    if (cause instanceof EditRefused) throw new HandlerError("edit-refused", cause.message, cause.reason);
+    if (cause instanceof EditRolledBack) throw new HandlerError("edit-rolled-back", cause.message, cause.reason);
     throw cause;
   }
 }
@@ -617,10 +637,13 @@ async function looping<T>(task: () => Promise<T>): Promise<T> {
   try {
     return await task();
   } catch (cause) {
-    if (cause instanceof LoopRefused) throw new HandlerError("edit-refused", cause.message);
+    if (cause instanceof LoopRefused) throw new HandlerError("edit-refused", cause.message, cause.reason);
     throw cause;
   }
 }
+
+/** An IPC error carries a reason only when there is one. */
+const withReason = (r: Reason | null): { reason?: Reason } => (r ? { reason: r } : {});
 
 function isNodeError(err: unknown): err is NodeJS.ErrnoException {
   return err instanceof Error && "code" in err;
@@ -656,11 +679,12 @@ export function createDispatch(
     } catch (cause) {
       const error: IpcError =
         cause instanceof HandlerError
-          ? { code: cause.code, channel, message: cause.message }
+          ? { code: cause.code, channel, message: cause.message, ...withReason(cause.reason) }
           : {
               code: "failed",
               channel,
               message: cause instanceof Error ? cause.message : String(cause),
+              ...withReason(reasonOf(cause)),
             };
       onError(error, cause);
       return { ok: false, error };

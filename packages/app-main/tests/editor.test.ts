@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildIdIndex, buildTree, findNodeById, parseModule, readRoutes } from "@skeleton/core";
+import { buildIdIndex, buildTree, findNodeById, parseModule, readRoutes, reason } from "@skeleton/core";
 import { loadTemplate, renderProject } from "@skeleton/templates";
 import type { Checker, Diagnostic } from "../src/project/checker.js";
 import { Editor, EditRefused, EditRolledBack, listSources, type EditorIO } from "../src/project/editor.js";
@@ -111,7 +111,7 @@ describe("Editor: insert (T3.2)", () => {
     const p = memoryProject();
     const editor = new Editor(p.io);
     await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: "ui_zzzzz", index: 0, paletteId: "button" })).rejects.toThrow(
-      new EditRefused("insert(ui_zzzzz): ui_zzzzz not found"),
+      new EditRefused("insert(ui_zzzzz): ui_zzzzz not found", { reason: reason("element-gone", { id: "ui_zzzzz" }) }),
     );
     await expect(editor.apply(ROOT, "src/pages/HomePage.tsx", { op: "insert", parentId: p.stackId, index: 9, paletteId: "button" })).rejects.toThrow(
       /index 9 out of range/,

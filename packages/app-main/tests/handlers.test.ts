@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { sourceVersion } from "@skeleton/core";
+import { reason, sourceVersion } from "@skeleton/core";
 import type { IpcError } from "../src/ipc/contract.js";
 import {
   createDispatch,
@@ -94,7 +94,7 @@ function setup(overrides: Partial<HandlerDeps> = {}) {
         },
         status: async () => ({ state: "with-user", handoff: null, pass: null, next: 1, summary: null }),
         handoff: async () => {
-          throw new LoopRefused("The project doesn't build");
+          throw new LoopRefused("The project doesn't build", { reason: reason("build-broken") });
         },
         takeBack: async () => ({ state: "with-user", handoff: null, pass: null, next: 2, summary: null }),
         revert: async () => ({ state: "with-user", handoff: null, pass: null, next: 2, summary: null }),
@@ -192,6 +192,7 @@ describe("dispatch", () => {
         code: "not-found",
         channel: "page:tree",
         message: "no such page: src/pages/Nope.tsx",
+        reason: { code: "page-missing", facts: { page: "src/pages/Nope.tsx" } },
       },
     });
     expect(readFileSpy).toHaveBeenCalledWith(
@@ -677,7 +678,11 @@ describe("notes and the loop (Phase 5)", () => {
   it("answers loop status, and passes refusals back as edit-refused", async () => {
     const { dispatch } = setup();
     await expect(dispatch("loop:status", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: true, value: { state: "with-user", next: 1 } });
-    await expect(dispatch("loop:handoff", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: false, error: { code: "edit-refused" } });
+    // The technical message, and the reason the UI words it by (T8.3, ADR 013).
+    await expect(dispatch("loop:handoff", { projectRoot: fixtureRoot })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "edit-refused", message: "The project doesn't build", reason: { code: "build-broken", facts: {} } },
+    });
     await expect(dispatch("loop:takeBack", { projectRoot: "relative" })).resolves.toMatchObject({ ok: false, error: { code: "bad-request" } });
     await expect(dispatch("loop:revert", { projectRoot: fixtureRoot })).resolves.toMatchObject({ ok: true });
   });

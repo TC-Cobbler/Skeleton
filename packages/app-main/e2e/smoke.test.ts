@@ -6,6 +6,7 @@ import {
   type Page,
 } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ui } from "./ui.js";
 
 const pkgRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -82,8 +83,8 @@ describe("Electron shell", () => {
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog;
     }, fixtureRoot);
-    await page.getByRole("button", { name: "Open…" }).click();
+    await ui(page).picker.openFolder().click();
     await expect(page.getByTestId("project-root").textContent()).resolves.toBe(fixtureRoot);
-    await page.getByRole("region", { name: "Selection" }).waitFor();
+    await ui(page).selection().waitFor();
   });
 });

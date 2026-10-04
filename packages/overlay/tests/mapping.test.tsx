@@ -2,6 +2,7 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { locChain, NodeIndex } from "../src/mapping.js";
+import { copy } from "../src/copy.js";
 import { Overlay } from "../src/overlay.js";
 import type { HostMessage, OverlayMessage, OverlayNode } from "../src/protocol.js";
 
@@ -41,11 +42,11 @@ function Page({ rows, shift = 0, version = V }: { rows: string[]; shift?: number
 }
 
 const nodes: OverlayNode[] = [
-  { key: "0", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true, move: false },
-  { key: "0.0", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110, drop: false, move: true },
-  { key: "0.0.0", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105, drop: false, move: false },
-  { key: "0.1", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200, drop: false, move: true },
-  { key: "0.1.0", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190, drop: false, move: false },
+  { key: "0", label: "Box", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true, move: false },
+  { key: "0.0", label: "Agent component: Dialog", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110, drop: false, move: true },
+  { key: "0.0.0", label: "Button", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105, drop: false, move: false },
+  { key: "0.1", label: "Repeated list", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200, drop: false, move: true },
+  { key: "0.1.0", label: "Text", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190, drop: false, move: false },
 ];
 
 let container: HTMLElement;
@@ -153,7 +154,8 @@ describe("Overlay", () => {
     expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "select", key: "0.0.0" });
     const layer = document.querySelector("skeleton-overlay");
     flush();
-    expect(layer?.shadowRoot?.innerHTML).toContain("button #ui_trig0");
+    expect(layer?.shadowRoot?.innerHTML).toContain('data-label-for="ui_trig0"');
+    expect(layer?.shadowRoot?.innerHTML).toContain("Button</div>");
   });
 
   it("drags a gizmo: previews live, commits on release, and keeps the preview until the page updates (T4.3, T4.4)", () => {
@@ -169,11 +171,12 @@ describe("Overlay", () => {
       type: "gizmos",
       key: "0.0.0",
       tokens: [
-        { name: "--radius", value: "0.625rem", resolved: null, colour: false },
-        { name: "--radius-button", value: "calc(var(--radius) * 0.8)", resolved: "0.5rem", colour: false },
+        { name: "--radius", label: "Corner radius", value: "0.625rem", resolved: null, colour: false },
+        { name: "--radius-button", label: "Button corners", value: "calc(var(--radius) * 0.8)", resolved: "0.5rem", colour: false },
       ],
       spacingSteps: [0, 1, 2, 4],
       classEdits: null,
+      kind: "Button",
     });
     flush();
     const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
@@ -187,7 +190,7 @@ describe("Overlay", () => {
     expect(live?.textContent).toBe(".rounded-button{border-radius:16px!important}");
     expect(trigger.hasAttribute("data-skeleton-gizmo")).toBe(true);
     flush();
-    expect(shadow.innerHTML).toContain("--radius-button: calc(var(--radius) * 1.6)");
+    expect(shadow.innerHTML).toContain("Button corners: 16px");
     pointer("pointerup", document, 114, 114, 0);
     expect(sent.at(-1)).toEqual({
       source: "skeleton-overlay",
@@ -252,7 +255,7 @@ describe("Overlay", () => {
     flush();
     const html = document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
     expect(html).toContain("data-drop-indicator");
-    expect(html).toContain("Into div #ui_root0");
+    expect(html).toContain("Into Box");
 
     // Moving the dialog itself: never into itself, and indexes count it as taken out.
     send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: "0.0", seq: 8 });
@@ -262,6 +265,61 @@ describe("Overlay", () => {
     expect(target()).toBeNull();
     flush();
     expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).not.toContain("data-drop-indicator");
+  });
+
+  it("drops beside a container aimed at its edge, into it aimed at its middle (F-1, F-4)", () => {
+    const { sent, send, flush } = setup();
+    // Treat the Dialog as an editable container, like a Card in a Stack.
+    const editable = nodes.map((n) => (n.key === "0.0" ? { ...n, kind: "palette" as const, label: "Dialog", drop: true } : n));
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: editable });
+    const box = (y: number, h: number) => () => ({ x: 0, y, left: 0, top: y, right: 100, bottom: y + h, width: 100, height: h, toJSON: () => ({}) }) as DOMRect;
+    ($("#root-div") as HTMLElement).getBoundingClientRect = box(0, 100);
+    ($(".dialog") as HTMLElement).getBoundingClientRect = box(0, 40);
+    ($("#trigger") as HTMLElement).getBoundingClientRect = box(10, 20);
+    document.querySelectorAll<HTMLElement>(".row").forEach((el, i) => (el.getBoundingClientRect = box(50 + i * 20, 20)));
+    document.elementFromPoint = () => $(".inner");
+    const target = () => {
+      const m = sent.at(-1);
+      return m?.type === "drop-target" ? m.target : "none";
+    };
+    const label = () => {
+      flush();
+      return document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
+    };
+
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 20, moving: null, seq: 1 });
+    expect(target()).toMatchObject({ parentKey: "0.0" });
+    expect(label()).toContain("Into Dialog");
+    // The div is a column: the Dialog's bottom 8px is "after it", its top 8px "before it".
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 36, moving: null, seq: 2 });
+    expect(target()).toEqual({ parentKey: "0", index: 1 });
+    expect(label()).toContain("After Dialog in Box");
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 3, moving: null, seq: 3 });
+    expect(target()).toEqual({ parentKey: "0", index: 0 });
+    expect(label()).toContain("Before Dialog in Box");
+
+    // Edges that coincide: aimed at the right edge of an inner container (the trigger,
+    // made a container here) in the middle of its height, the drop goes beside the
+    // nearest ancestor whose parent's flow runs that way. The div is a row now.
+    const nested = editable.map((n) => (n.key === "0.0.0" ? { ...n, drop: true } : n));
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: nested });
+    ($("#root-div") as HTMLElement).style.cssText = "display:flex;flex-direction:row";
+    document.elementFromPoint = () => $("#trigger");
+    send({ source: "skeleton-host", type: "drag", x: 97, y: 20, moving: null, seq: 5 });
+    expect(target()).toEqual({ parentKey: "0", index: 1 });
+    expect(label()).toContain("After Dialog in Box");
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 20, moving: null, seq: 6 });
+    expect(target()).toMatchObject({ parentKey: "0.0.0" });
+    ($("#root-div") as HTMLElement).style.cssText = "";
+    document.elementFromPoint = () => $(".inner");
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: editable });
+
+    // The parent doesn't take drops: the edge goes into the container, as before.
+    const lockedParent = editable.map((n) => (n.key === "0" ? { ...n, drop: false } : n));
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: lockedParent });
+    send({ source: "skeleton-host", type: "drag", x: 50, y: 36, moving: null, seq: 4 });
+    expect(target()).toMatchObject({ parentKey: "0.0" });
+    send({ source: "skeleton-host", type: "drag-end" });
   });
 
   it("moves the nearest movable node by dragging on the canvas, without selecting (T3.3)", () => {
@@ -283,7 +341,7 @@ describe("Overlay", () => {
     at.el = document.querySelectorAll(".row")[2] as Element;
     mouse("pointermove", at.el, 50, 85);
     flush();
-    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).toContain("Move 🔒 Dialog into div #ui_root0");
+    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).toContain("Move 🔒 Agent component: Dialog into Box");
     const before = sent.length;
     mouse("pointerup", at.el, 50, 85, 0);
     mouse("click", at.el, 50, 85, 0);
@@ -306,7 +364,7 @@ describe("Overlay", () => {
     const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
     const grip = shadow.querySelector("[data-grab]") as HTMLElement;
     expect(grip.getAttribute("data-grab")).toBe("0.0");
-    expect(grip.textContent).toBe("⠿ 🔒 Dialog");
+    expect(grip.textContent).toBe(`⠿ ${copy.overlay.agentLabel("Agent component: Dialog")}`);
     const at = { el: $(".row") as Element };
     document.elementFromPoint = () => at.el;
     const mouse = (type: string, el: Element, x: number, y: number, buttons = 1) =>
@@ -393,13 +451,99 @@ describe("Overlay", () => {
     expect(press("z", { metaKey: true, shiftKey: true })).toBe(true);
     expect(press("a")).toBe(false);
     expect(press("z")).toBe(false);
+    expect(press("ArrowUp", { altKey: true })).toBe(true);
+    expect(press("ArrowUp")).toBe(false);
     expect(sent.filter((m) => m.type === "key")).toEqual([
-      { source: "skeleton-overlay", type: "key", key: "Delete", mod: false, shift: false },
-      { source: "skeleton-overlay", type: "key", key: "z", mod: true, shift: true },
+      { source: "skeleton-overlay", type: "key", key: "Delete", mod: false, shift: false, alt: false },
+      { source: "skeleton-overlay", type: "key", key: "z", mod: true, shift: true, alt: false },
+      { source: "skeleton-overlay", type: "key", key: "ArrowUp", mod: false, shift: false, alt: true },
     ]);
     send({ source: "skeleton-host", type: "mode", mode: "interact" });
     expect(press("Backspace")).toBe(false);
-    expect(sent.filter((m) => m.type === "key")).toHaveLength(2);
+    expect(sent.filter((m) => m.type === "key")).toHaveLength(3);
+  });
+
+  it("opens and closes a Dialog by its own trigger, even in select mode, and reports it (F-6)", async () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    // A Radix trigger: it says what it opens and whether it's open.
+    const trigger = $("#trigger") as HTMLElement;
+    trigger.setAttribute("aria-haspopup", "dialog");
+    trigger.setAttribute("aria-expanded", "false");
+    const appClick = vi.fn(() => trigger.setAttribute("aria-expanded", String(trigger.getAttribute("aria-expanded") !== "true")));
+    trigger.addEventListener("click", appClick);
+    const states = () => sent.filter((m) => m.type === "open-state");
+    const settle = async () => {
+      await Promise.resolve(); // the MutationObserver
+      flush();
+    };
+
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: null });
+    expect(states().at(-1)).toEqual({ source: "skeleton-overlay", type: "open-state", key: "0.0", open: false });
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: true });
+    expect(appClick).toHaveBeenCalledOnce();
+    await settle();
+    expect(states().at(-1)).toMatchObject({ key: "0.0", open: true });
+    // Already open: nothing to click.
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: true });
+    expect(appClick).toHaveBeenCalledOnce();
+    send({ source: "skeleton-host", type: "open", key: "0.0", open: false });
+    expect(appClick).toHaveBeenCalledTimes(2);
+    await settle();
+    expect(states().at(-1)).toMatchObject({ key: "0.0", open: false });
+    // The user's own clicks still select, and don't reach the app.
+    trigger.click();
+    expect(appClick).toHaveBeenCalledTimes(2);
+    // No trigger on screen: null.
+    send({ source: "skeleton-host", type: "open", key: "0.1", open: true });
+    expect(states().at(-1)).toMatchObject({ key: "0.1", open: null });
+  });
+
+  it("edits text in place on a double-click the host allows, never touching the app's DOM (F-5)", () => {
+    const { sent, send, flush } = setup();
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    const trigger = $("#trigger") as HTMLElement;
+    trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "text-request", key: "0.0.0" });
+
+    const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
+    const editor = () => shadow.querySelector<HTMLInputElement>("[data-text-editor]");
+    const key = (k: string) => {
+      const e = new KeyboardEvent("keydown", { key: k, bubbles: true, composed: true, cancelable: true });
+      editor()?.dispatchEvent(e);
+      return e;
+    };
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    expect(editor()?.value).toBe("Open");
+    expect(shadow.activeElement).toBe(editor());
+    // Redrawing the layer keeps the field (and its focus).
+    flush();
+    expect(editor()).not.toBeNull();
+    // Delete is a character here, not Skeleton's shortcut.
+    const before = sent.length;
+    key("Delete");
+    expect(sent.length).toBe(before);
+    // Escape cancels.
+    (editor() as HTMLInputElement).value = "Changed";
+    key("Escape");
+    expect(editor()).toBeNull();
+    expect(sent.length).toBe(before);
+    expect(trigger.textContent).toBe("Open");
+
+    // Enter commits a change, once.
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    (editor() as HTMLInputElement).value = "Open orders";
+    key("Enter");
+    expect(editor()).toBeNull();
+    expect(sent.slice(before)).toEqual([{ source: "skeleton-overlay", type: "text-commit", key: "0.0.0", text: "Open orders" }]);
+    expect(trigger.textContent).toBe("Open");
+    // Unchanged text commits nothing; a new tree closes the editor.
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    key("Enter");
+    send({ source: "skeleton-host", type: "text-editor", key: "0.0.0", text: "Open" });
+    send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes });
+    expect(editor()).toBeNull();
+    expect(sent.filter((m) => m.type === "text-commit")).toHaveLength(1);
   });
 
   it("only accepts same-origin paths to navigate to", async () => {
@@ -432,7 +576,7 @@ describe("Overlay", () => {
     const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
     const pin = shadow.querySelector('[data-pin="0.0.0"]') as HTMLElement;
     expect(pin.textContent).toBe("2\u2009↩");
-    expect(pin.title).toBe("2 open of 3 notes · agent replied");
+    expect(pin.title).toBe(`${copy.overlay.pinNotes(2, 3)} · ${copy.overlay.pinReplied}`);
     expect(shadow.querySelector('[data-pin="0.1.0"]')?.textContent).toBe("✓");
     pin.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true, cancelable: true }));
     expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "pin", key: "0.0.0" });
@@ -454,14 +598,11 @@ describe("Overlay", () => {
 });
 
 describe("labels", () => {
-  it("say what locks a block", async () => {
+  it("show the host's element name, marking agent code", async () => {
     const { labelOf } = await import("../src/overlay.js");
     const n = (over: Partial<OverlayNode>): OverlayNode => ({ ...nodes[0], ...over }) as OverlayNode;
-    expect(labelOf(n({ kind: "locked", name: "map", element: false, id: null }))).toBe("🔒 .map()");
-    expect(labelOf(n({ kind: "locked", name: "conditional", element: false, id: null }))).toBe("🔒 conditional");
-    expect(labelOf(n({ kind: "locked", name: "expression", element: false, id: null }))).toBe("🔒 {…}");
-    expect(labelOf(n({ kind: "locked", name: "OrdersTable", element: true, id: "ui_ordt1" }))).toBe("🔒 OrdersTable #ui_ordt1");
-    expect(labelOf(n({ kind: "palette", name: "Button", id: "ui_b1234" }))).toBe("Button #ui_b1234");
+    expect(labelOf(n({ kind: "locked", name: "map", label: "Repeated list", element: false, id: null }))).toBe(copy.overlay.agentLabel("Repeated list"));
+    expect(labelOf(n({ kind: "palette", name: "Button", label: 'Button "Add game"', id: "ui_b1234" }))).toBe('Button "Add game"');
   });
 });
 

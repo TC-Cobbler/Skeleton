@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppInfo, EditHistory, EditIntent, NoteOp, NoteView, ProjectInfo, TokenWrite, UiNode, ViolationItem } from "@skeleton/app-main/ipc";
-import type { DropTarget, GizmoCommit } from "@skeleton/overlay/protocol";
+import { isShortcut, type DropTarget, type GizmoCommit } from "@skeleton/overlay/protocol";
 import { call } from "./bridge.js";
 import type { KeyedNode } from "./canvas/nodes.js";
 import { Canvas, type GizmoContext, type PreviewLayout } from "./Canvas.js";
 import { COLOUR_GROUP } from "./colour.js";
 import { ColourPanel, type ColourChip } from "./ColourPanel.js";
 import { useCanvasDrag } from "./canvas/drag.js";
-import { agentLogicIn, parentKeyOf, refFor, type NodeRef } from "./canvas/nodes.js";
+import { agentLogicIn, openableFor, parentKeyOf, refFor, reorderTarget, textEditable, type NodeRef } from "./canvas/nodes.js";
 import { PropertiesPanel } from "./PropertiesPanel.js";
 import { SelectionPanel } from "./SelectionPanel.js";
 import { Toasts, useToasts } from "./Toasts.js";
@@ -23,22 +23,28 @@ import { ProjectPicker } from "./ProjectPicker.js";
 import { TokensPanel, useTokens } from "./TokensPanel.js";
 import { useViolations, ViolationsPanel } from "./ViolationsPanel.js";
 import { LoopPanel, PassPanel, useLoop } from "./LoopPanel.js";
-import { NotesPanel, useNotes } from "./NotesPanel.js";
+import { ElementNotes, NotesPanel, useNotes } from "./NotesPanel.js";
 import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
+import { copy } from "./copy.js";
+import { messageFor, say } from "./messages.js";
+import { elementKind, elementName, themeName } from "./names.js";
+import { Columns3, Hand, Monitor, Moon, MousePointer2, Redo2, Smartphone, Sun, Tablet, Undo2 } from "lucide-react";
+import { IconButton } from "./Tooltip.js";
+import { About, MoreMenu, PagePicker } from "./TopBar.js";
+import { MessageText } from "./Toasts.js";
+import type { Message } from "./messages.js";
 
 // Pick or create a project; then the canvas (the running app with Skeleton's
 // overlay), the selection, and the dev server log.
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Message | null>(null);
   const [project, setProject] = useState<ProjectInfo | null>(null);
 
   useEffect(() => {
-    call("app:info", null).then(setInfo, (err: unknown) =>
-      setError(String(err)),
-    );
+    call("app:info", null).then(setInfo, (err: unknown) => setError(messageFor(err)));
   }, []);
 
   async function close() {
@@ -46,33 +52,23 @@ export function App() {
     try {
       await call("devserver:stop", { projectRoot: project.projectRoot });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(messageFor(err));
     }
     setProject(null);
   }
 
   return (
     <main>
-      <header className="row">
-        <h1>{project ? project.name : "Skeleton"}</h1>
-        {project && (
-          <>
-            <code className="muted" data-testid="project-root">{project.projectRoot}</code>
-            <button type="button" onClick={() => void close()}>
-              Close project
-            </button>
-          </>
-        )}
-      </header>
-      {info && (
-        <p className="muted" data-testid="app-info">
-          v{info.appVersion} · Electron {info.electron} · Node {info.node} ·{" "}
-          {info.platform}
-        </p>
+      {!project && (
+        <header className="topbar row">
+          <h1>{copy.app.name}</h1>
+          <span className="spacer" />
+          <MoreMenu about={<About info={info} projectRoot={null} />} />
+        </header>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <MessageText message={error} />}
       {project ? (
-        <ProjectView project={project} />
+        <ProjectView project={project} info={info} onClose={() => void close()} />
       ) : (
         <ProjectPicker onOpen={setProject} />
       )}
@@ -82,16 +78,24 @@ export function App() {
 
 /** Why gizmos can't edit an element's classes (instance overrides, scale steps), or null when they can. */
 function classEditsBlocked(node: UiNode): string | null {
-  if (node.kind === "locked") return "it's a locked block: its classes are agent code";
-  if (!node.id) return "it has no data-ui-id";
-  if (node.protectedProps.includes("className")) return "its className is set by agent code";
+  if (node.kind === "locked") return copy.app.classEdits.locked(elementName(node));
+  if (!node.id) return copy.app.classEdits.noId(elementName(node));
+  if (node.protectedProps.includes("className")) return copy.app.classEdits.agentClassName(elementName(node));
   return null;
 }
+
+type Workspace = "build" | "style" | "handoff";
+type InspectorTab = "element" | "tokens" | "violations" | "pass";
+/** The inspector tab each workspace opens on (layout D). */
+const WORKSPACE_TAB: Record<Workspace, InspectorTab> = { build: "element", style: "tokens", handoff: "pass" };
+
+/** The preview widths' icons. */
+const LAYOUT_ICONS = { desktop: Monitor, tablet: Tablet, mobile: Smartphone, "side-by-side": Columns3 } as const;
 
 /** Shown until the router has been read. */
 const DEFAULT_PAGE = "src/pages/HomePage.tsx";
 
-function ProjectView({ project }: { project: ProjectInfo }) {
+function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: AppInfo | null; onClose: () => void }) {
   const server = useDevServer(project.projectRoot, true);
   const [revision, setRevision] = useState(0);
   const pages = usePages(project.projectRoot, revision);
@@ -123,19 +127,50 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     (key: string | null) => {
       selectionEpoch.current++;
       setSelectedRaw(key);
+      // Selecting an element always shows the Element tab (layout D).
+      if (key !== null) setInspectorTab("element");
     },
     [setSelectedRaw],
   );
   const toasts = useToasts();
   const pushToast = toasts.push;
-  const setEditError = useCallback((message: string | null) => message !== null && pushToast("error", message), [pushToast]);
+  // Messages name elements as they are on the page on screen (spec §4).
+  const nodesNow = useRef(page.nodes);
+  nodesNow.current = page.nodes;
+  const fileNow = useRef(file);
+  fileNow.current = file;
+  /** Shows a failure or refusal in plain words: an error from main, or one of the renderer's own sentences. */
+  const setEditError = useCallback(
+    (err: unknown, tried?: string) =>
+      pushToast(
+        "error",
+        messageFor(err, {
+          element: (id) => {
+            const n = nodesNow.current.find((k) => k.node.id === id)?.node;
+            return n ? elementName(n) : null;
+          },
+          around: (id) => {
+            let key = nodesNow.current.find((k) => k.node.id === id)?.key ?? null;
+            while (key !== null) {
+              key = parentKeyOf(key);
+              const n = key === null ? null : nodesNow.current.find((k) => k.key === key)?.node;
+              if (n?.kind === "locked") return elementKind(n).charAt(0).toLowerCase() + elementKind(n).slice(1);
+            }
+            return null;
+          },
+          page: fileNow.current,
+          ...(tried ? { tried } : {}),
+        }),
+      ),
+    [pushToast],
+  );
   // Say once per project when edits can't be typechecked (T3.7).
   const warnedUnchecked = useRef(false);
   const noteUnchecked = useCallback(
     (reason: string | null) => {
       if (reason === null || warnedUnchecked.current) return;
       warnedUnchecked.current = true;
-      pushToast("warning", `Edits aren't being typechecked: ${reason}`);
+      pushToast("warning", { ...messageFor(copy.app.unchecked), details: reason });
     },
     [pushToast],
   );
@@ -160,7 +195,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           // A rolled-back edit did touch the file: re-read it either way.
           page.reload();
           settled?.(false);
-          setEditError(err instanceof Error ? err.message.replace(/^page:edit: /, "") : String(err));
+          setEditError(err);
         },
       );
     },
@@ -179,13 +214,20 @@ function ProjectView({ project }: { project: ProjectInfo }) {
         (err: unknown) => {
           setRevision((r) => r + 1);
           settled?.(false);
-          setEditError(err instanceof Error ? err.message.replace(/^tokens:write: /, "") : String(err));
+          setEditError(err);
         },
       );
     },
     [project.projectRoot, setTokenSheet, setEditError],
   );
-  const [inspectorTab, setInspectorTab] = useState<"element" | "tokens" | "violations" | "notes" | "pass">("element");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("element");
+  // Build | Style | Hand off (T8.7): each has its own left panel and opens its own inspector tab.
+  const [workspace, setWorkspaceRaw] = useState<Workspace>("build");
+  const [leftTab, setLeftTab] = useState<"add" | "layers">("add");
+  const setWorkspace = (w: Workspace) => {
+    setWorkspaceRaw(w);
+    setInspectorTab(WORKSPACE_TAB[w]);
+  };
   const [noteFocus, setNoteFocus] = useState<string | null>(null);
   // Token counts and highlighting on the canvas (T4.2), while the token panel is open.
   const [tokenCounts, setTokenCounts] = useState<Record<string, number> | null>(null);
@@ -212,9 +254,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     if (!selectedForGizmos || !tokens.sheet) return null;
     return {
       key: selectedForGizmos.key,
-      tokens: tokens.sheet.tokens.map((t) => ({ name: t.name, value: dark && t.dark !== null ? t.dark : t.value, resolved: t.resolved, colour: t.group === "colour" })),
+      tokens: tokens.sheet.tokens.map((t) => ({ name: t.name, label: themeName(t.name), value: dark && t.dark !== null ? t.dark : t.value, resolved: t.resolved, colour: t.group === "colour" })),
       spacingSteps,
       classEdits: classEditsBlocked(selectedForGizmos.node),
+      kind: elementKind(selectedForGizmos.node),
     };
   }, [selectedForGizmos, tokens.sheet, dark, spacingSteps]);
   useEffect(() => setColourChip(null), [selected]);
@@ -222,9 +265,9 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   /** Replace the element's classes matching `remove` (a regex source) with `add`. */
   const setClassFor = (key: string, remove: string, add: string) => {
     const node = page.nodes.find((n) => n.key === key)?.node;
-    const blocked = node ? classEditsBlocked(node) : "it isn't on the page any more";
+    const blocked = node ? classEditsBlocked(node) : copy.app.classEdits.gone;
     if (!node?.id || blocked) {
-      setEditError(`Can't change this element: ${blocked ?? "it has no data-ui-id"}`);
+      setEditError(blocked ?? copy.app.classEdits.gone);
       done(false);
       return;
     }
@@ -246,7 +289,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       (err: unknown) => {
         page.reload();
         setRevision((r) => r + 1);
-        setEditError(err instanceof Error ? err.message.replace(new RegExp(`^${channel}: `), "") : String(err));
+        setEditError(err);
       },
     );
   };
@@ -281,16 +324,31 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     const dest = page.nodes.find((n) => n.key === target.parentKey)?.node;
     const from = Number(key.slice(key.lastIndexOf(".") + 1));
     if (!moved || !parent || !dest?.id) {
-      setEditError(`Can't move there: ${dest?.name ?? "that element"} has no data-ui-id.`);
+      setEditError(dest ? copy.app.cantMoveThere(elementName(dest)) : copy.nodes.gone);
       return;
     }
     if (parentKey === target.parentKey && from === target.index) return; // dropped where it was
-    const r = refFor(page.nodes, key);
+    const r = refFor(page.nodes, key, "move");
     if ("reason" in r) {
-      setEditError(`Can't move ${moved.name}: ${r.reason}`);
+      setEditError(r.reason);
       return;
     }
     edit({ op: "move", ref: r.ref, newParentId: dest.id, index: target.index });
+  };
+  // Compose inside a closed Dialog or Sheet (F-6): open it on the canvas with its own trigger.
+  const openable = openableFor(page.nodes, selected);
+  const [openState, setOpenState] = useState<{ key: string; open: boolean | null } | null>(null);
+  const [openRequest, setOpenRequest] = useState<{ key: string; open: boolean } | null>(null);
+  const openableOpen = openable !== null && openState?.key === openable ? openState.open : null;
+  // Move up / Move down (F-2): the same move, one place among the siblings.
+  const reorder = (key: string, direction: "up" | "down"): string | null => {
+    const r = reorderTarget(page.nodes, key, direction);
+    return "reason" in r ? r.reason : null;
+  };
+  const reorderNode = (key: string, direction: "up" | "down") => {
+    const r = reorderTarget(page.nodes, key, direction);
+    if ("reason" in r) return;
+    moveNode(key, r);
   };
   // Deleting (T3.4): straight away for layout Skeleton placed; agent code needs a confirm.
   const [confirmDelete, setConfirmDelete] = useState<{ key: string; logic: string[] } | null>(null);
@@ -303,7 +361,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     const { ref, reason } = deletion(key);
     setConfirmDelete(null);
     if (!ref) {
-      setEditError(`Can't delete: ${reason}`);
+      setEditError(reason ?? copy.nodes.gone);
       return;
     }
     const parent = page.nodes.find((n) => n.key === parentKeyOf(key))?.node;
@@ -313,7 +371,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     const node = page.nodes.find((n) => n.key === key)?.node;
     const { reason } = deletion(key);
     if (!node || reason) {
-      setEditError(`Can't delete: ${reason ?? "nothing selected"}`);
+      setEditError(reason ?? copy.app.nothingSelected);
       return;
     }
     const logic = agentLogicIn(node);
@@ -326,7 +384,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     let cancelled = false;
     call("edit:history", { projectRoot: project.projectRoot }).then(
       (h) => !cancelled && setHistory(h),
-      (err: unknown) => !cancelled && setEditError(err instanceof Error ? err.message : String(err)),
+      (err: unknown) => !cancelled && setEditError(err),
     );
     return () => {
       cancelled = true;
@@ -346,7 +404,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       (err: unknown) => {
         page.reload();
         setRevision((r) => r + 1);
-        setEditError(err instanceof Error ? err.message.replace(/^edit:(undo|redo): /, "") : String(err));
+        setEditError(err);
       },
     );
   };
@@ -361,9 +419,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
     }
   }, [checkPage, pages.list, current]);
 
-  const onShortcut = (key: string, mod: boolean, shift: boolean) => {
+  const onShortcut = (key: string, mod: boolean, shift: boolean, alt: boolean) => {
     if (withAgent) return;
     if ((key === "Delete" || key === "Backspace") && !mod && selected) requestDelete(selected);
+    else if (alt && (key === "ArrowUp" || key === "ArrowDown") && selected) reorderNode(selected, key === "ArrowUp" ? "up" : "down");
     else if (mod && (key === "z" || key === "Z")) historyStep(shift ? "redo" : "undo");
     else if (mod && (key === "y" || key === "Y")) historyStep("redo");
   };
@@ -375,9 +434,9 @@ function ProjectView({ project }: { project: ProjectInfo }) {
       // Text fields keep their own keys, undo included.
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       const mod = e.ctrlKey || e.metaKey;
-      if (e.key === "Delete" || e.key === "Backspace" || (mod && ["z", "Z", "y", "Y"].includes(e.key))) {
+      if (isShortcut(e.key, mod, e.altKey)) {
         e.preventDefault();
-        latestShortcut.current(e.key, mod, e.shiftKey);
+        latestShortcut.current(e.key, mod, e.shiftKey, e.altKey);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -386,7 +445,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const canvasDrag = useCanvasDrag((source, target) => {
     const parent = page.nodes.find((n) => n.key === target.parentKey)?.node;
     if (!parent?.id) {
-      setEditError(`Can't drop there: ${parent?.name ?? "that element"} has no data-ui-id.`);
+      setEditError(parent ? copy.app.cantDropThere(elementName(parent)) : copy.nodes.gone);
       return;
     }
     if (source.kind === "palette") edit({ op: "insert", parentId: parent.id, index: target.index, paletteId: source.paletteId });
@@ -396,7 +455,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const writeNote = useCallback(
     (op: NoteOp) =>
       call("notes:write", { projectRoot: project.projectRoot, op }).then(setNotesView, (err: unknown) => {
-        setEditError(err instanceof Error ? err.message.replace(/^notes:write: /, "") : String(err));
+        setEditError(err);
         throw err;
       }),
     [project.projectRoot, setNotesView, setEditError],
@@ -423,107 +482,123 @@ function ProjectView({ project }: { project: ProjectInfo }) {
   const onScreen = mapped !== null && mapped.version === page.tree?.version ? mapped.keys : null;
   const selectedNode = page.nodes.find((n) => n.key === selected) ?? null;
 
+  // The app preview and its log, from the ⋯ menu (T8.6).
+  const [appPreview, setAppPreview] = useState(false);
+
   return (
-    <div className="project">
-      <aside className="sidebar">
-        <div className="row">
-          <strong>Canvas</strong>
-          <button
-            type="button"
-            aria-pressed={mode === "interact"}
-            onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
-          >
-            {mode === "select" ? "Select mode" : "Interact mode"}
-          </button>
-        </div>
-        <LoopPanel status={loop.status} error={loop.error} busy={loop.busy} openNotes={openNotes} onHandoff={() => afterLoop("handoff")} onTakeBack={() => afterLoop("takeBack")} />
-        <div className="row history" role="group" aria-label="History">
-          <button type="button" disabled={!history.undo || withAgent} title={history.undo ? `Undo ${history.undo} (Ctrl+Z)` : "Nothing to undo"} onClick={() => historyStep("undo")}>
-            Undo
-          </button>
-          <button type="button" disabled={!history.redo || withAgent} title={history.redo ? `Redo ${history.redo} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={() => historyStep("redo")}>
-            Redo
-          </button>
-        </div>
-        <div className="segmented" role="group" aria-label="Preview width">
-          {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
-            <button key={l} type="button" aria-pressed={layout === l} onClick={() => setLayout(l)}>
-              {l === "side-by-side" ? "Side by side" : l[0]?.toUpperCase() + l.slice(1)}
+    <>
+      <header className="topbar row">
+        <h1>{project.name}</h1>
+        <PagePicker current={current?.component ? copy.named.pageComponent(current.component) : null}>
+          {(close) => (
+            <PagesPanel
+              list={pages.list}
+              error={pages.error}
+              current={current}
+              onOpen={(p) => {
+                setPathname(p.path);
+                setNavigate({ path: p.path });
+                close();
+              }}
+              onPageOp={async (op) => {
+                try {
+                  const result = await call("project:page", { projectRoot: project.projectRoot, page: op });
+                  setRevision((r) => r + 1);
+                  if (result.path) {
+                    setPathname(result.path);
+                    setNavigate({ path: result.path });
+                  }
+                } catch (err) {
+                  setRevision((r) => r + 1);
+                  setEditError(err);
+                  throw err;
+                }
+              }}
+            />
+          )}
+        </PagePicker>
+        <span className="spacer" />
+        <div className="segmented workspaces" role="group" aria-label={copy.workspaces.title}>
+          {(["build", "style", "handoff"] as const).map((w) => (
+            <button key={w} type="button" aria-pressed={workspace === w} onClick={() => setWorkspace(w)}>
+              {copy.workspaces.names[w]}
             </button>
           ))}
         </div>
-        <div className="segmented" role="group" aria-label="Colour mode">
-          <button type="button" aria-pressed={!dark} onClick={() => setDark(false)}>
-            Light
-          </button>
-          <button type="button" aria-pressed={dark} onClick={() => setDark(true)}>
-            Dark
-          </button>
-        </div>
-        {page.error && <p className="error">{page.error}</p>}
-        {fsRevision.error && <p className="error">{fsRevision.error}</p>}
-        {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
-        <PagesPanel
-          list={pages.list}
-          error={pages.error}
-          current={current}
-          onOpen={(p) => {
-            setPathname(p.path);
-            setNavigate({ path: p.path });
-          }}
-          onPageOp={async (op) => {
-            try {
-              const result = await call("project:page", { projectRoot: project.projectRoot, page: op });
-              setRevision((r) => r + 1);
-              if (result.path) {
-                setPathname(result.path);
-                setNavigate({ path: result.path });
-              }
-            } catch (err) {
-              setRevision((r) => r + 1);
-              setEditError(err instanceof Error ? err.message.replace(/^project:page: /, "") : String(err));
-              throw err;
-            }
-          }}
-        />
-        {!file && pages.list && <p className="muted">No page file for {pathname}.</p>}
-        <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
-          <PalettePanel
-            palette={palette.palette}
-            error={palette.error}
-            onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
+        <span className="spacer" />
+        <div className="row history" role="group" aria-label={copy.app.history}>
+          <IconButton
+            label={copy.app.undo}
+            icon={Undo2}
+            hint={withAgent ? say({ code: "with-agent", facts: {} }) : history.undo ? copy.app.undoTitle(history.undo) : copy.app.nothingToUndo}
+            disabled={!history.undo || withAgent}
+            onClick={() => historyStep("undo")}
+          />
+          <IconButton
+            label={copy.app.redo}
+            icon={Redo2}
+            hint={withAgent ? say({ code: "with-agent", facts: {} }) : history.redo ? copy.app.redoTitle(history.redo) : copy.app.nothingToRedo}
+            disabled={!history.redo || withAgent}
+            onClick={() => historyStep("redo")}
           />
         </div>
-        <LayersPanel
-          nodes={page.nodes}
-          selected={selected}
-          hovered={treeHover ?? hovered}
-          onScreen={onScreen}
-          onSelect={setSelected}
-          onHover={setTreeHover}
-        />
-      </aside>
-      <aside className="inspector-panel" aria-label="Inspector">
-        <div className="segmented tabs" role="tablist" aria-label="Inspector">
-          {(["element", "tokens", "violations", "notes", "pass"] as const).map((tab) => (
-            <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
-              {tab === "element"
-                ? "Element"
-                : tab === "tokens"
-                  ? "Tokens"
-                  : tab === "violations"
-                    ? `Violations${activeViolations > 0 ? ` (${activeViolations})` : ""}`
-                    : tab === "notes"
-                      ? `Notes${openNotes > 0 ? ` (${openNotes})` : ""}`
-                      : "Pass"}
-            </button>
-          ))}
-        </div>
-        {inspectorTab === "notes" && (
+        <MoreMenu appPreview={appPreview} onAppPreview={() => setAppPreview((o) => !o)} onClose={onClose} about={<About info={info} projectRoot={project.projectRoot} />} />
+      </header>
+      <div className="project">
+      <aside className="sidebar" aria-label={copy.left.title}>
+        {page.error && <MessageText message={page.error} />}
+        {fsRevision.error && <MessageText message={fsRevision.error} />}
+        {page.tree?.rootError && <p className="error">{page.tree.rootError}</p>}
+        {!file && pages.list && <p className="muted">{copy.app.noPageFile(pathname)}</p>}
+        {workspace === "build" && (
+          <>
+            <div className="segmented tabs" role="tablist" aria-label={copy.left.title}>
+              {(["add", "layers"] as const).map((t) => (
+                <button key={t} type="button" role="tab" aria-selected={leftTab === t} onClick={() => setLeftTab(t)}>
+                  {copy.left[t]}
+                </button>
+              ))}
+            </div>
+            {/* Both stay in the page, so the tree keeps what's open. */}
+            <div hidden={leftTab !== "add"}>
+              <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
+                <PalettePanel
+                  palette={palette.palette}
+                  error={palette.error}
+                  onStartDrag={(item, event) => canvasDrag.start({ kind: "palette", paletteId: item.id, label: item.label }, event)}
+                />
+              </div>
+            </div>
+            <div hidden={leftTab !== "layers"}>
+              <LayersPanel
+                nodes={page.nodes}
+                selected={selected}
+                hovered={treeHover ?? hovered}
+                onScreen={onScreen}
+                onSelect={setSelected}
+                onHover={setTreeHover}
+              />
+            </div>
+          </>
+        )}
+        {workspace === "style" && (
+          <>
+            <LayersPanel
+              nodes={page.nodes}
+              selected={selected}
+              hovered={treeHover ?? hovered}
+              onScreen={onScreen}
+              onSelect={setSelected}
+              onHover={setTreeHover}
+            />
+            <p className="muted small reach-hint">{copy.left.reach}</p>
+          </>
+        )}
+        {workspace === "handoff" && (
           <NotesPanel
             view={notes.view}
             error={notes.error}
-            selected={selectedNode ? { id: selectedNode.node.id, name: selectedNode.node.name } : null}
+            selected={selectedNode ? { id: selectedNode.node.id, name: elementName(selectedNode.node) } : null}
             focus={noteFocus}
             onFocus={setNoteFocus}
             readOnly={withAgent}
@@ -531,13 +606,30 @@ function ProjectView({ project }: { project: ProjectInfo }) {
             onSelectTarget={(n: NoteView) => n.file && goTo(n.file, n.target)}
           />
         )}
+      </aside>
+      <aside className="inspector-panel" aria-label={copy.app.inspector}>
+        <div className="segmented tabs" role="tablist" aria-label={copy.app.inspector}>
+          {(["element", "tokens", "violations", "pass"] as const).map((tab) => (
+            <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} aria-pressed={inspectorTab === tab} onClick={() => setInspectorTab(tab)}>
+              {copy.app.tabs[tab](tab === "violations" ? activeViolations : 0)}
+            </button>
+          ))}
+        </div>
         {inspectorTab === "pass" && (
           <PassPanel projectRoot={project.projectRoot} status={loop.status} busy={loop.busy} onRevert={() => afterLoop("revert")} onSelectId={(id, inFile) => goTo(inFile, id)} />
         )}
         <div inert={withAgent} className={withAgent ? "is-inert" : undefined}>
         {inspectorTab === "violations" && <ViolationsPanel report={violations.report} error={violations.error} {...violationActions} />}
         {inspectorTab === "tokens" && (
-          <TokensPanel sheet={tokens.sheet} error={tokens.error} dark={dark} counts={tokenCounts} onWrite={writeTokens} onHover={setTokenHover} />
+          <TokensPanel
+            sheet={tokens.sheet}
+            error={tokens.error}
+            dark={dark}
+            counts={tokenCounts}
+            onWrite={(writes) => writeTokens(writes, () => setPreview(null))}
+            onHover={setTokenHover}
+            onPreview={setPreview}
+          />
         )}
         {inspectorTab === "element" && (
           <>
@@ -546,7 +638,7 @@ function ProjectView({ project }: { project: ProjectInfo }) {
                 chip={colourChip}
                 token={tokens.sheet?.tokens.find((t) => t.name === colourChip.token) ?? null}
                 dark={dark}
-                classEdits={gizmos ? gizmos.classEdits : "nothing selected"}
+                classEdits={gizmos ? gizmos.classEdits : copy.app.nothingSelected}
                 onPreview={setPreview}
                 onToken={(value) => {
                   const token = tokens.sheet?.tokens.find((t) => t.name === colourChip.token);
@@ -573,6 +665,10 @@ function ProjectView({ project }: { project: ProjectInfo }) {
               cannotDelete={selected ? deletion(selected).reason : null}
               confirming={confirmDelete !== null && confirmDelete.key === selected ? confirmDelete.logic : null}
               onDelete={() => selected && requestDelete(selected)}
+              cannotMove={selected ? { up: reorder(selected, "up"), down: reorder(selected, "down") } : { up: null, down: null }}
+              onMove={(direction) => selected && reorderNode(selected, direction)}
+              openable={openable ? { name: page.nodes.find((n) => n.key === openable)?.node.name ?? copy.app.dialogFallback, open: openableOpen } : null}
+              onToggleOpen={() => openable && setOpenRequest({ key: openable, open: openableOpen !== true })}
               onConfirm={() => confirmDelete && removeNode(confirmDelete.key, true)}
               onCancel={() => setConfirmDelete(null)}
             />
@@ -587,59 +683,119 @@ function ProjectView({ project }: { project: ProjectInfo }) {
           </>
         )}
         </div>
+        {inspectorTab === "element" && selectedNode && (
+          <ElementNotes
+            view={notes.view}
+            selected={{ id: selectedNode.node.id, name: elementName(selectedNode.node) }}
+            readOnly={withAgent}
+            onWrite={writeNote}
+            onSelectTarget={(n: NoteView) => n.file && goTo(n.file, n.target)}
+          />
+        )}
       </aside>
-      <Canvas
-        status={server.status}
-        file={page.tree ? file : null}
-        version={page.tree?.version ?? null}
-        nodes={page.overlayNodes}
-        selected={selected}
-        highlighted={treeHover}
-        mode={mode}
-        onSelect={setSelected}
-        onHover={setHovered}
-        onUpdated={() => {
-          page.reload();
-          setRevision((r) => r + 1);
-        }}
-        onLocation={setPathname}
-        navigate={navigate}
-        layout={layout}
-        dark={dark}
-        onMapped={(boxes, version) => setMapped({ version, keys: new Set(boxes.map((b) => b.key)) })}
-        synced={synced}
-        drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, seq: canvasDrag.drag.seq, moving: null } : null}
-        onDropTarget={canvasDrag.report}
-        onMove={moveNode}
-        onKey={onShortcut}
-        tokenUsage={tokenUsage}
-        tokenHighlight={tokenHover}
-        onTokenCounts={setTokenCounts}
-        gizmos={gizmos}
-        gizmoDone={gizmoDone}
-        preview={preview}
-        onGizmoCommit={onGizmoCommit}
-        onColourChip={(chip) => {
-          setInspectorTab("element");
-          setColourChip(chip);
-        }}
-        pins={pins}
-        onPin={(key) => {
-          setSelected(key);
-          setNoteFocus(page.nodes.find((n) => n.key === key)?.node.id ?? null);
-          setInspectorTab("notes");
-        }}
-        withAgent={withAgent ? (loop.status?.handoff?.number ?? 0) : null}
-      />
-      <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
+      <section className="stage" aria-label={copy.canvasBar}>
+        <div className="canvas-bar row" role="toolbar" aria-label={copy.canvasBar}>
+          <div className="row mode">
+            <IconButton
+              label={mode === "select" ? copy.app.selectMode : copy.app.interactMode}
+              icon={mode === "select" ? MousePointer2 : Hand}
+              aria-pressed={mode === "interact"}
+              onClick={() => setMode((m) => (m === "select" ? "interact" : "select"))}
+            />
+          </div>
+          <div className="segmented" role="group" aria-label={copy.app.previewWidth}>
+            {(["desktop", "tablet", "mobile", "side-by-side"] as const).map((l) => (
+              <IconButton key={l} label={copy.app.layouts[l]} icon={LAYOUT_ICONS[l]} aria-pressed={layout === l} onClick={() => setLayout(l)} />
+            ))}
+          </div>
+          <div className="segmented" role="group" aria-label={copy.app.colourMode}>
+            <IconButton label={copy.app.light} icon={Sun} aria-pressed={!dark} onClick={() => setDark(false)} />
+            <IconButton label={copy.app.dark} icon={Moon} aria-pressed={dark} onClick={() => setDark(true)} />
+          </div>
+        </div>
+        <Canvas
+          status={server.status}
+          file={page.tree ? file : null}
+          version={page.tree?.version ?? null}
+          nodes={page.overlayNodes}
+          selected={selected}
+          highlighted={treeHover}
+          mode={mode}
+          onSelect={setSelected}
+          onHover={setHovered}
+          onUpdated={() => {
+            page.reload();
+            setRevision((r) => r + 1);
+          }}
+          onLocation={setPathname}
+          navigate={navigate}
+          layout={layout}
+          dark={dark}
+          onMapped={(boxes, version) => setMapped({ version, keys: new Set(boxes.map((b) => b.key)) })}
+          synced={synced}
+          drag={canvasDrag.drag ? { clientX: canvasDrag.drag.clientX, clientY: canvasDrag.drag.clientY, seq: canvasDrag.drag.seq, moving: null } : null}
+          onDropTarget={canvasDrag.report}
+          onMove={moveNode}
+          onKey={onShortcut}
+          tokenUsage={tokenUsage}
+          tokenHighlight={tokenHover}
+          onTokenCounts={setTokenCounts}
+          gizmos={gizmos}
+          gizmoDone={gizmoDone}
+          preview={preview}
+          onGizmoCommit={onGizmoCommit}
+          onColourChip={(chip) => {
+            setInspectorTab("element");
+            setColourChip(chip);
+          }}
+          pins={pins}
+          onPin={(key) => {
+            setSelected(key);
+            setNoteFocus(page.nodes.find((n) => n.key === key)?.node.id ?? null);
+            setInspectorTab("element");
+          }}
+          withAgent={withAgent ? (loop.status?.handoff?.number ?? 0) : null}
+          openWatch={openable}
+          openRequest={openRequest}
+          onOpenState={(key, open) => setOpenState({ key, open })}
+          onTextRequest={(key) => {
+            const node = page.nodes.find((n) => n.key === key)?.node;
+            if (withAgent || !node || !textEditable(node, palette.palette?.elements[node.name] ?? null)) return null;
+            return node.text ?? "";
+          }}
+          onTextCommit={(key, text) => {
+            const id = page.nodes.find((n) => n.key === key)?.node.id;
+            if (id && !withAgent) edit({ op: "setText", id, text });
+          }}
+        />
+        <div className="handoff-bar">
+          <LoopPanel
+            status={loop.status}
+            error={loop.error}
+            busy={loop.busy}
+            openNotes={openNotes}
+            onHandoff={() => afterLoop("handoff")}
+            onTakeBack={() => afterLoop("takeBack")}
+            onReview={() => setInspectorTab("pass")}
+          />
+        </div>
+      </section>
+      <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} onHold={toasts.hold} onAction={(action) => action === "undo" && historyStep("undo")} />
       {canvasDrag.drag && (
         <div className="drag-ghost" style={{ left: canvasDrag.drag.clientX + 12, top: canvasDrag.drag.clientY + 12 }}>
           {canvasDrag.drag.source.label}
         </div>
       )}
-      <footer className="bottom">
+      <div className="bottom" hidden={!appPreview}>
         <DevServerPanel server={server} />
+      </div>
+      </div>
+      <footer className="statusbar row" data-testid="status">
+        <span className={`status-dot status-${server.status?.state ?? "stopped"}`} aria-hidden="true" />
+        <span>{copy.status.app(server.status?.state ?? "stopped")}</span>
+        <span className="spacer" />
+        <span>{copy.workspaces.purpose[workspace]}</span>
       </footer>
-    </div>
+    </>
   );
 }

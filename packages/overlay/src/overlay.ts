@@ -2,9 +2,11 @@
 // Draws hover/selection outlines and maps DOM ↔ source through NodeIndex. Talks to
 // the host only via postMessage; never imports from core.
 
-import { dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type PlacedChild } from "./drop.js";
+import { besideSide, dropIndex, edgeScroll, flowOf, indicatorRect, unionRect, type Flow, type PlacedChild } from "./drop.js";
 import { handlesFor, LIVE_TARGET, planDrag, scopeOf, type Drag, type GizmoData, type Handle, type Measured, type Scope } from "./gizmos.js";
 import { NodeIndex } from "./mapping.js";
+import { copy } from "./copy.js";
+import { STYLE, styleVariables } from "./style.js";
 import { stripVariants, TokenMatcher } from "./tokens.js";
 import {
   isHostMessage,
@@ -23,13 +25,17 @@ type Rect = NodeBox["rects"][number];
 /** Pointer travel before a press on the canvas becomes a move drag. */
 const MOVE_THRESHOLD = 4;
 
+/** Skeleton's style values, declared in the overlay's shadow root only. */
+const CHROME_VARIABLES = styleVariables(":host");
+
+/** What the overlay draws in, from Skeleton's shared style values (T8.4). */
 const COLORS = {
-  hover: "#3b82f6",
-  selected: "#2563eb",
-  locked: "#ea580c",
-  drop: "#2563eb",
-  token: "#9333ea",
-  gizmo: "#db2777",
+  hover: STYLE.colour.accent,
+  selected: STYLE.colour.accent,
+  locked: STYLE.colour.agent,
+  drop: STYLE.colour.accent,
+  token: STYLE.colour.themeUse,
+  gizmo: STYLE.colour.accent,
 };
 
 /** How long a released gizmo's preview may wait for the page to update before it goes anyway. */
@@ -51,11 +57,21 @@ interface GizmoDrag {
   count: number;
 }
 
+/** A container as rendered (see layoutOf). */
+interface Layout {
+  flow: Flow;
+  container: Rect;
+  placed: (PlacedChild & { key: string })[];
+  count: number;
+}
+
 interface DropState extends DropTarget {
   container: Rect;
   indicator: Rect;
   /** The container is empty: the indicator fills it. */
   fill: boolean;
+  /** The drop goes before or after this child of the container, aimed at its edge (F-1, F-4). */
+  beside: { key: string; side: "before" | "after" } | null;
 }
 
 export interface OverlayOptions {
@@ -102,6 +118,15 @@ export class Overlay {
   private live: { style: HTMLStyleElement; target: Element; pending: boolean; timer: number } | null = null;
   /** Note pins to draw (T5.1). */
   private pins: NotePin[] = [];
+  /** The Dialog or Sheet whose open state the host shows (F-6), and what was last reported. */
+  private openWatch: string | null = null;
+  private lastOpen = "";
+  /** A click the overlay sends to the app itself (opening a Dialog): select mode lets it through. */
+  private passClick = false;
+  /** The text being edited on the canvas (F-5): a field over the element, outside the redrawn layer. */
+  private textEditor: { key: string; input: HTMLInputElement; original: string } | null = null;
+  /** Everything drawn per frame; the text editor sits beside it so redrawing keeps its focus. */
+  private readonly drawn: HTMLElement;
   private readonly layer: HTMLElement;
   private readonly shadow: ShadowRoot;
   private frame = 0;
@@ -115,6 +140,8 @@ export class Overlay {
     this.layer.setAttribute("aria-hidden", "true");
     this.layer.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483647;";
     this.shadow = this.layer.attachShadow({ mode: "open" });
+    this.drawn = this.doc.createElement("div");
+    this.shadow.appendChild(this.drawn);
   }
 
   start(): void {
@@ -129,6 +156,18 @@ export class Overlay {
     // suppresses mouse events until release, so a move drag would see no mousemoves.
     win.addEventListener("pointermove", (e) => this.onMove(e), { capture: true, signal });
     win.addEventListener("keydown", (e) => this.onKey(e), { capture: true, signal });
+    // Focus moving into or out of the text editor is Skeleton's, not the app's: an open
+    // modal's focus trap (Radix) would otherwise take it straight back (F-5 in F-6).
+    for (const type of ["focusin", "focusout"] as const) {
+      win.addEventListener(
+        type,
+        (e) => {
+          const input = this.textEditor?.input;
+          if (input && (e.composedPath().includes(input) || e.relatedTarget === this.layer)) e.stopImmediatePropagation();
+        },
+        { capture: true, signal },
+      );
+    }
     win.addEventListener(
       "keyup",
       (e) => {
@@ -158,7 +197,23 @@ export class Overlay {
     );
     // A gizmo drag captures the pointer (see startGizmo): losing the capture is its
     // release, even when the button came up outside the frame.
-    this.doc.documentElement.addEventListener("lostpointercapture", () => this.gizmo && this.releaseGizmo(), { signal });
+    // A capture lost while the button is still held (KI-2) isn't a release: take it back.
+    this.doc.documentElement.addEventListener(
+      "lostpointercapture",
+      (event) => {
+        if (!this.gizmo) return;
+        if (event.buttons !== 0) {
+          try {
+            this.doc.documentElement.setPointerCapture(event.pointerId);
+            return;
+          } catch (error) {
+            console.warn("[skeleton overlay] couldn't take the pointer back", error);
+          }
+        }
+        this.releaseGizmo();
+      },
+      { signal },
+    );
     this.doc.addEventListener("mouseleave", () => this.setHover(null), { signal });
     this.observer = new MutationObserver(() => {
       this.index?.invalidate();
@@ -200,7 +255,10 @@ export class Overlay {
       case "tree":
         this.index = new NodeIndex(msg.file, msg.version, msg.nodes);
         if (this.selected && !msg.nodes.some((n) => n.key === this.selected)) this.selected = null;
+        // The edited element is gone or the page changed under it: the edit is off.
+        if (this.textEditor) this.closeTextEditor(false);
         this.reportMapped(true);
+        this.reportOpen();
         break;
       case "select":
         // An echo of this frame's own click must not scroll the page under the cursor;
@@ -215,7 +273,10 @@ export class Overlay {
         break;
       case "mode":
         this.mode = msg.mode;
-        if (msg.mode === "interact") this.setHover(null);
+        if (msg.mode === "interact") {
+          this.setHover(null);
+          this.closeTextEditor(false);
+        }
         break;
       case "theme":
         this.doc.documentElement.classList.toggle("dark", msg.dark);
@@ -238,7 +299,7 @@ export class Overlay {
         this.tokenHighlight = msg.name;
         break;
       case "gizmos":
-        this.gizmoData = { key: msg.key, tokens: msg.tokens, spacingSteps: msg.spacingSteps, classEdits: msg.classEdits };
+        this.gizmoData = { key: msg.key, tokens: msg.tokens, spacingSteps: msg.spacingSteps, classEdits: msg.classEdits, kind: msg.kind };
         break;
       case "preview":
         // A preview already written waits for the page to update (see gizmo-done).
@@ -248,6 +309,15 @@ export class Overlay {
         break;
       case "pins":
         this.pins = msg.pins;
+        break;
+      case "text-editor":
+        if (this.mode === "select") this.openTextEditor(msg.key, msg.text);
+        break;
+      case "open":
+        this.openWatch = msg.key;
+        this.lastOpen = "";
+        if (msg.key !== null && msg.open !== null) this.setOpen(msg.key, msg.open);
+        this.reportOpen();
         break;
       case "gizmo-done":
         if (!msg.ok) this.clearLive();
@@ -272,7 +342,9 @@ export class Overlay {
   /**
    * Where a drop at (x, y) lands: the innermost drop container at the point (never
    * the node being moved or anything inside it), and the index among its children
-   * from their rendered positions along the container's flow.
+   * from their rendered positions along the container's flow. Near that container's
+   * edge, along its parent's flow, the drop goes beside it in the parent instead
+   * (F-1, F-4, see besideAt), if the parent takes drops too.
    */
   private dropAt(x: number, y: number, moving: string | null): DropState | null {
     if (!this.index || !this.doc.body) return null;
@@ -283,25 +355,64 @@ export class Overlay {
     for (let key: string | null = hit?.key ?? null; key !== null; key = parentKeyOf(key)) {
       const node = this.node(key);
       if (!node?.drop || inMoving(key)) continue;
-      const elements = this.index.elementsOf(node, this.doc.body, this.layer);
-      const container = unionRect(elements.map(rectOf));
-      if (!elements[0] || !container) continue;
-      const style = this.options.win.getComputedStyle(elements[0]);
-      const flow = flowOf(style.display, style.flexDirection, style.gridTemplateColumns);
-      // Indexes count the children as they'll be once the moved node is taken out.
-      const placed: PlacedChild[] = [];
-      let count = 0;
-      for (const child of this.index.nodes) {
-        if (parentKeyOf(child.key) !== key || child.key === moving) continue;
-        const rect = unionRect(this.rects(child));
-        if (rect) placed.push({ index: count, rect });
-        count++;
-      }
-      const index = dropIndex(flow, placed, x, y, count);
-      const { rect, fill } = indicatorRect(flow, container, placed, index);
-      return { parentKey: key, index, container, indicator: rect, fill };
+      const inside = this.layoutOf(node, moving);
+      if (!inside) continue;
+      const beside = this.besideAt(key, inside, x, y, moving);
+      if (beside) return beside;
+      const index = dropIndex(inside.flow, inside.placed, x, y, inside.count);
+      const { rect, fill } = indicatorRect(inside.flow, inside.container, inside.placed, index);
+      return { parentKey: key, index, container: inside.container, indicator: rect, fill, beside: null };
     }
     return null;
+  }
+
+  /**
+   * A drop beside the container at `key`, or beside one of its ancestors, innermost
+   * first: their edges often coincide (a Card's header spans the Card's width, so its
+   * right edge is the Card's). Each is judged in its own parent, which must take drops.
+   */
+  private besideAt(key: string, layout: Layout, x: number, y: number, moving: string | null): DropState | null {
+    const inMoving = (k: string) => moving !== null && (k === moving || k.startsWith(`${moving}.`));
+    let at = key;
+    let own = layout;
+    for (;;) {
+      const parentKey = parentKeyOf(at);
+      const parent = this.node(parentKey);
+      if (parentKey === null || !parent?.drop || inMoving(parentKey)) return null;
+      const outside = this.layoutOf(parent, moving);
+      const child = outside?.placed.find((c) => c.key === at);
+      if (!outside || !child) return null;
+      const side = besideSide(outside.flow, { rect: own.container, flow: own.flow, children: own.placed.map((c) => c.rect) }, x, y);
+      if (side) {
+        const index = child.index + (side === "after" ? 1 : 0);
+        const { rect } = indicatorRect(outside.flow, outside.container, outside.placed, index);
+        return { parentKey, index, container: outside.container, indicator: rect, fill: false, beside: { key: at, side } };
+      }
+      at = parentKey;
+      own = outside;
+    }
+  }
+
+  /**
+   * A drop container as rendered: its flow, its box, and its children's boxes. Indexes
+   * count the children as they'll be once the moved node is taken out.
+   */
+  private layoutOf(node: OverlayNode, moving: string | null): Layout | null {
+    if (!this.index || !this.doc.body) return null;
+    const elements = this.index.elementsOf(node, this.doc.body, this.layer);
+    const container = unionRect(elements.map(rectOf));
+    if (!elements[0] || !container) return null;
+    const style = this.options.win.getComputedStyle(elements[0]);
+    const flow = flowOf(style.display, style.flexDirection, style.gridTemplateColumns);
+    const placed: (PlacedChild & { key: string })[] = [];
+    let count = 0;
+    for (const child of this.index.nodes) {
+      if (parentKeyOf(child.key) !== node.key || child.key === moving) continue;
+      const rect = unionRect(this.rects(child));
+      if (rect) placed.push({ index: count, rect, key: child.key });
+      count++;
+    }
+    return { flow, container, placed, count };
   }
 
   private target(event: Event): OverlayNode | null {
@@ -360,6 +471,8 @@ export class Overlay {
    * (focus can be in this frame after a click), and never to the app.
    */
   private onKey(event: KeyboardEvent): void {
+    // Typing in the text editor is text, not shortcuts (it handles Enter and Escape).
+    if (this.textEditor && event.composedPath().includes(this.textEditor.input)) return;
     if (event.key === "Escape") {
       this.cancelMove();
       this.cancelGizmo();
@@ -371,10 +484,10 @@ export class Overlay {
     }
     if (this.mode !== "select") return;
     const mod = event.ctrlKey || event.metaKey;
-    if (!isShortcut(event.key, mod)) return;
+    if (!isShortcut(event.key, mod, event.altKey)) return;
     event.preventDefault();
     event.stopPropagation();
-    this.post({ source: "skeleton-overlay", type: "key", key: event.key, mod, shift: event.shiftKey });
+    this.post({ source: "skeleton-overlay", type: "key", key: event.key, mod, shift: event.shiftKey, alt: event.altKey });
   }
 
   /** The nearest node at or above `node` that can be moved (a drag on a wrapped element moves its block). */
@@ -432,7 +545,9 @@ export class Overlay {
   }
 
   private onPointer(event: Event): void {
-    if (this.mode !== "select") return;
+    if (this.mode !== "select" || this.passClick) return;
+    // The text editor is Skeleton's own field: it takes its clicks (caret, selection).
+    if (this.textEditor && event.composedPath().includes(this.textEditor.input)) return;
     // In select mode the app never sees the pointer (so buttons don't fire and
     // menus don't open); a click selects instead.
     event.preventDefault();
@@ -467,6 +582,11 @@ export class Overlay {
       this.press = null;
       this.moving = null;
       this.endDrag();
+      return;
+    }
+    if (event.type === "dblclick") {
+      const node = this.target(event);
+      if (node) this.post({ source: "skeleton-overlay", type: "text-request", key: node.key });
       return;
     }
     if (event.type !== "click") return;
@@ -542,7 +662,7 @@ export class Overlay {
     const m = this.measure(el, this.node(this.selected));
     const plan = planDrag(handle, scope, m, data);
     if ("unavailable" in plan) {
-      this.gizmoRefusal = { text: `Can't: ${plan.unavailable}`, x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
+      this.gizmoRefusal = { text: plan.unavailable, x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
       this.schedule();
       this.options.win.setTimeout(() => this.schedule(), 2600);
       return;
@@ -761,6 +881,101 @@ export class Overlay {
     this.post({ source: "skeleton-overlay", type: "mapped", version: this.index.version, boxes });
   }
 
+  /**
+   * Edit the node's text in place (F-5): a field over the element, in its font, so the
+   * app's own DOM is never touched (React owns it). Enter or leaving the field commits,
+   * Escape cancels; the host writes it with setText.
+   */
+  private openTextEditor(key: string, text: string): void {
+    this.closeTextEditor(false);
+    const node = this.node(key);
+    const el = node && this.index && this.doc.body ? this.index.elementsOf(node, this.doc.body, this.layer)[0] : undefined;
+    if (!node || !el) return;
+    const cs = this.options.win.getComputedStyle(el);
+    const input = this.doc.createElement("input");
+    input.type = "text";
+    input.value = text;
+    input.setAttribute("data-text-editor", "");
+    input.setAttribute("aria-label", copy.overlay.textOf(labelOf(node)));
+    input.style.cssText =
+      `position:fixed;box-sizing:border-box;margin:0;pointer-events:auto;z-index:1;` +
+      `font:${cs.font};letter-spacing:${cs.letterSpacing};text-align:${cs.textAlign};color:${cs.color};` +
+      `padding:${cs.padding};background:Canvas;border:0;border-radius:2px;outline:2px solid ${COLORS.selected};outline-offset:0`;
+    this.textEditor = { key, input, original: text };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.closeTextEditor(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.closeTextEditor(false);
+      }
+    });
+    input.addEventListener("blur", () => this.closeTextEditor(true));
+    this.shadow.appendChild(input);
+    this.placeTextEditor();
+    input.focus();
+    input.select();
+  }
+
+  /** Keep the editor over its element as the page scrolls or reflows. */
+  private placeTextEditor(): void {
+    const editor = this.textEditor;
+    if (!editor) return;
+    const node = this.node(editor.key);
+    const rect = node ? unionRect(this.rects(node)) : null;
+    if (!rect) return;
+    const s = editor.input.style;
+    s.left = `${rect.x}px`;
+    s.top = `${rect.y}px`;
+    s.width = `${Math.max(rect.width, 80)}px`;
+    s.height = `${rect.height}px`;
+  }
+
+  private closeTextEditor(commit: boolean): void {
+    const editor = this.textEditor;
+    if (!editor) return;
+    this.textEditor = null;
+    const text = editor.input.value;
+    editor.input.remove();
+    if (commit && text !== editor.original) this.post({ source: "skeleton-overlay", type: "text-commit", key: editor.key, text });
+  }
+
+  /** The trigger of the Dialog or Sheet at `key` (Radix marks it), if it's on screen. */
+  private triggerOf(key: string): HTMLElement | null {
+    const node = this.node(key);
+    if (!node || !this.index || !this.doc.body) return null;
+    for (const el of this.index.elementsOf(node, this.doc.body, this.layer)) {
+      const trigger = el.matches(DIALOG_TRIGGER) ? el : el.querySelector(DIALOG_TRIGGER);
+      if (trigger instanceof HTMLElement) return trigger;
+    }
+    return null;
+  }
+
+  /** Open or close a Dialog or Sheet the way the app would: by clicking its trigger (F-6). */
+  private setOpen(key: string, open: boolean): void {
+    const trigger = this.triggerOf(key);
+    if (!trigger || (trigger.getAttribute("aria-expanded") === "true") === open) return;
+    this.passClick = true;
+    try {
+      trigger.click();
+    } finally {
+      this.passClick = false;
+    }
+  }
+
+  /** Tell the host whether the watched Dialog or Sheet is open, if that changed. */
+  private reportOpen(): void {
+    const key = this.openWatch;
+    if (key === null || !this.index) return;
+    const trigger = this.triggerOf(key);
+    const open = trigger ? trigger.getAttribute("aria-expanded") === "true" : null;
+    const signature = `${this.index.version} ${key} ${open}`;
+    if (signature === this.lastOpen) return;
+    this.lastOpen = signature;
+    this.post({ source: "skeleton-overlay", type: "open-state", key, open });
+  }
+
   /** Tell the host what each token affects now, if that changed. */
   private reportCounts(): void {
     if (!this.tokens || !this.doc.body) return;
@@ -775,6 +990,7 @@ export class Overlay {
     if (this.remap) {
       if (this.index) this.reportMapped(false);
       this.reportCounts();
+      this.reportOpen();
       this.remap = false;
     }
     const parts: string[] = [];
@@ -801,8 +1017,10 @@ export class Overlay {
         if (label && i === 0) {
           const text = labelOf(node);
           const at = place(r.x, r.y >= 18 ? r.y - 18 : r.y + r.height, text);
-          const grab = grip ? ` data-grab="${escapeHtml(node.key)}" title="Drag to move"` : "";
-          parts.push(`<div class="label"${grab} style="left:${at.x}px;top:${at.y}px;background:${color}">${grip ? "⠿ " : ""}${escapeHtml(text)}</div>`);
+          const grab = grip ? ` data-grab="${escapeHtml(node.key)}" title="${escapeHtml(copy.overlay.dragToMove)}"` : "";
+          // The element's data-ui-id, for finding its label (never shown).
+          const id = node.id ? ` data-label-for="${escapeHtml(node.id)}"` : "";
+          parts.push(`<div class="label"${grab}${id} style="left:${at.x}px;top:${at.y}px;background:${color}">${grip ? "⠿ " : ""}${escapeHtml(text)}</div>`);
         }
       });
     };
@@ -838,23 +1056,27 @@ export class Overlay {
       parts.push(
         `<div class="box" style="left:${c.x}px;top:${c.y}px;width:${c.width}px;height:${c.height}px;border:1px dashed ${COLORS.drop}"></div>`,
         `<div class="box" data-drop-indicator style="left:${i.x}px;top:${i.y}px;width:${i.width}px;height:${i.height}px;` +
-          `background:${drop.fill ? "rgb(37 99 235 / 0.15)" : COLORS.drop}"></div>`,
+          `background:${drop.fill ? STYLE.colour.selectedRow : COLORS.drop}"></div>`,
       );
       const moved = this.node(this.moving);
-      const text = moved ? `Move ${labelOf(moved)} into ${labelOf(dropNode)}` : `Into ${labelOf(dropNode)}`;
+      const besideNode = drop.beside ? this.node(drop.beside.key) : null;
+      const where =
+        drop.beside && besideNode ? copy.overlay.dropBeside(drop.beside.side, labelOf(besideNode), labelOf(dropNode)) : copy.overlay.dropInto(labelOf(dropNode));
+      const text = moved ? copy.overlay.move(labelOf(moved), where) : copy.overlay.drop(where);
       const at = place(c.x, c.y >= 18 ? c.y - 18 : c.y, text);
       parts.push(`<div class="label" style="left:${at.x}px;top:${at.y}px;background:${COLORS.drop}">${escapeHtml(text)}</div>`);
     }
-    this.shadow.innerHTML =
-      `<style>.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
-      `.label{position:fixed;font:11px/18px system-ui,sans-serif;color:#fff;padding:0 6px;border-radius:3px;white-space:nowrap}` +
+    this.placeTextEditor();
+    this.drawn.innerHTML =
+      `<style>${CHROME_VARIABLES}.box{position:fixed;box-sizing:border-box;pointer-events:none}` +
+      `.label{position:fixed;font:11px/18px var(--sk-type-font);color:var(--sk-colour-white);padding:0 6px;border-radius:var(--sk-size-radius);white-space:nowrap}` +
       `.label[data-grab]{pointer-events:auto;cursor:grab}` +
-      `.gz{position:fixed;box-sizing:border-box;pointer-events:auto;background:#fff;border:2px solid ${COLORS.gizmo};border-radius:3px}` +
+      `.gz{position:fixed;box-sizing:border-box;pointer-events:auto;background:var(--sk-colour-white);border:2px solid ${COLORS.gizmo};border-radius:var(--sk-size-radius)}` +
       `.gz[data-kind=radius]{border-radius:50%;cursor:nwse-resize}.gz[data-kind=gap],.gz[data-kind=padding]{cursor:move}` +
       `.gz[data-kind=type]{cursor:ns-resize}.gz[data-kind=border]{cursor:ew-resize}` +
-      `.pin{position:fixed;box-sizing:border-box;min-width:18px;height:18px;padding:0 5px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:9px 9px 9px 2px;` +
-      `font:bold 10px/14px system-ui,sans-serif;color:#fff;text-align:center;box-shadow:0 1px 3px rgb(0 0 0/.3)}` +
-      `.chip{position:fixed;box-sizing:border-box;width:14px;height:14px;pointer-events:auto;cursor:pointer;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px ${COLORS.gizmo}}</style>` +
+      `.pin{position:fixed;box-sizing:border-box;min-width:18px;height:18px;padding:0 5px;pointer-events:auto;cursor:pointer;border:2px solid var(--sk-colour-white);border-radius:9px 9px 9px 2px;` +
+      `font:bold 10px/14px var(--sk-type-font);color:var(--sk-colour-white);text-align:center;box-shadow:0 1px 3px rgb(0 0 0/.3)}` +
+      `.chip{position:fixed;box-sizing:border-box;width:14px;height:14px;pointer-events:auto;cursor:pointer;border:2px solid var(--sk-colour-white);border-radius:50%;box-shadow:0 0 0 1px ${COLORS.gizmo}}</style>` +
       parts.join("");
   }
 
@@ -867,8 +1089,8 @@ export class Overlay {
       if (!r) continue;
       const colour = pin.open === 0 ? PIN_COLOURS.resolved : PIN_COLOURS[pin.type];
       const text = pin.open > 0 ? String(pin.open) : pin.total > 0 ? "✓" : "";
-      const notes = pin.total > 0 ? `${pin.open} open of ${pin.total} note${pin.total === 1 ? "" : "s"}` : "";
-      const title = [notes, pin.replied ? "agent replied" : ""].filter(Boolean).join(" · ");
+      const notes = pin.total > 0 ? copy.overlay.pinNotes(pin.open, pin.total) : "";
+      const title = [notes, pin.replied ? copy.overlay.pinReplied : ""].filter(Boolean).join(" · ");
       const x = Math.max(0, r.x + r.width - 12);
       const y = Math.max(0, r.y - 10);
       parts.push(
@@ -897,7 +1119,7 @@ export class Overlay {
         const x = m.rect.x + m.rect.width - 16 * (i + 1);
         const y = m.rect.y >= 18 ? m.rect.y - 16 : m.rect.y + 2;
         parts.push(
-          `<div class="chip" data-chip="${chip.utility}" data-token="${escapeHtml(chip.token)}" title="${escapeHtml(`${chip.utility}: ${chip.token}`)}" ` +
+          `<div class="chip" data-chip="${chip.utility}" data-token="${escapeHtml(chip.token)}" title="${escapeHtml(copy.gizmos.chip(chip.utility, (this.gizmoData?.tokens.find((t) => t.name === chip.token)?.label ?? chip.token)))}" ` +
             `style="left:${x}px;top:${y}px;background:${escapeHtml(chip.colour)}"></div>`,
         );
       });
@@ -907,13 +1129,12 @@ export class Overlay {
       parts.push(`<div class="label" data-gizmo-label style="left:${at.x}px;top:${at.y}px;background:${COLORS.gizmo}">${escapeHtml(text)}</div>`);
     };
     if (g) {
-      const affected = g.scope === "instance" || g.drag.token === null ? "this element" : `${g.count} element${g.count === 1 ? "" : "s"}`;
-      label(g.handle.rect.x + 14, g.handle.rect.y + 12, `${g.text} · ${affected}`);
+      const affected = g.scope === "instance" || g.drag.token === null ? copy.gizmos.thisElement : copy.gizmos.elements(g.count);
+      label(g.handle.rect.x + 14, g.handle.rect.y + 12, copy.gizmos.dragging(g.text, affected));
     } else if (this.gizmoHover) {
       const { handle, scope } = this.gizmoHover;
       const plan = planDrag(handle, scope, m, data as GizmoData);
-      const what = "unavailable" in plan ? `can't: ${plan.unavailable}` : plan.label;
-      label(handle.rect.x + 14, handle.rect.y + 12, `${SCOPE_NAMES[scope]}: ${what}`);
+      label(handle.rect.x + 14, handle.rect.y + 12, copy.gizmos.hover("unavailable" in plan ? plan.unavailable : plan.label));
     }
     const refusal = this.gizmoRefusal;
     if (refusal && refusal.until > Date.now()) label(refusal.x + 14, refusal.y + 12, refusal.text);
@@ -942,10 +1163,12 @@ export class Overlay {
   }
 }
 
-const PIN_COLOURS = { build: "#2563eb", behaviour: "#16a34a", question: "#d97706", resolved: "#71717a" };
+/** What Radix renders a Dialog's or Sheet's trigger as. */
+const DIALOG_TRIGGER = '[aria-haspopup="dialog"][aria-expanded]';
+
+const PIN_COLOURS = { build: STYLE.colour.notes, behaviour: STYLE.colour.notes, question: STYLE.colour.notes, resolved: STYLE.colour.secondary };
 
 /** How the hover label names each scope (PRD §10.3). */
-const SCOPE_NAMES: Record<Scope, string> = { component: "Drag", global: "Shift", instance: "Alt" };
 
 function rectOf(el: Element): Rect {
   const r = el.getBoundingClientRect();
@@ -975,12 +1198,9 @@ export function deepestAt(el: Element | null, x: number, y: number): Element | n
   return el;
 }
 
-/** Canvas label: element name and ID; locked blocks say what locks them. */
+/** Canvas label: the element name the host worded, with the agent code mark on agent code. */
 export function labelOf(node: OverlayNode): string {
-  const id = node.id ? ` #${node.id}` : "";
-  if (node.kind !== "locked") return `${node.name}${id}`;
-  const what: Record<string, string> = { map: ".map()", conditional: "conditional", expression: "{…}", fragment: "<>…</>", spread: "{...}" };
-  return `🔒 ${node.element ? node.name : (what[node.name] ?? node.name)}${id}`;
+  return node.kind === "locked" ? copy.overlay.agentLabel(node.label) : node.label;
 }
 
 function escapeHtml(text: string): string {

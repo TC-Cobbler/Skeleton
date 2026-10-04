@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ThemeToken } from "@skeleton/app-main/ipc";
-import { alphaOf, COLOUR_PROPERTY, cssToHex, hexToOklch } from "./colour.js";
-import { TextInput } from "./PropertiesPanel.js";
+import { alphaFor, COLOUR_PROPERTY, hexToOklch } from "./colour.js";
+import { ColourEditor } from "./ColourPicker.js";
+import { copy } from "./copy.js";
+import { themeName } from "./names.js";
+import { IconButton, Tooltip } from "./Tooltip.js";
+import { X } from "lucide-react";
 
 export interface ColourChip {
   key: string;
@@ -35,57 +39,44 @@ export function ColourPanel({ chip, token, dark, classEdits, onPreview, onToken,
   useEffect(() => setInstance(chip.alt && classEdits === null), [chip, classEdits]);
   const mode = dark && token?.dark !== null ? "dark" : "light";
   const value = token ? (mode === "dark" ? (token.dark ?? token.value) : token.value) : "";
-  const hex = cssToHex(value) ?? "#000000";
   const property = COLOUR_PROPERTY[chip.utility] ?? "color";
-  const name = chip.token.slice(2);
-  const previewCss = (picked: string) =>
-    instance ? `[data-skeleton-gizmo]{${property}:${picked}!important}` : `:root{${chip.token}:${hexToOklch(picked, alphaOf(value))}!important}`;
-  const commit = (picked: string) => {
-    if (instance) onInstance(chip.utility, `${chip.utility}-[${picked}]`);
-    else onToken(hexToOklch(picked, alphaOf(value)));
+  const themeValue = (hex: string, opacity: number) => hexToOklch(hex, alphaFor(opacity));
+  const previewCss = (hex: string, opacity: number) =>
+    instance ? `[data-skeleton-gizmo]{${property}:${hex}!important}` : `:root{${chip.token}:${themeValue(hex, opacity)}!important}`;
+  const commit = (hex: string, opacity: number) => {
+    if (instance) onInstance(chip.utility, `${chip.utility}-[${hex}]`);
+    else onToken(themeValue(hex, opacity));
   };
-  // React's onChange fires on every input; the native change event is the picker's release.
-  const picker = useRef<HTMLInputElement>(null);
-  const latestCommit = useRef(commit);
-  latestCommit.current = commit;
-  useEffect(() => {
-    const input = picker.current;
-    if (!input) return;
-    const onChange = () => latestCommit.current(input.value);
-    input.addEventListener("change", onChange);
-    return () => input.removeEventListener("change", onChange);
-  });
   return (
-    <section aria-label="Colour" className="colour-panel" data-testid="colour-panel">
+    <section aria-label={copy.colour.title} className="colour-panel" data-testid="colour-panel">
       <div className="row">
-        <h2>Colour</h2>
-        <button type="button" className="quiet" onClick={onClose} aria-label="Close colour">
-          ×
-        </button>
+        <h2>{copy.colour.title}</h2>
+        <IconButton className="quiet" icon={X} size={16} label={copy.colour.close} onClick={onClose} />
       </div>
       <p className="muted small">
-        {chip.utility}-{name} · {chip.token}
+        {copy.colour.summary(chip.utility, themeName(chip.token))}
       </p>
-      <div className="segmented" role="group" aria-label="Colour scope">
-        <button type="button" aria-pressed={!instance} onClick={() => setInstance(false)} title={`Edit ${chip.token} (${mode})`}>
-          Token ({mode})
-        </button>
-        <button type="button" aria-pressed={instance} disabled={classEdits !== null} title={classEdits ?? "An arbitrary colour on this element: a violation"} onClick={() => setInstance(true)}>
-          This element
-        </button>
+      <div className="segmented" role="group" aria-label={copy.colour.scope}>
+        <Tooltip text={copy.colour.tokenTitle(themeName(chip.token), mode)}>
+          <button type="button" aria-pressed={!instance} onClick={() => setInstance(false)}>
+            {copy.colour.token(mode)}
+          </button>
+        </Tooltip>
+        <Tooltip text={classEdits ?? copy.colour.instanceTitle}>
+          <button type="button" aria-pressed={instance} disabled={classEdits !== null} onClick={() => setInstance(true)}>
+            {copy.colour.instance}
+          </button>
+        </Tooltip>
       </div>
-      <div className="row colour-inputs">
-        <input
-          type="color"
-          aria-label="Pick colour"
-          defaultValue={hex}
-          key={`${chip.key}${chip.utility}${hex}${instance}`}
-          ref={picker}
-          onInput={(e) => onPreview(previewCss(e.currentTarget.value))}
-        />
-        {!instance && <TextInput label={`${chip.token} ${mode} value`} value={value} onCommit={(v) => v.trim() !== "" && onToken(v.trim())} />}
-      </div>
-      {instance && <p className="muted small">Writes {chip.utility}-[#…] on this element: an override the violations panel lists.</p>}
+      <ColourEditor
+        key={`${chip.key}${chip.utility}${instance}`}
+        label={instance ? copy.colour.instance : copy.colour.valueLabel(themeName(chip.token), mode)}
+        value={value || "#000000"}
+        opacity={!instance}
+        onChange={(hex, opacity) => onPreview(previewCss(hex, opacity))}
+        onCommit={commit}
+      />
+      {instance && <p className="muted small">{copy.colour.instanceNote(chip.utility)}</p>}
     </section>
   );
 }

@@ -1,0 +1,140 @@
+// Named lookups for Skeleton's own UI (T8.1, docs/ui-refresh-spec.md §7). Tests find
+// things by role and visible name, and the names come from the renderer's copy file,
+// so a wording change is made there once. Things with no words (canvas frames, layer
+// rows, handles) keep their data-testid.
+
+import type { Locator, Page } from "playwright-core";
+import { copy } from "../../app-renderer/src/copy.js";
+import { say } from "../../app-renderer/src/messages.js";
+import * as names from "../../app-renderer/src/names.js";
+import { copy as canvasCopy } from "../../overlay/src/copy.js";
+import { STYLE } from "../../overlay/src/style.js";
+
+/** The renderer's words, the overlay's words on the canvas, a reason's plain sentence, and plain names (spec §6). */
+export { canvasCopy, copy, names, say, STYLE };
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A name that starts with `text`: tabs and toggles that add a count, e.g. "Notes (2)". */
+export const startsWith = (text: string) => new RegExp(`^${escapeRegExp(text)}`);
+
+/** A pattern from literal text (escaped) and regex pieces, in order. */
+export const pattern = (...parts: (string | RegExp)[]) => new RegExp(parts.map((p) => (typeof p === "string" ? escapeRegExp(p) : p.source)).join(""));
+
+/** Types a colour into a colour picker's Hex field (any CSS colour works) and presses Enter. */
+export async function pickHex(picker: Locator, colour: string): Promise<void> {
+  const hex = picker.getByLabel(copy.colour.hex, { exact: true });
+  await hex.fill(colour);
+  await hex.press("Enter");
+}
+
+export type InspectorTab = Exclude<keyof typeof copy.app.tabs, "notes">;
+export type PreviewWidth = keyof typeof copy.app.layouts;
+export type Workspace = keyof typeof copy.workspaces.names;
+
+/** Skeleton's window, by what's on screen. Every lookup is lazy, like any Playwright locator. */
+export function ui(page: Page) {
+  const button = (name: string) => page.getByRole("button", { name, exact: true });
+  const region = (name: string) => page.getByRole("region", { name, exact: true });
+  const openLeft = async (t: "add" | "layers") => {
+    const build = page.getByRole("group", { name: copy.workspaces.title }).getByRole("button", { name: copy.workspaces.names.build, exact: true });
+    if ((await build.getAttribute("aria-pressed")) !== "true") await build.click();
+    const tab = page.getByRole("tablist", { name: copy.left.title }).getByRole("tab", { name: copy.left[t], exact: true });
+    if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  };
+  const openMore = async () => {
+    const more = button(copy.topBar.more);
+    if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+  };
+  return {
+    // The project picker (T1.4).
+    picker: {
+      changeFolder: () => button(copy.picker.change),
+      projectName: () => page.getByLabel(copy.picker.projectName),
+      create: () => button(copy.picker.create),
+      openFolder: () => button(copy.picker.openFolder),
+      newProject: () => page.getByRole("heading", { name: copy.picker.newProject }),
+      recent: () => page.getByRole("list", { name: copy.picker.recent }),
+    },
+    /** Fills in and submits the new-project form, with the folder dialog already stubbed. */
+    createProject: async (name: string) => {
+      await button(copy.picker.change).click();
+      await page.getByLabel(copy.picker.projectName).fill(name);
+      await button(copy.picker.create).click();
+    },
+    /** Opens the ⋯ menu (if it isn't open) and closes the project. */
+    closeProject: async () => {
+      await openMore();
+      await page.getByRole("menuitem", { name: copy.app.closeProject }).click();
+    },
+
+    // The canvas toolbar.
+    selectMode: () => button(copy.app.selectMode),
+    interactMode: () => button(copy.app.interactMode),
+    history: () => page.getByRole("group", { name: copy.app.history }),
+    undo: () => button(copy.app.undo),
+    redo: () => button(copy.app.redo),
+    previewWidth: (width: PreviewWidth) => button(copy.app.layouts[width]),
+    colourMode: () => page.getByRole("group", { name: copy.app.colourMode }),
+    light: () => button(copy.app.light),
+    dark: () => button(copy.app.dark),
+
+    // Hand off and Take back (T5.2, T5.3).
+    handOff: () => region(copy.loop.title).getByRole("button", { name: copy.loop.handOff, exact: true }),
+    takeBack: () => region(copy.loop.title).getByRole("button", { name: copy.loop.takeBack, exact: true }),
+
+    // Panels.
+    palette: () => region(copy.palette.title),
+    pages: () => region(copy.pages.title),
+    pagesList: () => page.getByRole("listbox", { name: copy.pages.list }),
+    layers: () => region(copy.layers.title),
+    layersTree: () => page.getByRole("tree", { name: copy.layers.tree }),
+    selection: () => region(copy.selection.title),
+    properties: () => region(copy.properties.title),
+    tokens: () => region(copy.tokens.title),
+    violations: () => region(copy.violations.title),
+    notes: () => region(copy.notes.title),
+    addNote: () => page.getByRole("form", { name: copy.notes.addForm }),
+    viewSource: () => button(copy.viewSource.show),
+    hideSource: () => button(copy.viewSource.hide),
+    devServer: {
+      start: () => button(copy.devServer.start),
+      stop: () => button(copy.devServer.stop),
+    },
+    /** Opens the app preview panel from the ⋯ menu, if it isn't showing. */
+    openAppPreview: async () => {
+      if (await region(copy.devServer.title).isVisible()) return;
+      await openMore();
+      await page.getByRole("menuitemcheckbox", { name: copy.topBar.appPreview }).click();
+      await region(copy.devServer.title).waitFor();
+    },
+    /** Opens the page picker, if it isn't open, and returns the pages list's panel. */
+    openPages: async () => {
+      const pages = region(copy.pages.title);
+      if (!(await pages.isVisible())) await page.getByRole("button", { name: startsWith(copy.topBar.page("")) }).click();
+      await pages.waitFor();
+      return pages;
+    },
+
+    /** The latest error message's sentence (Details aside). */
+    lastError: () => page.getByTestId("edit-error").last().locator(".toast-text"),
+
+    /** A workspace button in the top bar (T8.7). */
+    workspace: (w: Workspace) => page.getByRole("group", { name: copy.workspaces.title }).getByRole("button", { name: copy.workspaces.names[w], exact: true }),
+    /** Switches to a workspace, if it isn't the one showing. */
+    openWorkspace: async (w: Workspace) => {
+      const b = page.getByRole("group", { name: copy.workspaces.title }).getByRole("button", { name: copy.workspaces.names[w], exact: true });
+      if ((await b.getAttribute("aria-pressed")) !== "true") await b.click();
+    },
+    /** Shows the Layers tree: the Build workspace's Layers tab. */
+    showLayers: async () => {
+      await openLeft("layers");
+    },
+    /** Shows the palette: the Build workspace's Add tab. */
+    showAdd: async () => {
+      await openLeft("add");
+    },
+
+    /** An inspector tab, whatever count it shows. */
+    tab: (tab: InspectorTab) => page.getByRole("tab", { name: startsWith(copy.app.tabs[tab](0)) }),
+  };
+}

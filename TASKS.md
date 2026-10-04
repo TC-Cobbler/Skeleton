@@ -258,6 +258,96 @@ If this can't be reached, stop and rethink the architecture before touching UI.
 
 ---
 
+## v1.0.x — Dogfood fixes (ROADMAP.md)
+
+Fixes to v1's own features from the dogfood's friction (F-1 to F-6 in `docs/dogfood-log.md`). No new scope.
+
+- [x] **T7.1** Drop beside a container, not only into it (F-1, F-4): near a container's edge along its parent's flow, the drop goes before or after it in the parent.
+- [x] **T7.2** Reorder without seeing both ends (F-2): Move up / Move down in the Selection panel (and Alt+↑/↓), through the same `move` op.
+- [x] **T7.3** No text selection in Skeleton's chrome (F-3), except text fields, code, the dev-server log and errors.
+- [x] **T7.4** Compose inside overlays (F-6): "Open in canvas" on a selected Dialog or Sheet, which clicks its own trigger.
+- [x] **T7.5** Lighter templates (F-5): edit an element's text on the canvas with a double-click.
+
+See `docs/decisions/012-dogfood-fixes.md`.
+
+**Gate:** each fix has its tests; the full unit suite and the Gates 1–5 e2e tests still pass.
+
+---
+
+## v1.0.y — UI refresh (docs/ui-refresh-spec.md): done, gate passed
+
+Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't know HTML or CSS. It covers the vocabulary, layout D, the Compact pro dark style and the plain messages. **On-screen presentation only:** no new features, no behaviour changes, and nothing different written into user projects. Every slice keeps the full unit suite and every e2e gate test green, with **the same steps and assertions** (spec §7).
+
+- [x] **T8.1** **Copy files and test helpers: a pure refactor.**
+  - Move every on-screen string, unchanged, into the renderer's copy file and the overlay's own copy file.
+  - Add the shared e2e helper file of lookups by role and visible name, including the project picker.
+  - Switch every e2e and renderer test to the helpers and copy entries.
+  - Nothing visible changes.
+  - Done: `app-renderer/src/copy.ts`, `overlay/src/copy.ts` and `app-main/e2e/ui.ts`. Labels that come from the palette data (entries, groups, setting names, layout groups, token names) go through identity hooks in the copy file (`propLabel`, `itemLabel`, `tokenName`…), so T8.8 renames them there. The unit suite and every e2e test pass; a pre-existing Gate 4 flake is KI-2.
+- [x] **T8.2** **Plain-words check.**
+  - Add a unit test that fails on any glossary *Avoid* word in the copy files, with the allowed exceptions from spec §7.
+  - It starts with a **pending list** of today's jargon. Each later slice shrinks the list, and it must be empty by the gate.
+  - Done: `app-renderer/tests/plain-words.ts` (reads both copy files with the TypeScript parser and the _Avoid_ lists in GLOSSARY.md), its test, and `plain-words.pending.ts`, with 100 entries today. Words that are ordinary English in Skeleton's sense (select, send, drag, Light/Dark, Wrap onto new lines, the approved "Direction" label) are exempt, and so are copy entries named `details`, `copyDetails`, the page code view and the app preview log. Theme values written by their code name (`--primary`) count as jargon too.
+- [x] **T8.3** **Reason codes and the message table.**
+  - Core and app-main errors Johnny can meet carry a reason code and facts alongside their unchanged technical message, and IPC passes these through.
+  - Add the renderer message table: tier 1 and 2 sentences, plus the catch-all for Skeleton faults.
+  - Messages get Details and Copy details, and opening Details stops auto-dismiss.
+  - Add the "every code has a sentence" test.
+  - Record ADR 013.
+  - Done: `core/src/reasons.ts` (51 codes), reasons on core and main errors, `IpcError.reason`, `copy.messages` (typed to cover every code) and `app-renderer/src/messages.ts`. Notices and in-panel errors show the sentence, with Details and Copy details. The plain-words check covers the sentences. ADR 013.
+- [x] **T8.4** **Style foundation.**
+  - Add the shared style values file (spec §3) and split `styles.css` into area files that use only those values.
+  - The overlay injects the values file into its shadow root and drops its hard-coded colours.
+  - Set the native window frame to dark.
+  - The result is today's layout in Compact pro.
+  - Done: `overlay/src/style.ts` (exported as `@skeleton/overlay/style`); `app-renderer/src/styles/` holds `base.css`, `shell.css`, `canvas.css` and `panels.css`. The overlay draws in the shared colours. The window is dark. Also fixed along the way: KI-2, a handle drag's label going missing. Full unit and e2e suites pass.
+- [x] **T8.5** **Icons and tooltips.**
+  - Add Lucide (1.5px stroke, 20/16px), IconButton (label required) and Tooltip (hover and focus, Escape to close).
+  - Remove `title=` throughout.
+  - Add the "icon-only buttons use IconButton" test and the tooltip behaviour tests.
+  - Add the licence notice in About.
+  - Done: `app-renderer/src/Tooltip.tsx` (`useTooltip`, `Tooltip`, `Hinted`, `IconButton`). Hints are also each element's `aria-description`, and the e2e tests read them there. The licence notice sits in the app info line until the ⋯ menu's About exists (T8.6). `tests/icon-buttons.test.ts` and `tests/tooltip.test.tsx`. Full unit and e2e suites pass.
+- [x] **T8.6** **Top bar and status bar** (layout D).
+  - Top bar: project name, the page picker (replacing the Pages panel), Undo/Redo, and the ⋯ menu with App preview and its log, Show code and About.
+  - Status bar: app state and the workspace's purpose.
+  - Done: `app-renderer/src/TopBar.tsx` (`PagePicker`, `MoreMenu`, `About`, `usePopover`). The Pages panel lives in the picker; the app preview, About (project folder, versions, licences) and Close project live in the ⋯ menu; the status bar shows the app's state. The workspace's purpose joins it in T8.7. Tests open the picker and the app preview through `ui.ts`. Unit tests pass. E2e passes apart from the intermittent canvas misses in KI-3, which pass on rerun.
+- [x] **T8.7** **Workspaces and inspector** (layout D).
+  - Build | Style | Hand off, each with its own left panel.
+  - The tabbed inspector (Element / Theme / Off-theme / Agent's work), with each workspace's default tab, and the element's notes at the end of Element.
+  - The hand-off bar under the canvas.
+  - Navigation goes into the test helpers.
+  - Done: the workspaces are in the top bar. Build's Add and Layers tabs both stay in the page (Layers keeps what's open). Style shows Layers and the reach hint; Hand off shows every note. Selecting an element shows Element, which ends with that element's notes (`ElementNotes`). The canvas column has its toolbar above and the hand-off bar, with "Review the agent's work", below. The status bar shows the workspace's purpose. `ui.ts` gained `openWorkspace`, `showLayers` and `showAdd`. Unit tests pass. E2e passes apart from the KI-3 flakes, which show up when the files run in parallel and pass on their own.
+- [x] **T8.8** **Plain words in the panels.**
+  - Use GLOSSARY.md terms throughout, and element names instead of IDs.
+  - Use the name tables (spec §6) for theme values, settings and options, agent controls and element parts, each with its fallback rule.
+  - Done: the name tables are `copy.names` and the palette's `copy.palette.items`, read through `app-renderer/src/names.ts` (theme value names, setting labels and options, agent controls, element kinds and element names, each with its fallback rule). Panels, tabs and the canvas toolbar use glossary words, and messages name elements by element name. IDs and code names stay only as hidden test hooks and `data-ui-id` / `data-nearest` attributes. The pending list is down from 100 to 26 (the messages for T8.9, the overlay for T8.10); glossary terms such as "Agent component" pass the check. Gate 5's Table drag now waits for the drop indicator before releasing.
+- [x] **T8.9** **Plain messages.**
+  - Write every reason code's sentence to spec §4.
+  - Rewrite the empty states, progress lines and confirmations.
+  - Disable controls Skeleton knows will be refused, with the same sentence in the tooltip.
+  - Done: every reason code's sentence follows spec §4; "inside agent code" names the agent code around the element (the renderer finds it in the page tree). The renderer's own refusals (move, delete, drop, restyle, pin a note, change an element added outside Skeleton) are whole sentences naming the element, and the same sentence is the disabled control's tooltip and the message if it's tried anyway. The empty states, progress lines and confirmations are spec §4's table. Disabled controls now say why: Undo/Redo while the agent is working, Rename/Delete page (including "the only page"), a missing recent project, and an off-theme value's name. The pending list holds only the overlay's 12 entries (T8.10).
+- [x] **T8.10** **Overlay words and colours.**
+  - Canvas labels, drop labels, note pins, agent code badges and handle hints in plain words, by element name.
+  - The overlay's colours come from the shared values (agent code orange, notes purple, one blue).
+  - Done: the host words every canvas label (each node carries its element name; agent code gets the 🔒 mark) and every theme value the handles name, so the overlay shows finished text. Handle hovers name the reach (All buttons, Whole theme, Just this one) and the theme value; readouts show sizes in px or a theme value name, never a class; refusals are whole sentences, including the host's. Colour chips' hints read "Background: Main colour". A label's `data-label-for` attribute carries the data-ui-id for tests. The colours were already shared (T8.4). The plain-words pending list is empty.
+
+**Gate:**
+- The plain-words pending list is empty.
+- Every reason code has a sentence.
+- Every icon-only button uses IconButton and its tooltip shows on hover and on focus.
+- The full unit suite and every e2e gate test (gate1–5, dogfood, dogfood-fixes) pass with unchanged steps and assertions.
+- Johnny reviews screenshots of each workspace against the approved mocks and signs off.
+
+**Gate run (2026-10-04):**
+- [x] The plain-words pending list is empty (`plain-words.test.ts`).
+- [x] Every reason code has a sentence (`messages.test.ts`).
+- [x] Icon-only buttons go through IconButton, and its tooltip shows on hover and on focus (`icon-buttons.test.ts`, `tooltip.test.tsx`).
+- [x] Unit suite: 437 of 437. e2e: gate1–5 and dogfood-fixes pass in the full run; the last full run's one failure (a canvas click in `compose.test.ts`) is KI-3 and the file passes 28 of 28 alone. Dogfood: its last two steps (`after5`, `takeback6`) were replayed through the reworded UI on a copy of the dogfood project reset to round 5, and wrote the same code as the original run. The replay found that the driver still looked settings up by their old labels; its lookup now uses the name tables (steps and assertions unchanged).
+- [x] Johnny's sign-off on the workspace screenshots (2026-10-04, after the colour picker change below).
+- From the review: theme colours have no text box any more. A colour's swatch (with its hex) opens a colour picker: a colour area, a hue slider, and Hex, R/G/B, H/S/L and Opacity fields. It previews on the canvas while picking and writes oklch as before. The canvas colour panel uses the same picker (`app-renderer/src/ColourPicker.tsx`).
+
+---
+
 ## Parked (see ROADMAP.md)
 
 - Shadow / elevation tokens (v1.1)
