@@ -338,6 +338,13 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
 - The full unit suite and every e2e gate test (gate1–5, dogfood, dogfood-fixes) pass with unchanged steps and assertions.
 - Johnny reviews screenshots of each workspace against the approved mocks and signs off.
 
+**Gate run (2026-10-04):**
+- [x] The plain-words pending list is empty (`plain-words.test.ts`).
+- [x] Every reason code has a sentence (`messages.test.ts`).
+- [x] Icon-only buttons go through IconButton, and its tooltip shows on hover and on focus (`icon-buttons.test.ts`, `tooltip.test.tsx`).
+- [x] Unit suite: 437 of 437. e2e: gate1–5 and dogfood-fixes pass in the full run; the last full run's one failure (a canvas click in `compose.test.ts`) is KI-3 and the file passes 28 of 28 alone. Dogfood: its last two steps (`after5`, `takeback6`) were replayed through the reworded UI on a copy of the dogfood project reset to round 5, and wrote the same code as the original run. The replay found that the driver still looked settings up by their old labels; its lookup now uses the name tables (steps and assertions unchanged).
+- [ ] Johnny's sign-off on the workspace screenshots.
+
 ---
 
 ## Parked (see ROADMAP.md)

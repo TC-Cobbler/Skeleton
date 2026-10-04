@@ -57,9 +57,9 @@ export function TokensPanel({ sheet, error, dark, counts, onWrite, onHover }: To
       {sheet && (
         <>
           <input aria-label={copy.tokens.filterLabel} placeholder={copy.tokens.filter} value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <p className="muted small">{sheet.file}</p>
           {GROUPS.map((group) => {
-            const tokens = sheet.tokens.filter((t) => t.group === group.id && t.name.includes(filter.trim()));
+            const find = filter.trim().toLowerCase();
+            const tokens = sheet.tokens.filter((t) => t.group === group.id && (themeName(t.name).toLowerCase().includes(find) || t.name.includes(find)));
             if (tokens.length === 0) return null;
             return (
               <div key={group.id} className="token-group">

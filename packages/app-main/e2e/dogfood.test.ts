@@ -66,9 +66,11 @@ async function setText(id: string, text: string) {
   });
 }
 
+/** `label` is a layout setting as the palette names it ("Gap") or a setting's code name ("variant"); the UI shows plain names. */
 async function setProp(id: string, label: string, value: string) {
   await select(id);
-  await edit(`${label} of ${id} → ${value}`, () => props().getByLabel(label).selectOption(value).then(() => undefined));
+  const shown = label in copy.names.layout ? names.layoutLabel(label) : names.settingLabel(label);
+  await edit(`${label} of ${id} → ${value}`, () => props().getByLabel(shown, { exact: true }).selectOption(value).then(() => undefined));
 }
 
 async function place(paletteId: string, target: Locator, aim: Aim): Promise<string> {
