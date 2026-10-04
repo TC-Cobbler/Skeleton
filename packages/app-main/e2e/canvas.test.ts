@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { _electron, type ElectronApplication, type Frame, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clickOnCanvas } from "./canvas-click.js";
-import { canvasCopy, STYLE, ui } from "./ui.js";
+import { canvasCopy, copy, STYLE, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const work = mkdtempSync(path.join(tmpdir(), "skeleton-canvas-"));
@@ -55,10 +55,11 @@ const overlayHtml = () => frame().evaluate(() => document.querySelector("skeleto
 
 describe("locked blocks on the canvas (T2.4)", () => {
   it("outlines and labels every rendered locked block", async () => {
-    await expect.poll(overlayHtml).toContain(canvasCopy.overlay.lockedLabel("NewOrderDialog", " #ui_hskdg"));
+    await expect.poll(overlayHtml).toContain('data-label-for="ui_hskdg"');
     const html = await overlayHtml();
-    expect(html).toContain(canvasCopy.overlay.lockedLabel(canvasCopy.overlay.lockedKinds["map"] ?? "", ""));
-    expect(html).toContain(canvasCopy.overlay.lockedLabel(canvasCopy.overlay.lockedKinds["conditional"] ?? "", ""));
+    expect(html).toContain(canvasCopy.overlay.agentLabel(copy.names.agentComponent("NewOrderDialog")));
+    expect(html).toContain(canvasCopy.overlay.agentLabel(copy.names.agentKinds["map"] ?? ""));
+    expect(html).toContain(canvasCopy.overlay.agentLabel(copy.names.agentKinds["conditional"] ?? ""));
     expect(html).toContain(`border:1px dashed ${STYLE.colour.agent}`);
   });
 
@@ -129,7 +130,7 @@ describe("preview widths (T2.7)", () => {
     for (const id of ["canvas-frame", "canvas-frame-tablet", "canvas-frame-mobile"]) {
       const html = () =>
         page.frameLocator(`[data-testid="${id}"]`).locator("skeleton-overlay").evaluate((el) => el.shadowRoot?.innerHTML ?? "");
-      await expect.poll(html).toContain("Button #ui_exp0r");
+      await expect.poll(html).toContain('data-label-for="ui_exp0r"');
     }
     await ui(page).previewWidth("desktop").click();
     await expect.poll(() => page.locator(".frame iframe").count()).toBe(1);

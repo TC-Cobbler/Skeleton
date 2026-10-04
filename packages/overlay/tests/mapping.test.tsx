@@ -42,11 +42,11 @@ function Page({ rows, shift = 0, version = V }: { rows: string[]; shift?: number
 }
 
 const nodes: OverlayNode[] = [
-  { key: "0", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true, move: false },
-  { key: "0.0", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110, drop: false, move: true },
-  { key: "0.0.0", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105, drop: false, move: false },
-  { key: "0.1", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200, drop: false, move: true },
-  { key: "0.1.0", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190, drop: false, move: false },
+  { key: "0", label: "Box", kind: "plain", name: "div", id: "ui_root0", lockReason: null, element: true, start: 10, end: 300, drop: true, move: false },
+  { key: "0.0", label: "Agent component: Dialog", kind: "locked", name: "Dialog", id: null, lockReason: "custom component", element: true, start: 50, end: 110, drop: false, move: true },
+  { key: "0.0.0", label: "Button", kind: "plain", name: "button", id: "ui_trig0", lockReason: null, element: true, start: 80, end: 105, drop: false, move: false },
+  { key: "0.1", label: "Repeated list", kind: "locked", name: "map", id: null, lockReason: ".map() loop", element: false, start: 115, end: 200, drop: false, move: true },
+  { key: "0.1.0", label: "Text", kind: "plain", name: "p", id: "ui_row00", lockReason: null, element: true, start: 130, end: 190, drop: false, move: false },
 ];
 
 let container: HTMLElement;
@@ -154,7 +154,8 @@ describe("Overlay", () => {
     expect(sent.at(-1)).toEqual({ source: "skeleton-overlay", type: "select", key: "0.0.0" });
     const layer = document.querySelector("skeleton-overlay");
     flush();
-    expect(layer?.shadowRoot?.innerHTML).toContain("button #ui_trig0");
+    expect(layer?.shadowRoot?.innerHTML).toContain('data-label-for="ui_trig0"');
+    expect(layer?.shadowRoot?.innerHTML).toContain("Button</div>");
   });
 
   it("drags a gizmo: previews live, commits on release, and keeps the preview until the page updates (T4.3, T4.4)", () => {
@@ -170,11 +171,12 @@ describe("Overlay", () => {
       type: "gizmos",
       key: "0.0.0",
       tokens: [
-        { name: "--radius", value: "0.625rem", resolved: null, colour: false },
-        { name: "--radius-button", value: "calc(var(--radius) * 0.8)", resolved: "0.5rem", colour: false },
+        { name: "--radius", label: "Corner radius", value: "0.625rem", resolved: null, colour: false },
+        { name: "--radius-button", label: "Button corners", value: "calc(var(--radius) * 0.8)", resolved: "0.5rem", colour: false },
       ],
       spacingSteps: [0, 1, 2, 4],
       classEdits: null,
+      kind: "Button",
     });
     flush();
     const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
@@ -188,7 +190,7 @@ describe("Overlay", () => {
     expect(live?.textContent).toBe(".rounded-button{border-radius:16px!important}");
     expect(trigger.hasAttribute("data-skeleton-gizmo")).toBe(true);
     flush();
-    expect(shadow.innerHTML).toContain("--radius-button: calc(var(--radius) * 1.6)");
+    expect(shadow.innerHTML).toContain("Button corners: 16px");
     pointer("pointerup", document, 114, 114, 0);
     expect(sent.at(-1)).toEqual({
       source: "skeleton-overlay",
@@ -253,7 +255,7 @@ describe("Overlay", () => {
     flush();
     const html = document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "";
     expect(html).toContain("data-drop-indicator");
-    expect(html).toContain("Into div #ui_root0");
+    expect(html).toContain("Into Box");
 
     // Moving the dialog itself: never into itself, and indexes count it as taken out.
     send({ source: "skeleton-host", type: "drag", x: 50, y: 30, moving: "0.0", seq: 8 });
@@ -268,7 +270,7 @@ describe("Overlay", () => {
   it("drops beside a container aimed at its edge, into it aimed at its middle (F-1, F-4)", () => {
     const { sent, send, flush } = setup();
     // Treat the Dialog as an editable container, like a Card in a Stack.
-    const editable = nodes.map((n) => (n.key === "0.0" ? { ...n, kind: "palette" as const, drop: true } : n));
+    const editable = nodes.map((n) => (n.key === "0.0" ? { ...n, kind: "palette" as const, label: "Dialog", drop: true } : n));
     send({ source: "skeleton-host", type: "tree", file: F, version: V, nodes: editable });
     const box = (y: number, h: number) => () => ({ x: 0, y, left: 0, top: y, right: 100, bottom: y + h, width: 100, height: h, toJSON: () => ({}) }) as DOMRect;
     ($("#root-div") as HTMLElement).getBoundingClientRect = box(0, 100);
@@ -291,10 +293,10 @@ describe("Overlay", () => {
     // The div is a column: the Dialog's bottom 8px is "after it", its top 8px "before it".
     send({ source: "skeleton-host", type: "drag", x: 50, y: 36, moving: null, seq: 2 });
     expect(target()).toEqual({ parentKey: "0", index: 1 });
-    expect(label()).toContain("After Dialog in div #ui_root0");
+    expect(label()).toContain("After Dialog in Box");
     send({ source: "skeleton-host", type: "drag", x: 50, y: 3, moving: null, seq: 3 });
     expect(target()).toEqual({ parentKey: "0", index: 0 });
-    expect(label()).toContain("Before Dialog in div #ui_root0");
+    expect(label()).toContain("Before Dialog in Box");
 
     // Edges that coincide: aimed at the right edge of an inner container (the trigger,
     // made a container here) in the middle of its height, the drop goes beside the
@@ -305,7 +307,7 @@ describe("Overlay", () => {
     document.elementFromPoint = () => $("#trigger");
     send({ source: "skeleton-host", type: "drag", x: 97, y: 20, moving: null, seq: 5 });
     expect(target()).toEqual({ parentKey: "0", index: 1 });
-    expect(label()).toContain("After Dialog in div #ui_root0");
+    expect(label()).toContain("After Dialog in Box");
     send({ source: "skeleton-host", type: "drag", x: 50, y: 20, moving: null, seq: 6 });
     expect(target()).toMatchObject({ parentKey: "0.0.0" });
     ($("#root-div") as HTMLElement).style.cssText = "";
@@ -339,7 +341,7 @@ describe("Overlay", () => {
     at.el = document.querySelectorAll(".row")[2] as Element;
     mouse("pointermove", at.el, 50, 85);
     flush();
-    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).toContain("Move 🔒 Dialog into div #ui_root0");
+    expect(document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML).toContain("Move 🔒 Agent component: Dialog into Box");
     const before = sent.length;
     mouse("pointerup", at.el, 50, 85, 0);
     mouse("click", at.el, 50, 85, 0);
@@ -362,7 +364,7 @@ describe("Overlay", () => {
     const shadow = document.querySelector("skeleton-overlay")?.shadowRoot as ShadowRoot;
     const grip = shadow.querySelector("[data-grab]") as HTMLElement;
     expect(grip.getAttribute("data-grab")).toBe("0.0");
-    expect(grip.textContent).toBe("⠿ 🔒 Dialog");
+    expect(grip.textContent).toBe(`⠿ ${copy.overlay.agentLabel("Agent component: Dialog")}`);
     const at = { el: $(".row") as Element };
     document.elementFromPoint = () => at.el;
     const mouse = (type: string, el: Element, x: number, y: number, buttons = 1) =>
@@ -596,14 +598,11 @@ describe("Overlay", () => {
 });
 
 describe("labels", () => {
-  it("say what locks a block", async () => {
+  it("show the host's element name, marking agent code", async () => {
     const { labelOf } = await import("../src/overlay.js");
     const n = (over: Partial<OverlayNode>): OverlayNode => ({ ...nodes[0], ...over }) as OverlayNode;
-    expect(labelOf(n({ kind: "locked", name: "map", element: false, id: null }))).toBe("🔒 .map()");
-    expect(labelOf(n({ kind: "locked", name: "conditional", element: false, id: null }))).toBe("🔒 conditional");
-    expect(labelOf(n({ kind: "locked", name: "expression", element: false, id: null }))).toBe("🔒 {…}");
-    expect(labelOf(n({ kind: "locked", name: "OrdersTable", element: true, id: "ui_ordt1" }))).toBe("🔒 OrdersTable #ui_ordt1");
-    expect(labelOf(n({ kind: "palette", name: "Button", id: "ui_b1234" }))).toBe("Button #ui_b1234");
+    expect(labelOf(n({ kind: "locked", name: "map", label: "Repeated list", element: false, id: null }))).toBe(copy.overlay.agentLabel("Repeated list"));
+    expect(labelOf(n({ kind: "palette", name: "Button", label: 'Button "Add game"', id: "ui_b1234" }))).toBe('Button "Add game"');
   });
 });
 

@@ -19,7 +19,7 @@ import { _electron, type ElectronApplication, type Page } from "playwright-core"
 import { buildTree, findNodeById, readNotes, readTokens, sourceVersion, walkTree, type UiNode } from "@skeleton/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canvasFrame, canvasPoint, waitForCanvas } from "./canvas-click.js";
-import { copy, names, startsWith, ui } from "./ui.js";
+import { canvasCopy, copy, names, startsWith, ui } from "./ui.js";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(path.join(tmpdir(), "skeleton-gate5-"));
@@ -225,7 +225,7 @@ describe("Gate 5", () => {
     const block = node(IDS.body)?.children[0];
     expect([block?.kind, block?.lockReason]).toEqual(["locked", ".map() loop"]);
     for (const n of locked) expect(n.range.start >= (block?.range.start ?? 0) && n.range.end <= (block?.range.end ?? 0), n.name).toBe(true);
-    await expect.poll(() => frame().locator("skeleton-overlay .label", { hasText: "🔒 .map()" }).count(), { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect.poll(() => frame().locator("skeleton-overlay .label", { hasText: canvasCopy.overlay.agentLabel(names.agentCodeKind("map", ".map() loop")) }).count(), { timeout: 10_000 }).toBeGreaterThan(0);
     // The Table's ID is intact, in the code and on the canvas.
     expect(node(IDS.table)?.name).toBe("Table");
     expect(await frame().locator(`table[data-ui-id="${IDS.table}"]`).count()).toBe(1);

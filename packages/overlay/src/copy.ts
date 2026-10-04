@@ -6,6 +6,12 @@
 
 const plural = (n: number, word: string, many = `${word}s`) => (n === 1 ? word : many);
 
+/** "Button" → "All buttons"; "Box" → "All boxes". */
+const all = (kind: string) => {
+  const k = kind.charAt(0).toLowerCase() + kind.slice(1);
+  return `All ${/(s|x|ch|sh)$/.test(k) ? `${k}es` : `${k}s`}`;
+};
+
 export const copy = {
   overlay: {
     textOf: (label: string) => `Text of ${label}`,
@@ -16,33 +22,34 @@ export const copy = {
     drop: (where: string) => where.charAt(0).toUpperCase() + where.slice(1),
     move: (label: string, where: string) => `Move ${label} ${where}`,
     pinNotes: (open: number, total: number) => `${open} open of ${total} ${plural(total, "note")}`,
-    pinReplied: "agent replied",
-    /** How a locked block without an element of its own is labelled. */
-    lockedKinds: { map: ".map()", conditional: "conditional", expression: "{…}", fragment: "<>…</>", spread: "{...}" } as Record<string, string>,
-    lockedLabel: (name: string, id: string) => `🔒 ${name}${id}`,
+    pinReplied: "the agent replied",
+    /** Agent code's label: its element name with the agent code mark. */
+    agentLabel: (label: string) => `🔒 ${label}`,
   },
+  /** Handle hovers and readouts: the reach (spec: All buttons, Whole theme, Just this one) and theme value names. */
   gizmos: {
-    /** How the hover label names each scope (PRD §10.3). */
-    scopes: { component: "Drag", global: "Shift", instance: "Alt" },
-    hover: (scope: string, what: string) => `${scope}: ${what}`,
-    hoverRefusal: (reason: string) => `can't: ${reason}`,
-    refusal: (reason: string) => `Can't: ${reason}`,
+    hover: (what: string) => what,
     dragging: (readout: string, affected: string) => `${readout} · ${affected}`,
     thisElement: "this element",
     elements: (n: number) => `${n} ${plural(n, "element")}`,
     readout: (name: string, value: string) => `${name}: ${value}`,
-    instance: "this element only",
-    notLength: (token: string) => `${token} isn't a length`,
-    radiusGlobal: "--radius (every radius derived from it)",
-    noRadiusToken: "it has no radius token (rounded-button, rounded-card…)",
-    radiusComponent: (token: string, own: string | undefined) => `${token} (every ${own})`,
-    notSpacingStep: (what: string) => `its ${what} isn't a step of the spacing scale`,
-    spacingGlobal: "--spacing (the whole spacing scale)",
-    spacingComponent: (what: string) => `${what}: spacing scale`,
-    typeGlobal: "--type-base (the whole type scale)",
-    noTypeScale: "the project has no type scale",
-    typeComponent: "type scale step",
-    borderNotToken: "its border width isn't the token (plain `border`)",
-    borderGlobal: "--border-width (every default border)",
+    px: (value: number) => `${Math.round(value * 10) / 10}px`,
+    /** A colour chip: what the colour is used for, and its theme value name. */
+    chip: (utility: string, name: string) => `${({ bg: "Background", text: "Text", border: "Border" } as Record<string, string>)[utility] ?? "Colour"}: ${name}`,
+    instance: "Just this one",
+    radiusGlobal: (name: string) => `Whole theme: ${name}, which every corner follows`,
+    radiusComponent: (name: string, kind: string) => `${all(kind)}: ${name}`,
+    spacingGlobal: (name: string) => `Whole theme: ${name}, which all spacing follows`,
+    spacingComponent: (what: string) => `Just this one: its ${what}, in theme sizes`,
+    typeGlobal: (name: string) => `Whole theme: ${name}, which all text sizes follow`,
+    typeComponent: "Just this one: its text size, in theme sizes",
+    borderGlobal: (name: string) => `Whole theme: ${name}, which every line follows`,
+    /** What a spacing handle changes. */
+    spacingWhat: { gap: "space between items", padding: "inner space" },
+    notLength: (name: string) => `Can't drag this: ${name} isn't a size Skeleton can change by dragging.`,
+    noRadiusToken: (kind: string) => `Can't drag this for ${all(kind).toLowerCase()}: they have no corners of their own in the theme. Hold Shift for the whole theme, or Alt for just this one.`,
+    notSpacingStep: (what: string) => `Can't drag this: its ${what} is a custom size, not a theme size. Pick a theme size first.`,
+    noTypeScale: "Can't drag this: your app's theme has no text sizes.",
+    borderNotThemed: "Can't drag this: its line thickness is set by hand, not by the theme.",
   },
 };

@@ -58,6 +58,7 @@ export function toOverlayNodes(nodes: KeyedNode[], elements: Record<string, Elem
   const byKey = new Map(nodes.map((n) => [n.key, n.node]));
   return nodes.map(({ key, node }) => ({
     key,
+    label: elementName(node),
     kind: node.kind,
     name: node.name,
     id: node.id,

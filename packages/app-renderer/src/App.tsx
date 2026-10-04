@@ -28,7 +28,7 @@ import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
 import { copy } from "./copy.js";
 import { messageFor, say } from "./messages.js";
-import { elementKind, elementName } from "./names.js";
+import { elementKind, elementName, themeName } from "./names.js";
 import { Columns3, Hand, Monitor, Moon, MousePointer2, Redo2, Smartphone, Sun, Tablet, Undo2 } from "lucide-react";
 import { IconButton } from "./Tooltip.js";
 import { About, MoreMenu, PagePicker } from "./TopBar.js";
@@ -254,9 +254,10 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     if (!selectedForGizmos || !tokens.sheet) return null;
     return {
       key: selectedForGizmos.key,
-      tokens: tokens.sheet.tokens.map((t) => ({ name: t.name, value: dark && t.dark !== null ? t.dark : t.value, resolved: t.resolved, colour: t.group === "colour" })),
+      tokens: tokens.sheet.tokens.map((t) => ({ name: t.name, label: themeName(t.name), value: dark && t.dark !== null ? t.dark : t.value, resolved: t.resolved, colour: t.group === "colour" })),
       spacingSteps,
       classEdits: classEditsBlocked(selectedForGizmos.node),
+      kind: elementKind(selectedForGizmos.node),
     };
   }, [selectedForGizmos, tokens.sheet, dark, spacingSteps]);
   useEffect(() => setColourChip(null), [selected]);

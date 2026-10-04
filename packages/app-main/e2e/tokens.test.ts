@@ -159,15 +159,15 @@ describe("gizmos (T4.3–T4.5)", () => {
         await page.mouse.move(at.x, at.y);
         return label();
       })
-      .toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.scopes.component, "--radius-button")));
+      .toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.radiusComponent(names.themeName("--radius-button"), names.kindOf("Button")))));
     try {
       await page.keyboard.down("Shift");
       await page.mouse.move(at.x + 1, at.y);
-      await expect.poll(label).toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.scopes.global, canvasCopy.gizmos.radiusGlobal)));
+      await expect.poll(label).toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.radiusGlobal(names.themeName("--radius")))));
       await page.keyboard.up("Shift");
       await page.keyboard.down("Alt");
       await page.mouse.move(at.x, at.y + 1);
-      await expect.poll(label).toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.scopes.instance, canvasCopy.gizmos.instance)));
+      await expect.poll(label).toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.instance)));
     } finally {
       await page.keyboard.up("Shift");
       await page.keyboard.up("Alt");
@@ -182,7 +182,7 @@ describe("gizmos (T4.3–T4.5)", () => {
         const live = await radii();
         expect(live[0]).not.toBe(before[0]);
         expect(new Set(live).size).toBe(1); // both Buttons
-        expect(await label()).toMatch(pattern(canvasCopy.gizmos.readout("--radius-button", ""), /.*/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.elements(2))));
+        expect(await label()).toMatch(pattern(canvasCopy.gizmos.readout(names.themeName("--radius-button"), ""), /.*/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.elements(2))));
         expect(css()).toBe(cssBefore); // nothing written mid-drag
       },
     });
@@ -196,7 +196,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     const component = token("--radius-button");
     const card = token("--radius-card");
     const base = token("--radius", "light");
-    await dragGizmo(page, handle("radius"), -16, -16, { modifier: "Shift", during: async () => expect(await label()).toMatch(/^--radius: [\d.]+rem · \d+ elements$/) });
+    await dragGizmo(page, handle("radius"), -16, -16, { modifier: "Shift", during: async () => expect(await label()).toMatch(pattern(/^/, canvasCopy.gizmos.readout(names.themeName("--radius"), ""), /[\d.]+px · \d+ elements$/)) });
     await expect.poll(() => token("--radius", "light"), { timeout: 10_000 }).not.toBe(base);
     expect(token("--radius-button")).toBe(component);
     expect(token("--radius-card")).toBe(card); // still derived: it follows
@@ -206,7 +206,7 @@ describe("gizmos (T4.3–T4.5)", () => {
     const cssBefore = css();
     await frame().locator("style[data-skeleton-live]").waitFor({ state: "detached", timeout: 10_000 });
     const before = await radii();
-    await dragGizmo(page, handle("radius"), 20, 20, { modifier: "Alt", during: async () => expect(await label()).toMatch(pattern(/^rounded-\[\d+px\]/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.thisElement), /$/)) });
+    await dragGizmo(page, handle("radius"), 20, 20, { modifier: "Alt", during: async () => expect(await label()).toMatch(pattern(/^[\d.]+px/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.thisElement), /$/)) });
     await expect.poll(() => classNameOf(buttonId), { timeout: 10_000 }).toMatch(/^rounded-\[\d+px\]$/);
     expect(css()).toBe(cssBefore);
     await expect.poll(async () => (await radii())[0]).not.toBe(before[0]);

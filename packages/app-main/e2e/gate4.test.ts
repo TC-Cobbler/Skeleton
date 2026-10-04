@@ -132,13 +132,13 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
         },
         { timeout: 10_000 },
       )
-      .toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.scopes.component, "--radius-button")));
+      .toMatch(startsWith(canvasCopy.gizmos.hover(canvasCopy.gizmos.radiusComponent(names.themeName("--radius-button"), names.kindOf("Button")))));
     await dragGizmo(page, radiusHandle(), 12, 12, {
       during: async () => {
         const live = await radii();
         expect(live[0]).toBeGreaterThan(before[0] as number);
         expect(new Set(live).size).toBe(1); // all three Buttons, the one in the Card too
-        expect(await label()).toMatch(pattern(/^/, canvasCopy.gizmos.readout("--radius-button", ""), /.*/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.elements(3)), /$/));
+        expect(await label()).toMatch(pattern(/^/, canvasCopy.gizmos.readout(names.themeName("--radius-button"), ""), /.*/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.elements(3)), /$/));
         expect(css()).toBe(cssBefore); // live only: nothing written during the drag
       },
     });
@@ -158,7 +158,7 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
     await dragGizmo(page, radiusHandle(), -8, -8, {
       modifier: "Shift",
       during: async () => {
-        expect(await label()).toMatch(/^--radius: [\d.]+rem · \d+ elements$/);
+        expect(await label()).toMatch(pattern(/^/, canvasCopy.gizmos.readout(names.themeName("--radius"), ""), /[\d.]+px · \d+ elements$/));
         expect(await cardRadius()).toBeLessThan(cardBefore); // a derived radius follows live
       },
     });
@@ -182,7 +182,7 @@ describe.each(["light", "dark"] as const)("Gate 4: F3 in %s mode", (mode) => {
     const before = await radiiBy(first);
     await dragGizmo(page, radiusHandle(), 10, 10, {
       modifier: "Alt",
-      during: async () => expect(await label()).toMatch(pattern(/^rounded-\[\d+px\]/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.thisElement), /$/)),
+      during: async () => expect(await label()).toMatch(pattern(/^[\d.]+px/, canvasCopy.gizmos.dragging("", canvasCopy.gizmos.thisElement), /$/)),
     });
     await expect.poll(() => findNodeById(buildTree(home()).roots, first)?.props["className"], { timeout: 10_000 }).toMatch(/^rounded-\[\d+px\]$/);
     expect(css()).toBe(cssBefore);

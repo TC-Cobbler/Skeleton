@@ -203,7 +203,7 @@ for (const fixture of ["loop-01", "loop-02"]) {
           if (target) {
             await expect
               .poll(() => frame().evaluate(() => document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? ""))
-              .toContain(`#${n.id}</div>`);
+              .toContain(`data-label-for="${n.id}"`);
           }
           byTree++;
         }

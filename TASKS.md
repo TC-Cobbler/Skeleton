@@ -326,9 +326,10 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Rewrite the empty states, progress lines and confirmations.
   - Disable controls Skeleton knows will be refused, with the same sentence in the tooltip.
   - Done: every reason code's sentence follows spec §4; "inside agent code" names the agent code around the element (the renderer finds it in the page tree). The renderer's own refusals (move, delete, drop, restyle, pin a note, change an element added outside Skeleton) are whole sentences naming the element, and the same sentence is the disabled control's tooltip and the message if it's tried anyway. The empty states, progress lines and confirmations are spec §4's table. Disabled controls now say why: Undo/Redo while the agent is working, Rename/Delete page (including "the only page"), a missing recent project, and an off-theme value's name. The pending list holds only the overlay's 12 entries (T8.10).
-- [ ] **T8.10** **Overlay words and colours.**
+- [x] **T8.10** **Overlay words and colours.**
   - Canvas labels, drop labels, note pins, agent code badges and handle hints in plain words, by element name.
   - The overlay's colours come from the shared values (agent code orange, notes purple, one blue).
+  - Done: the host words every canvas label (each node carries its element name; agent code gets the 🔒 mark) and every theme value the handles name, so the overlay shows finished text. Handle hovers name the reach (All buttons, Whole theme, Just this one) and the theme value; readouts show sizes in px or a theme value name, never a class; refusals are whole sentences, including the host's. Colour chips' hints read "Background: Main colour". A label's `data-label-for` attribute carries the data-ui-id for tests. The colours were already shared (T8.4). The plain-words pending list is empty.
 
 **Gate:**
 - The plain-words pending list is empty.

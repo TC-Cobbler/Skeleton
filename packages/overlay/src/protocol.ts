@@ -8,6 +8,8 @@ export interface OverlayNode {
   key: string;
   kind: "palette" | "primitive" | "plain" | "locked";
   name: string;
+  /** What the canvas calls it: its element name, worded by the host (e.g. Button "Add game"). */
+  label: string;
   id: string | null;
   /** Why it's locked; null unless kind is "locked". */
   lockReason: string | null;
@@ -39,6 +41,8 @@ export interface TokenUsage {
 /** A token as the gizmos need it (T4.3): the value in the mode shown, and what it comes to. */
 export interface GizmoToken {
   name: string;
+  /** Its theme value name, worded by the host (e.g. Card corners). */
+  label: string;
   value: string;
   /** The literal the value comes to (e.g. "0.5rem"), or null. */
   resolved: string | null;
@@ -93,7 +97,7 @@ export type HostMessage =
    * What the gizmos on the selected element (`key`) can do (T4.3): the tokens, the
    * spacing scale, and why its classes can't be edited (null when they can).
    */
-  | { source: "skeleton-host"; type: "gizmos"; key: string; tokens: GizmoToken[]; spacingSteps: number[]; classEdits: string | null }
+  | { source: "skeleton-host"; type: "gizmos"; key: string; tokens: GizmoToken[]; spacingSteps: number[]; classEdits: string | null; kind: string }
   /** The last gizmo commit was written (the preview stays until the page updates) or failed (it goes now). */
   | { source: "skeleton-host"; type: "gizmo-done"; ok: boolean }
   /** Preview CSS on the page, with the selected element as the instance target (the colour picker, T4.4); null clears. */
@@ -208,7 +212,7 @@ function isTokenUsage(value: unknown): boolean {
 function isGizmoToken(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const t = value as Record<string, unknown>;
-  return typeof t["name"] === "string" && typeof t["value"] === "string" && (t["resolved"] === null || typeof t["resolved"] === "string") && typeof t["colour"] === "boolean";
+  return typeof t["name"] === "string" && typeof t["label"] === "string" && typeof t["value"] === "string" && (t["resolved"] === null || typeof t["resolved"] === "string") && typeof t["colour"] === "boolean";
 }
 
 function isGizmoCommit(value: unknown): boolean {
@@ -273,7 +277,8 @@ export function isHostMessage(value: unknown): value is HostMessage {
         v["tokens"].every(isGizmoToken) &&
         Array.isArray(v["spacingSteps"]) &&
         v["spacingSteps"].every((n) => Number.isFinite(n)) &&
-        (v["classEdits"] === null || typeof v["classEdits"] === "string")
+        (v["classEdits"] === null || typeof v["classEdits"] === "string") &&
+        typeof v["kind"] === "string"
       );
     case "gizmo-done":
       return typeof v["ok"] === "boolean";

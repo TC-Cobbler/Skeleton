@@ -58,6 +58,8 @@ export interface GizmoContext {
   tokens: GizmoToken[];
   spacingSteps: number[];
   classEdits: string | null;
+  /** The selection's element kind, for naming the reach "All buttons". */
+  kind: string;
 }
 
 /** A drag in progress over the canvas, in window coordinates (T3.2). */

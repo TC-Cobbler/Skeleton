@@ -48,6 +48,8 @@ export interface GizmoData {
   spacingSteps: number[];
   /** Why this element's classes can't be edited, or null when they can (instance and step edits). */
   classEdits: string | null;
+  /** The selection's element kind (e.g. Button), for naming the reach "All buttons". */
+  kind: string;
 }
 
 export interface Handle {
@@ -122,15 +124,18 @@ function square(cx: number, cy: number): Rect {
 /** What a drag on `handle` in `scope` does, or why it can't. */
 export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoData): Drag | { unavailable: string } {
   const tokens = new Map(data.tokens.map((t) => [t.name, t]));
-  const px = (name: string) => toPx(tokens.get(name)?.resolved ?? tokens.get(name)?.value ?? null, m.rem);
+  const pxOf = (name: string) => toPx(tokens.get(name)?.resolved ?? tokens.get(name)?.value ?? null, m.rem);
   const rem = (value: number) => `${round(value / m.rem, 4)}rem`;
+  /** A theme value by its theme value name. */
+  const nameOf = (css: string) => tokens.get(css)?.label ?? css;
+  const px = (value: number) => copy.gizmos.px(value);
   const needsClasses = () => (data.classEdits ? { unavailable: data.classEdits } : null);
   const instance = (group: string, prop: string, utility: (v: number) => string, start: number, axis: Axis, min = 0): Drag | { unavailable: string } =>
     needsClasses() ?? {
       label: copy.gizmos.instance,
       token: null,
       valueAt: linear(start, axis, min),
-      at: (v) => ({ css: `${TARGET}{${prop}:${v}px!important}`, commit: { kind: "class", remove: group, add: utility(v) }, text: utility(v) }),
+      at: (v) => ({ css: `${TARGET}{${prop}:${v}px!important}`, commit: { kind: "class", remove: group, add: utility(v) }, text: px(v) }),
     };
 
   switch (handle.kind) {
@@ -139,32 +144,32 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const own = m.classes.map((c) => /^rounded-([a-z0-9]+)$/.exec(c)?.[1]).find((x) => x !== undefined && tokens.has(`--radius-${x}`));
       const compName = own === undefined ? null : `--radius-${own}`;
       const comp = compName ? tokens.get(compName) : undefined;
-      const base = px("--radius");
+      const base = pxOf("--radius");
       const factor = comp ? factorOf(comp.value) : null;
       if (scope === "instance") return instance(RADIUS_GROUP, "border-radius", (v) => `rounded-[${v}px]`, m.radius, axis);
       if (scope === "global") {
-        if (base === null) return { unavailable: copy.gizmos.notLength("--radius") };
+        if (base === null) return { unavailable: copy.gizmos.notLength(nameOf("--radius")) };
         return {
-          label: copy.gizmos.radiusGlobal,
+          label: copy.gizmos.radiusGlobal(nameOf("--radius")),
           token: "--radius",
           valueAt: linear(m.radius, axis, 0),
           at: (v) => {
             // Keep this element under the pointer: the base it would need, through its own factor.
             const next = factor !== null && factor > 0 ? v / factor : base + (v - m.radius);
             const value = rem(Math.max(0, next));
-            return { css: `:root{--radius:${value}!important}`, commit: tokenCommit("--radius", value), text: copy.gizmos.readout("--radius", value) };
+            return { css: `:root{--radius:${value}!important}`, commit: tokenCommit("--radius", value), text: copy.gizmos.readout(nameOf("--radius"), px(Math.max(0, next))) };
           },
         };
       }
-      if (!compName || !comp) return { unavailable: copy.gizmos.noRadiusToken };
+      if (!compName || !comp) return { unavailable: copy.gizmos.noRadiusToken(data.kind) };
       return {
-        label: copy.gizmos.radiusComponent(compName, own),
+        label: copy.gizmos.radiusComponent(nameOf(compName), data.kind),
         token: compName,
         valueAt: linear(m.radius, axis, 0),
         at: (v) => {
           // An attached token keeps following --radius: only its factor changes.
           const value = factor !== null && base !== null && base > 0 ? `calc(var(--radius) * ${round(v / base, 3)})` : rem(v);
-          return { css: `.${cssEscape(`rounded-${own}`)}{border-radius:${v}px!important}`, commit: tokenCommit(compName, value), text: copy.gizmos.readout(compName, value) };
+          return { css: `.${cssEscape(`rounded-${own}`)}{border-radius:${v}px!important}`, commit: tokenCommit(compName, value), text: copy.gizmos.readout(nameOf(compName), px(v)) };
         },
       };
     }
@@ -179,20 +184,20 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const prop = edge === null ? "gap" : { p: "padding", px: "padding-inline", py: "padding-block" }[prefix as "p" | "px" | "py"];
       const group = `^${prefix}-(\\d+(\\.\\d+)?|px|\\[[^\\]]+\\])$`;
       const step = m.classes.map((c) => new RegExp(`^${prefix}-(\\d+(\\.\\d+)?)$`).exec(c)?.[1]).find((x) => x !== undefined);
-      const spacing = px("--spacing");
-      const what = edge === null ? "gap" : "padding";
+      const spacing = pxOf("--spacing");
+      const what = copy.gizmos.spacingWhat[edge === null ? "gap" : "padding"];
       if (scope === "instance") return instance(group, prop, (v) => `${prefix}-[${v}px]`, start, axis);
-      if (spacing === null || spacing <= 0) return { unavailable: copy.gizmos.notLength("--spacing") };
+      if (spacing === null || spacing <= 0) return { unavailable: copy.gizmos.notLength(nameOf("--spacing")) };
       if (scope === "global") {
         const n = step === undefined ? 0 : Number(step);
         if (n <= 0) return { unavailable: copy.gizmos.notSpacingStep(what) };
         return {
-          label: copy.gizmos.spacingGlobal,
+          label: copy.gizmos.spacingGlobal(nameOf("--spacing")),
           token: "--spacing",
           valueAt: linear(start, axis, 0),
           at: (v) => {
             const value = rem(Math.max(0.25, v / n));
-            return { css: `:root{--spacing:${value}!important}`, commit: tokenCommit("--spacing", value), text: copy.gizmos.readout("--spacing", value) };
+            return { css: `:root{--spacing:${value}!important}`, commit: tokenCommit("--spacing", value), text: copy.gizmos.readout(nameOf("--spacing"), px(Math.max(0.25 * m.rem, v / n))) };
           },
         };
       }
@@ -205,24 +210,24 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
         at: (v) => {
           const s = nearest(data.spacingSteps, v / spacing);
           const utility = `${prefix}-${s}`;
-          return { css: `${TARGET}{${prop}:${s * spacing}px!important}`, commit: { kind: "class", remove: group, add: utility }, text: utility };
+          return { css: `${TARGET}{${prop}:${s * spacing}px!important}`, commit: { kind: "class", remove: group, add: utility }, text: px(s * spacing) };
         },
       };
     }
     case "type": {
       const axis = { dx: 0, dy: -1 / 3 };
       const scale = typeScale(data.tokens, m.rem);
-      const base = px("--type-base");
+      const base = pxOf("--type-base");
       if (scope === "instance") return instance(TEXT_GROUP, "font-size", (v) => `text-[${v}px]`, m.fontSize, axis, 6);
       if (scope === "global") {
-        if (base === null || m.fontSize <= 0) return { unavailable: copy.gizmos.notLength("--type-base") };
+        if (base === null || m.fontSize <= 0) return { unavailable: copy.gizmos.notLength(nameOf("--type-base")) };
         return {
-          label: copy.gizmos.typeGlobal,
+          label: copy.gizmos.typeGlobal(nameOf("--type-base")),
           token: "--type-base",
           valueAt: linear(m.fontSize, axis, 6),
           at: (v) => {
             const value = rem(round((base * v) / m.fontSize, 2));
-            return { css: `:root{--type-base:${value}!important}`, commit: tokenCommit("--type-base", value), text: copy.gizmos.readout("--type-base", value) };
+            return { css: `:root{--type-base:${value}!important}`, commit: tokenCommit("--type-base", value), text: copy.gizmos.readout(nameOf("--type-base"), px((base * v) / m.fontSize)) };
           },
         };
       }
@@ -238,7 +243,7 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
         at: (v) => {
           const s = scale.find((x) => x.px === v) ?? scale[current];
           const utility = `text-${s?.step ?? "base"}`;
-          return { css: `${TARGET}{font-size:${v}px!important}`, commit: { kind: "class", remove: TEXT_GROUP, add: utility }, text: utility };
+          return { css: `${TARGET}{font-size:${v}px!important}`, commit: { kind: "class", remove: TEXT_GROUP, add: utility }, text: nameOf(`--text-${s?.step ?? "base"}`) };
         },
       };
     }
@@ -246,12 +251,12 @@ export function planDrag(handle: Handle, scope: Scope, m: Measured, data: GizmoD
       const axis = { dx: 0.25, dy: 0 };
       if (scope === "instance") return instance(BORDER_GROUP, "border-width", (v) => `border-[${v}px]`, m.borderWidth, axis);
       // There are no per-component border widths: plain and Shift both set the token.
-      if (!m.classes.some((c) => /^(border|border-[xytrblse])$/.test(c))) return { unavailable: copy.gizmos.borderNotToken };
+      if (!m.classes.some((c) => /^(border|border-[xytrblse])$/.test(c))) return { unavailable: copy.gizmos.borderNotThemed };
       return {
-        label: copy.gizmos.borderGlobal,
+        label: copy.gizmos.borderGlobal(nameOf("--border-width")),
         token: "--border-width",
         valueAt: linear(m.borderWidth, axis, 0),
-        at: (v) => ({ css: `:root{--border-width:${v}px!important}`, commit: tokenCommit("--border-width", `${v}px`), text: copy.gizmos.readout("--border-width", `${v}px`) }),
+        at: (v) => ({ css: `:root{--border-width:${v}px!important}`, commit: tokenCommit("--border-width", `${v}px`), text: copy.gizmos.readout(nameOf("--border-width"), px(v)) }),
       };
     }
   }

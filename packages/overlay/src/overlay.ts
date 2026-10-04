@@ -299,7 +299,7 @@ export class Overlay {
         this.tokenHighlight = msg.name;
         break;
       case "gizmos":
-        this.gizmoData = { key: msg.key, tokens: msg.tokens, spacingSteps: msg.spacingSteps, classEdits: msg.classEdits };
+        this.gizmoData = { key: msg.key, tokens: msg.tokens, spacingSteps: msg.spacingSteps, classEdits: msg.classEdits, kind: msg.kind };
         break;
       case "preview":
         // A preview already written waits for the page to update (see gizmo-done).
@@ -662,7 +662,7 @@ export class Overlay {
     const m = this.measure(el, this.node(this.selected));
     const plan = planDrag(handle, scope, m, data);
     if ("unavailable" in plan) {
-      this.gizmoRefusal = { text: copy.gizmos.refusal(plan.unavailable), x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
+      this.gizmoRefusal = { text: plan.unavailable, x: handle.rect.x, y: handle.rect.y, until: Date.now() + 2500 };
       this.schedule();
       this.options.win.setTimeout(() => this.schedule(), 2600);
       return;
@@ -1018,7 +1018,9 @@ export class Overlay {
           const text = labelOf(node);
           const at = place(r.x, r.y >= 18 ? r.y - 18 : r.y + r.height, text);
           const grab = grip ? ` data-grab="${escapeHtml(node.key)}" title="${escapeHtml(copy.overlay.dragToMove)}"` : "";
-          parts.push(`<div class="label"${grab} style="left:${at.x}px;top:${at.y}px;background:${color}">${grip ? "⠿ " : ""}${escapeHtml(text)}</div>`);
+          // The element's data-ui-id, for finding its label (never shown).
+          const id = node.id ? ` data-label-for="${escapeHtml(node.id)}"` : "";
+          parts.push(`<div class="label"${grab}${id} style="left:${at.x}px;top:${at.y}px;background:${color}">${grip ? "⠿ " : ""}${escapeHtml(text)}</div>`);
         }
       });
     };
@@ -1117,7 +1119,7 @@ export class Overlay {
         const x = m.rect.x + m.rect.width - 16 * (i + 1);
         const y = m.rect.y >= 18 ? m.rect.y - 16 : m.rect.y + 2;
         parts.push(
-          `<div class="chip" data-chip="${chip.utility}" data-token="${escapeHtml(chip.token)}" title="${escapeHtml(`${chip.utility}: ${chip.token}`)}" ` +
+          `<div class="chip" data-chip="${chip.utility}" data-token="${escapeHtml(chip.token)}" title="${escapeHtml(copy.gizmos.chip(chip.utility, (this.gizmoData?.tokens.find((t) => t.name === chip.token)?.label ?? chip.token)))}" ` +
             `style="left:${x}px;top:${y}px;background:${escapeHtml(chip.colour)}"></div>`,
         );
       });
@@ -1132,8 +1134,7 @@ export class Overlay {
     } else if (this.gizmoHover) {
       const { handle, scope } = this.gizmoHover;
       const plan = planDrag(handle, scope, m, data as GizmoData);
-      const what = "unavailable" in plan ? copy.gizmos.hoverRefusal(plan.unavailable) : plan.label;
-      label(handle.rect.x + 14, handle.rect.y + 12, copy.gizmos.hover(SCOPE_NAMES[scope], what));
+      label(handle.rect.x + 14, handle.rect.y + 12, copy.gizmos.hover("unavailable" in plan ? plan.unavailable : plan.label));
     }
     const refusal = this.gizmoRefusal;
     if (refusal && refusal.until > Date.now()) label(refusal.x + 14, refusal.y + 12, refusal.text);
@@ -1168,7 +1169,6 @@ const DIALOG_TRIGGER = '[aria-haspopup="dialog"][aria-expanded]';
 const PIN_COLOURS = { build: STYLE.colour.notes, behaviour: STYLE.colour.notes, question: STYLE.colour.notes, resolved: STYLE.colour.secondary };
 
 /** How the hover label names each scope (PRD §10.3). */
-const SCOPE_NAMES: Record<Scope, string> = copy.gizmos.scopes;
 
 function rectOf(el: Element): Rect {
   const r = el.getBoundingClientRect();
@@ -1198,12 +1198,9 @@ export function deepestAt(el: Element | null, x: number, y: number): Element | n
   return el;
 }
 
-/** Canvas label: element name and ID; locked blocks say what locks them. */
+/** Canvas label: the element name the host worded, with the agent code mark on agent code. */
 export function labelOf(node: OverlayNode): string {
-  const id = node.id ? ` #${node.id}` : "";
-  if (node.kind !== "locked") return `${node.name}${id}`;
-  const what: Record<string, string> = copy.overlay.lockedKinds;
-  return copy.overlay.lockedLabel(node.element ? node.name : (what[node.name] ?? node.name), id);
+  return node.kind === "locked" ? copy.overlay.agentLabel(node.label) : node.label;
 }
 
 function escapeHtml(text: string): string {

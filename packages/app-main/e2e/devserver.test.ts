@@ -115,7 +115,8 @@ describe("new project → running dev server (PRD F1)", () => {
     await rows.nth(1).click();
     expect(await page.getByTestId("selection-name").textContent()).toBe("Stack");
     const shadow = () => page.frames().find((f) => f.url().startsWith(url))?.evaluate(() => document.querySelector("skeleton-overlay")?.shadowRoot?.innerHTML ?? "");
-    await expect.poll(shadow).toContain("Stack #ui_");
+    const stackId = await page.getByTestId("selection-id").textContent();
+    await expect.poll(shadow).toContain(`data-label-for="${stackId}"`);
 
     // Canvas → tree: clicking the heading selects its row.
     await clickOnCanvas(page, "canvas-frame", canvas.getByRole("heading", { name: "E2E App" }));

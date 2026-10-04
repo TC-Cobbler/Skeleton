@@ -70,6 +70,8 @@ Seen in the v1.0.y runs (2026-10-01), each passing on its own and on rerun:
 - **`compose.test.ts`, in one full run:** a palette drop wasn't placed, and after a delete nothing was selected. The file passed 3 of 3 on its own.
 - **`gate5.test.ts`, F6, in one full run (T8.8):** the Table drag never got a drop target (no drop indicator within 30 s). The file passed 3 of 3 on its own. On its own, before T8.8 added a wait for the drop indicator, the release sometimes came before the host's drop-target answer (2 of 2 runs), which the wait fixes.
 
+- **`devserver.test.ts`, in one full run (T8.10):** the canvas didn't show an edit on disk within 15 s (HMR), and the next two tests followed from it. The file passed 12 of 12 on its own.
+
 **Likely cause:** a short window while the overlay maps the updated page, in which a press on the canvas doesn't find its element. A person clicking again is unaffected. It's in the canvas code from v1.0 and v1.0.x, not the UI refresh.
 
 **Next step if it recurs at the v1.0.y gate:** log the overlay's target lookup for the missed press.
