@@ -27,8 +27,8 @@ import { ElementNotes, NotesPanel, useNotes } from "./NotesPanel.js";
 import { pinsFor } from "./notes.js";
 import { useSelection } from "./selection.js";
 import { copy } from "./copy.js";
-import { messageFor } from "./messages.js";
-import { elementName } from "./names.js";
+import { messageFor, say } from "./messages.js";
+import { elementKind, elementName } from "./names.js";
 import { Columns3, Hand, Monitor, Moon, MousePointer2, Redo2, Smartphone, Sun, Tablet, Undo2 } from "lucide-react";
 import { IconButton } from "./Tooltip.js";
 import { About, MoreMenu, PagePicker } from "./TopBar.js";
@@ -78,9 +78,9 @@ export function App() {
 
 /** Why gizmos can't edit an element's classes (instance overrides, scale steps), or null when they can. */
 function classEditsBlocked(node: UiNode): string | null {
-  if (node.kind === "locked") return copy.app.classEdits.locked;
-  if (!node.id) return copy.app.classEdits.noId;
-  if (node.protectedProps.includes("className")) return copy.app.classEdits.agentClassName;
+  if (node.kind === "locked") return copy.app.classEdits.locked(elementName(node));
+  if (!node.id) return copy.app.classEdits.noId(elementName(node));
+  if (node.protectedProps.includes("className")) return copy.app.classEdits.agentClassName(elementName(node));
   return null;
 }
 
@@ -149,6 +149,15 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
             const n = nodesNow.current.find((k) => k.node.id === id)?.node;
             return n ? elementName(n) : null;
           },
+          around: (id) => {
+            let key = nodesNow.current.find((k) => k.node.id === id)?.key ?? null;
+            while (key !== null) {
+              key = parentKeyOf(key);
+              const n = key === null ? null : nodesNow.current.find((k) => k.key === key)?.node;
+              if (n?.kind === "locked") return elementKind(n).charAt(0).toLowerCase() + elementKind(n).slice(1);
+            }
+            return null;
+          },
           page: fileNow.current,
           ...(tried ? { tried } : {}),
         }),
@@ -161,7 +170,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     (reason: string | null) => {
       if (reason === null || warnedUnchecked.current) return;
       warnedUnchecked.current = true;
-      pushToast("warning", messageFor(copy.app.unchecked(reason)));
+      pushToast("warning", { ...messageFor(copy.app.unchecked), details: reason });
     },
     [pushToast],
   );
@@ -257,7 +266,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     const node = page.nodes.find((n) => n.key === key)?.node;
     const blocked = node ? classEditsBlocked(node) : copy.app.classEdits.gone;
     if (!node?.id || blocked) {
-      setEditError(copy.app.cantChange(blocked ?? copy.app.classEdits.noId));
+      setEditError(blocked ?? copy.app.classEdits.gone);
       done(false);
       return;
     }
@@ -314,13 +323,13 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     const dest = page.nodes.find((n) => n.key === target.parentKey)?.node;
     const from = Number(key.slice(key.lastIndexOf(".") + 1));
     if (!moved || !parent || !dest?.id) {
-      setEditError(copy.app.cantMoveThere(dest?.name ?? copy.app.thatElement));
+      setEditError(dest ? copy.app.cantMoveThere(elementName(dest)) : copy.nodes.gone);
       return;
     }
     if (parentKey === target.parentKey && from === target.index) return; // dropped where it was
-    const r = refFor(page.nodes, key);
+    const r = refFor(page.nodes, key, "move");
     if ("reason" in r) {
-      setEditError(copy.app.cantMove(moved.name, r.reason));
+      setEditError(r.reason);
       return;
     }
     edit({ op: "move", ref: r.ref, newParentId: dest.id, index: target.index });
@@ -351,7 +360,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     const { ref, reason } = deletion(key);
     setConfirmDelete(null);
     if (!ref) {
-      setEditError(copy.app.cantDelete(reason));
+      setEditError(reason ?? copy.nodes.gone);
       return;
     }
     const parent = page.nodes.find((n) => n.key === parentKeyOf(key))?.node;
@@ -361,7 +370,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
     const node = page.nodes.find((n) => n.key === key)?.node;
     const { reason } = deletion(key);
     if (!node || reason) {
-      setEditError(copy.app.cantDelete(reason ?? copy.app.nothingSelected));
+      setEditError(reason ?? copy.app.nothingSelected);
       return;
     }
     const logic = agentLogicIn(node);
@@ -435,7 +444,7 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
   const canvasDrag = useCanvasDrag((source, target) => {
     const parent = page.nodes.find((n) => n.key === target.parentKey)?.node;
     if (!parent?.id) {
-      setEditError(copy.app.cantDropThere(parent?.name ?? copy.app.thatElement));
+      setEditError(parent ? copy.app.cantDropThere(elementName(parent)) : copy.nodes.gone);
       return;
     }
     if (source.kind === "palette") edit({ op: "insert", parentId: parent.id, index: target.index, paletteId: source.paletteId });
@@ -520,14 +529,14 @@ function ProjectView({ project, info, onClose }: { project: ProjectInfo; info: A
           <IconButton
             label={copy.app.undo}
             icon={Undo2}
-            hint={history.undo ? copy.app.undoTitle(history.undo) : copy.app.nothingToUndo}
+            hint={withAgent ? say({ code: "with-agent", facts: {} }) : history.undo ? copy.app.undoTitle(history.undo) : copy.app.nothingToUndo}
             disabled={!history.undo || withAgent}
             onClick={() => historyStep("undo")}
           />
           <IconButton
             label={copy.app.redo}
             icon={Redo2}
-            hint={history.redo ? copy.app.redoTitle(history.redo) : copy.app.nothingToRedo}
+            hint={withAgent ? say({ code: "with-agent", facts: {} }) : history.redo ? copy.app.redoTitle(history.redo) : copy.app.nothingToRedo}
             disabled={!history.redo || withAgent}
             onClick={() => historyStep("redo")}
           />

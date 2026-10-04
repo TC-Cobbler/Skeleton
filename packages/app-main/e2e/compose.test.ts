@@ -264,7 +264,8 @@ describe("delete (T3.4)", () => {
     await layer("ui_mapr1").click();
     const button = page.getByTestId("selection").getByRole("button", { name: copy.common.delete });
     expect(await button.isDisabled()).toBe(true);
-    expect(await button.getAttribute("aria-description")).toBe(copy.nodes.insideLockedRemove("map"));
+    const name = (await layer("ui_mapr1").locator(".layer-name").textContent()) ?? "";
+    expect(await button.getAttribute("aria-description")).toBe(copy.nodes.insideLockedRemove(name, "repeated list"));
   });
 
   it("asks before deleting agent code, and Cancel leaves it", async () => {
@@ -274,7 +275,7 @@ describe("delete (T3.4)", () => {
     await page.keyboard.press("Delete");
     const confirm = page.getByTestId("confirm-delete");
     await confirm.waitFor();
-    expect(await confirm.textContent()).toContain(copy.nodes.lockedLogic("map", ".map() loop"));
+    expect(await confirm.textContent()).toContain(copy.nodes.lockedLogic(names.agentCodeKind("map", ".map() loop")));
     await confirm.getByRole("button", { name: copy.common.cancel }).click();
     await page.waitForTimeout(300);
     expect(homeFile()).toBe(before);

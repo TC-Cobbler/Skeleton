@@ -44,6 +44,8 @@ export const tierOf = (code: ReasonCode): Tier => (code in PROBLEMS ? "problem" 
 export interface MessageContext {
   /** The element name of the element with this data-ui-id on the page on screen, if it's there. */
   element?: (id: string) => string | null;
+  /** The kind of agent code the element with this data-ui-id is inside ("repeated list"), if any. */
+  around?: (id: string) => string | null;
   /** The page file on screen. */
   page?: string | null;
   /** What the user tried, in a few words, for Copy details. */
@@ -74,6 +76,7 @@ export function named(facts: ReasonFacts, ctx: MessageContext = {}): Named {
     direction,
     folder: copy.named.folder(str(facts, "folder")),
     parent: str(facts, "parent"),
+    around: (id ? ctx.around?.(id) : null) ?? "",
   };
 }
 

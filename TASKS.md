@@ -321,10 +321,11 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
   - Use GLOSSARY.md terms throughout, and element names instead of IDs.
   - Use the name tables (spec §6) for theme values, settings and options, agent controls and element parts, each with its fallback rule.
   - Done: the name tables are `copy.names` and the palette's `copy.palette.items`, read through `app-renderer/src/names.ts` (theme value names, setting labels and options, agent controls, element kinds and element names, each with its fallback rule). Panels, tabs and the canvas toolbar use glossary words, and messages name elements by element name. IDs and code names stay only as hidden test hooks and `data-ui-id` / `data-nearest` attributes. The pending list is down from 100 to 26 (the messages for T8.9, the overlay for T8.10); glossary terms such as "Agent component" pass the check. Gate 5's Table drag now waits for the drop indicator before releasing.
-- [ ] **T8.9** **Plain messages.**
+- [x] **T8.9** **Plain messages.**
   - Write every reason code's sentence to spec §4.
   - Rewrite the empty states, progress lines and confirmations.
   - Disable controls Skeleton knows will be refused, with the same sentence in the tooltip.
+  - Done: every reason code's sentence follows spec §4; "inside agent code" names the agent code around the element (the renderer finds it in the page tree). The renderer's own refusals (move, delete, drop, restyle, pin a note, change an element added outside Skeleton) are whole sentences naming the element, and the same sentence is the disabled control's tooltip and the message if it's tried anyway. The empty states, progress lines and confirmations are spec §4's table. Disabled controls now say why: Undo/Redo while the agent is working, Rename/Delete page (including "the only page"), a missing recent project, and an off-theme value's name. The pending list holds only the overlay's 12 entries (T8.10).
 - [ ] **T8.10** **Overlay words and colours.**
   - Canvas labels, drop labels, note pins, agent code badges and handle hints in plain words, by element name.
   - The overlay's colours come from the shared values (agent code orange, notes purple, one blue).

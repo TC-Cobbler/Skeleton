@@ -28,6 +28,11 @@ describe("plain messages (T8.3)", () => {
     expect(named({ id: "ui_gone1" }).el).toBe(copy.named.thatElement);
   });
 
+  it("names the agent code an element is inside, as spec §4's approved rewrite does", () => {
+    const text = say({ code: "inside-agent-code", facts: { id: "ui_btn01" } }, { element: elements, around: () => "repeated list" });
+    expect(text).toBe('Can\'t change Button "Add game": it\'s inside agent code (repeated list). You can move or delete the whole repeated list instead.');
+  });
+
   it("words an error by its reason, keeping the technical text for Details", () => {
     const m = messageFor(error({ code: "agent-control", facts: { id: "ui_btn01", prop: "onClick" } }), { element: elements, page: "src/pages/HomePage.tsx" });
     expect(m.text).toBe(copy.messages["agent-control"](named({ id: "ui_btn01" }, { element: elements })));
@@ -52,7 +57,7 @@ describe("plain messages (T8.3)", () => {
   });
 
   it("passes the renderer's own sentences through as they are", () => {
-    const m = messageFor(copy.nodes.first);
-    expect(m).toMatchObject({ text: copy.nodes.first, tier: "refusal", details: null, copy: null });
+    const m = messageFor(copy.nodes.first("Box"));
+    expect(m).toMatchObject({ text: copy.nodes.first("Box"), tier: "refusal", details: null, copy: null });
   });
 });

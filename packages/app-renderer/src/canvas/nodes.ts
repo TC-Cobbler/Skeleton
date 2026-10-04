@@ -1,6 +1,10 @@
 import type { ElementSchema, PageTree, UiNode } from "@skeleton/app-main/ipc";
 import type { OverlayNode } from "@skeleton/overlay/protocol";
 import { copy } from "../copy.js";
+import { agentControlName, agentControlShown, elementKind, elementName } from "../names.js";
+
+/** A kind as it reads mid-sentence: "Repeated list" → "repeated list". */
+const lower = (kind: string) => kind.charAt(0).toLowerCase() + kind.slice(1);
 
 export interface KeyedNode {
   key: string;
@@ -73,12 +77,11 @@ export function toOverlayNodes(nodes: KeyedNode[], elements: Record<string, Elem
  */
 export function agentLogicIn(node: UiNode): string[] {
   const out: string[] = [];
-  const label = (n: UiNode) => `${n.name}${n.id ? ` #${n.id}` : ""}`;
   const walk = (n: UiNode) => {
     if (n.kind === "locked") {
-      out.push(copy.nodes.lockedLogic(n.element ? label(n) : n.name, n.lockReason ?? copy.layers.locked));
-    } else if (n.protectedProps.length > 0) {
-      out.push(copy.nodes.protectedLogic(n.protectedProps, label(n)));
+      out.push(copy.nodes.lockedLogic(elementName(n)));
+    } else if (n.protectedProps.some(agentControlShown)) {
+      out.push(copy.nodes.protectedLogic([...new Set(n.protectedProps.filter(agentControlShown).map(agentControlName))], elementName(n)));
     }
     n.children.forEach(walk);
   };
@@ -93,18 +96,19 @@ export type NodeRef = { id: string } | { parentId: string; index: number };
  * never a root, never an element wrapped by a locked block (ADR 002), and it needs
  * an ID of its own or on its parent.
  */
-export function refFor(nodes: KeyedNode[], key: string): { ref: NodeRef } | { reason: string } {
+export function refFor(nodes: KeyedNode[], key: string, action: "delete" | "move" = "delete"): { ref: NodeRef } | { reason: string } {
+  const move = action === "move";
   const node = nodes.find((n) => n.key === key)?.node;
   const parentKey = parentKeyOf(key);
   const parent = parentKey === null ? null : (nodes.find((n) => n.key === parentKey)?.node ?? null);
   if (!node) return { reason: copy.nodes.gone };
-  if (!parent) return { reason: copy.nodes.rootRemove };
+  if (!parent) return { reason: (move ? copy.nodes.rootMove : copy.nodes.rootRemove)(elementName(node)) };
   if (parent.kind === "locked" || !parent.element) {
-    return { reason: copy.nodes.insideLockedRemove(parent.name) };
+    return { reason: (move ? copy.nodes.insideLockedMove : copy.nodes.insideLockedRemove)(elementName(node), lower(elementKind(parent))) };
   }
   if (node.id) return { ref: { id: node.id } };
   if (parent.id) return { ref: { parentId: parent.id, index: Number(key.slice(key.lastIndexOf(".") + 1)) } };
-  return { reason: copy.nodes.noIds };
+  return { reason: (move ? copy.nodes.noIdsMove : copy.nodes.noIds)(elementName(node)) };
 }
 
 /**
@@ -116,12 +120,13 @@ export function reorderTarget(nodes: KeyedNode[], key: string, direction: "up" |
   const node = nodes.find((n) => n.key === key)?.node;
   const parentKey = parentKeyOf(key);
   const parent = parentKey === null ? null : (nodes.find((n) => n.key === parentKey)?.node ?? null);
-  if (!node || parentKey === null || !parent) return { reason: copy.nodes.rootMove };
-  if (!canMove(node, parent)) return { reason: copy.nodes.insideLockedMove(parent.name) };
-  if (!parent.id) return { reason: copy.nodes.noId(parent.name) };
+  if (!node) return { reason: copy.nodes.gone };
+  if (parentKey === null || !parent) return { reason: copy.nodes.rootMove(elementName(node)) };
+  if (!canMove(node, parent)) return { reason: copy.nodes.insideLockedMove(elementName(node), lower(elementKind(parent))) };
+  if (!parent.id) return { reason: copy.nodes.noId(elementName(node), elementName(parent)) };
   const from = Number(key.slice(key.lastIndexOf(".") + 1));
-  if (direction === "up") return from > 0 ? { parentKey, index: from - 1 } : { reason: copy.nodes.first };
-  return from < parent.children.length - 1 ? { parentKey, index: from + 1 } : { reason: copy.nodes.last };
+  if (direction === "up") return from > 0 ? { parentKey, index: from - 1 } : { reason: copy.nodes.first(elementName(node)) };
+  return from < parent.children.length - 1 ? { parentKey, index: from + 1 } : { reason: copy.nodes.last(elementName(node)) };
 }
 
 /** Palette overlays whose content isn't on the canvas while they're closed (F-6). */

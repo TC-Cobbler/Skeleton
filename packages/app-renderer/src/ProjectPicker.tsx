@@ -4,6 +4,7 @@ import { call } from "./bridge.js";
 import { copy } from "./copy.js";
 import { messageFor, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
+import { Tooltip } from "./Tooltip.js";
 
 
 /** New project / open / recent (T1.4). */
@@ -58,10 +59,12 @@ export function ProjectPicker({ onOpen }: { onOpen: (project: ProjectInfo) => vo
         <ul className="recent" aria-label={copy.picker.recent}>
           {list?.recent.map((r) => (
             <li key={r.projectRoot}>
-              <button type="button" className="link" disabled={r.missing} onClick={() => void openRecent(r.projectRoot)}>
-                <strong>{r.name}</strong> <span className="muted">{r.projectRoot}</span>
-                {r.missing && <span className="error"> {copy.picker.missing}</span>}
-              </button>
+              <Tooltip text={r.missing ? copy.picker.missingHint : null}>
+                <button type="button" className="link" disabled={r.missing} onClick={() => void openRecent(r.projectRoot)}>
+                  <strong>{r.name}</strong> <span className="muted">{r.projectRoot}</span>
+                  {r.missing && <span className="error"> {copy.picker.missing}</span>}
+                </button>
+              </Tooltip>
               <button type="button" className="quiet" aria-label={copy.picker.forgetLabel(r.name)} onClick={() => void forget(r.projectRoot)}>
                 {copy.picker.forget}
               </button>

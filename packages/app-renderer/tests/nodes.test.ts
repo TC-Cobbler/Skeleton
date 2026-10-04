@@ -94,17 +94,22 @@ describe("refFor and agentLogicIn (T3.4)", () => {
   });
 
   it("says why a node can't be removed", () => {
-    expect(refFor(nodes, "0")).toEqual({ reason: copy.nodes.rootRemove });
-    expect(refFor(nodes, "0.1.0")).toEqual({ reason: copy.nodes.insideLockedRemove("map") });
-    expect(refFor(nodes, "0.3.0")).toEqual({ reason: copy.nodes.noIds });
+    expect(refFor(nodes, "0")).toEqual({ reason: "Can't delete Column: it holds the whole page." });
+    expect(refFor(nodes, "0.1.0")).toEqual({
+      reason: "Can't delete Text on its own: it's inside agent code (repeated list). You can delete the whole repeated list instead.",
+    });
+    expect(refFor(nodes, "0.1.0", "move")).toEqual({
+      reason: "Can't move Text on its own: it's inside agent code (repeated list). You can move the whole repeated list instead.",
+    });
+    expect(refFor(nodes, "0.3.0")).toEqual({ reason: copy.nodes.noIds("Text") });
     expect(refFor(nodes, "9")).toEqual({ reason: copy.nodes.gone });
   });
 
   it("lists the agent code in a subtree", () => {
     const at = (key: string) => nodes.find((k) => k.key === key)?.node as UiNode;
-    expect(agentLogicIn(at("0.0"))).toEqual([copy.nodes.protectedLogic(["onClick"], "Button #ui_btn01")]);
-    expect(agentLogicIn(at("0.1"))).toEqual([copy.nodes.lockedLogic("map", ".map() loop")]);
-    expect(agentLogicIn(at("0.2"))).toEqual([copy.nodes.lockedLogic("OrdersTable #ui_ord01", "custom component")]);
+    expect(agentLogicIn(at("0.0"))).toEqual(["What happens on click of Button"]);
+    expect(agentLogicIn(at("0.1"))).toEqual(["Repeated list"]);
+    expect(agentLogicIn(at("0.2"))).toEqual(["Agent component: OrdersTable"]);
     expect(agentLogicIn(at("0.3"))).toEqual([]);
   });
 });
@@ -134,12 +139,12 @@ describe("reorderTarget (F-2)", () => {
   });
 
   it("says why not at the ends, at the root, inside a locked block, or without a parent ID", () => {
-    expect(reorderTarget(nodes, "0.0", "up")).toEqual({ reason: copy.nodes.first });
-    expect(reorderTarget(nodes, "0.2", "down")).toEqual({ reason: copy.nodes.last });
+    expect(reorderTarget(nodes, "0.0", "up")).toEqual({ reason: "Box is already first." });
+    expect(reorderTarget(nodes, "0.2", "down")).toEqual({ reason: copy.nodes.last(copy.names.agentKinds["map"] ?? "") });
     expect(reorderTarget(nodes, "0", "up")).toHaveProperty("reason");
     expect(reorderTarget(nodes, "0.2.0", "up")).toHaveProperty("reason");
     const noId = flatten({ roots: [n({ children: [n({ id: "ui_a0000" }), n({ id: "ui_b0000" })] })], rootError: null });
-    expect(reorderTarget(noId, "0.1", "up")).toEqual({ reason: copy.nodes.noId("div") });
+    expect(reorderTarget(noId, "0.1", "up")).toEqual({ reason: copy.nodes.noId("Box", "Box") });
   });
 });
 

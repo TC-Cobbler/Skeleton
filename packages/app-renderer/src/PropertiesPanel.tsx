@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ClassGroup, EditIntent, ElementSchema, PropSchema, UiNode } from "@skeleton/app-main/ipc";
 import { textEditable } from "./canvas/nodes.js";
 import { copy } from "./copy.js";
-import { elementKind, layoutLabel, layoutOptionLabel, optionLabel, settingLabel, settingShown } from "./names.js";
+import { elementKind, elementName, layoutLabel, layoutOptionLabel, optionLabel, settingLabel, settingShown } from "./names.js";
 import { Hinted } from "./Tooltip.js";
 
 type PropValue = string | number | boolean | null;
@@ -26,7 +26,7 @@ export function PropertiesPanel({ node, schema, layout, onEdit }: PropertiesPane
     return (
       <section aria-label={copy.properties.title} className="properties">
         <h2>{copy.properties.title}</h2>
-        <p className="muted">{copy.properties.noId}</p>
+        <p className="muted">{copy.properties.noId(elementName(node))}</p>
       </section>
     );
   }

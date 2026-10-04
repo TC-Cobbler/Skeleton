@@ -131,9 +131,11 @@ function ViolationRow({ item, onSelect, onSnap, onPromote, onKeep }: { item: Vio
         >
           <span className="muted small">{PROMOTE_PREFIX[item.promote]}</span>
           <input aria-label={copy.violations.tokenName} placeholder={copy.violations.namePlaceholder} value={name} onChange={(e) => setName(e.target.value.trim())} />
-          <button type="submit" disabled={!valid}>
-            {copy.violations.create}
-          </button>
+          <Tooltip text={name === "" ? copy.violations.needName : valid ? null : copy.violations.badName}>
+            <button type="submit" disabled={!valid}>
+              {copy.violations.create}
+            </button>
+          </Tooltip>
         </form>
       )}
     </li>

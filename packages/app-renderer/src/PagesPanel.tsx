@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import type { PageEntry, PageIntent, PageList } from "@skeleton/app-main/ipc";
 import { call } from "./bridge.js";
 import { copy } from "./copy.js";
-import { messageFor, messageForReason, type Message } from "./messages.js";
+import { messageFor, messageForReason, say, type Message } from "./messages.js";
 import { MessageText } from "./Toasts.js";
-import { Hinted } from "./Tooltip.js";
+import { Hinted, Tooltip } from "./Tooltip.js";
 
 /** The project's pages, read from its router; refreshed when the app updates. */
 export function usePages(projectRoot: string, revision: number): { list: PageList | null; error: Message | null } {
@@ -49,6 +49,11 @@ export function nameForComponent(component: string): string {
 type Form = { kind: "add" | "rename"; name: string; path: string; pathEdited: boolean } | { kind: "delete" } | null;
 
 /** Page list mirroring the router (T2.5). Selecting a page navigates the canvas. */
+/** Why a page can't be opened, renamed or deleted here, or null if it can. */
+function unavailableFor(p: PageEntry): string | null {
+  return p.dynamic ? copy.pages.dynamic : !p.file ? copy.pages.unreadable : !p.exists ? copy.pages.missing(p.file) : null;
+}
+
 export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPanelProps) {
   const [form, setForm] = useState<Form>(null);
   const [busy, setBusy] = useState(false);
@@ -64,8 +69,10 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
     );
   };
   const editable = current !== null && !current.dynamic && current.exists;
-  const unavailable = (p: PageEntry) =>
-    p.dynamic ? copy.pages.dynamic : !p.file ? copy.pages.unreadable : !p.exists ? copy.pages.missing(p.file) : null;
+  /** Why the page on screen can't be renamed or deleted: the disabled button's tooltip. */
+  const cantEdit = current ? unavailableFor(current) : null;
+  const cantDelete = cantEdit ?? ((list?.pages.filter((p) => p.exists).length ?? 0) < 2 ? say({ code: "only-page", facts: {} }) : null);
+  const unavailable = unavailableFor;
   return (
     <section aria-label={copy.pages.title} className="pages">
       <h2>{copy.pages.title}</h2>
@@ -95,16 +102,20 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
           <button type="button" onClick={() => setForm({ kind: "add", name: "", path: "", pathEdited: false })}>
             {copy.pages.add}
           </button>
-          <button
-            type="button"
-            disabled={!editable}
-            onClick={() => current?.component && setForm({ kind: "rename", name: nameForComponent(current.component), path: current.path, pathEdited: true })}
-          >
-            {copy.pages.rename}
-          </button>
-          <button type="button" disabled={!editable || (list?.pages.filter((p) => p.exists).length ?? 0) < 2} onClick={() => setForm({ kind: "delete" })}>
-            {copy.common.delete}
-          </button>
+          <Tooltip text={cantEdit}>
+            <button
+              type="button"
+              disabled={!editable}
+              onClick={() => current?.component && setForm({ kind: "rename", name: nameForComponent(current.component), path: current.path, pathEdited: true })}
+            >
+              {copy.pages.rename}
+            </button>
+          </Tooltip>
+          <Tooltip text={cantDelete}>
+            <button type="button" disabled={!editable || cantDelete !== null} onClick={() => setForm({ kind: "delete" })}>
+              {copy.common.delete}
+            </button>
+          </Tooltip>
         </div>
       )}
       {form && form.kind !== "delete" && (
@@ -145,7 +156,7 @@ export function PagesPanel({ list, error, current, onOpen, onPageOp }: PagesPane
       {form?.kind === "delete" && current && (
         <div className="confirm" role="alertdialog" aria-label={copy.pages.confirmDeleteTitle}>
           <p>
-            {copy.pages.confirmDelete} <code>{current.path}</code> {copy.pages.confirmAnd} <code>{current.file}</code>?
+            {copy.pages.confirmDelete(current.component ? copy.named.pageComponent(current.component) : copy.pages.noName, current.path)}
           </p>
           <div className="row">
             <button type="button" className="danger" disabled={busy} onClick={() => run({ op: "deletePage", path: current.path })}>

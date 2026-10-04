@@ -27,11 +27,17 @@ export interface Named {
   folder: string;
   /** The web address a page's address must start with. */
   parent: string;
+  /** The agent code an element is inside, by its kind ("repeated list"); empty when not known. */
+  around: string;
 }
 
 const count = (n: number) => (n > 0 ? ` (${n})` : "");
 /** `word` or `plural` (default `word` + "s") for `n`. */
 const plural = (n: number, word: string, many = `${word}s`) => (n === 1 ? word : many);
+
+/** Why an element added by the agent can't be changed until Take back gives it a name Skeleton can find. */
+const OUTSIDE = "it was added outside Skeleton, and Skeleton will recognise it after the next Take back.";
+const OUTSIDE_PARENT = "was added outside Skeleton, and Skeleton will recognise it after the next Take back.";
 
 export const copy = {
   /**
@@ -39,7 +45,10 @@ export const copy = {
    * what to do. Refusals and problems; anything else gets `fault`.
    */
   messages: {
-    "inside-agent-code": (n) => `Can't change ${n.el}: it's inside agent code. You can move or delete the whole agent code instead.`,
+    "inside-agent-code": (n) =>
+      n.around
+        ? `Can't change ${n.el}: it's inside agent code (${n.around}). You can move or delete the whole ${n.around} instead.`
+        : `Can't change ${n.el}: it's inside agent code. You can move or delete the whole agent code instead.`,
     "is-agent-code": (n) => `Can't change ${n.el}: it's agent code, so Skeleton won't rewrite it. You can move or delete it whole.`,
     "agent-control": (n) => `Can't change that setting of ${n.el}: the agent's code decides it.`,
     "agent-style": (n) => `Can't restyle ${n.el}: the agent's code decides its look. Add a note to ask the agent.`,
@@ -368,20 +377,18 @@ export const copy = {
     info: (i: { appVersion: string; electron: string; node: string; platform: string }) => `v${i.appVersion} · Electron ${i.electron} · Node ${i.node} · ${i.platform}`,
     /** Licence notices for what Skeleton ships (moves to About with the ⋯ menu). */
     licences: "Icons: Lucide (ISC licence)",
+    /** Why handles and the colour panel can't restyle an element: its tooltip and its message. */
     classEdits: {
-      locked: "it's a locked block: its classes are agent code",
-      noId: "it has no data-ui-id",
-      agentClassName: "its className is set by agent code",
-      gone: "it isn't on the page any more",
+      locked: (el: string) => `Can't restyle ${el}: it's agent code, so the agent's code decides its look.`,
+      noId: (el: string) => `Can't restyle ${el} yet: ${OUTSIDE}`,
+      agentClassName: (el: string) => `Can't restyle ${el}: the agent's code decides its look. Add a note to ask the agent.`,
+      gone: "Can't do that: the element isn't on the page any more.",
     },
-    unchecked: (reason: string) => `Edits aren't being typechecked: ${reason}`,
-    cantChange: (reason: string) => `Can't change this element: ${reason}`,
+    unchecked: "Skeleton can't check changes against your app's code right now, so it won't notice if a change breaks your app. See Details.",
     thatElement: "that element",
-    cantMoveThere: (name: string) => `Can't move there: ${name} has no data-ui-id.`,
-    cantMove: (name: string, reason: string) => `Can't move ${name}: ${reason}`,
-    cantDelete: (reason: string | null) => `Can't delete: ${reason}`,
-    nothingSelected: "nothing selected",
-    cantDropThere: (name: string) => `Can't drop there: ${name} has no data-ui-id.`,
+    cantMoveThere: (name: string) => `Can't move into ${name} yet: ${OUTSIDE}`,
+    nothingSelected: "Select an element first.",
+    cantDropThere: (name: string) => `Can't drop into ${name} yet: ${OUTSIDE}`,
     canvas: "Canvas",
     selectMode: "Edit",
     interactMode: "Try it",
@@ -390,8 +397,8 @@ export const copy = {
     redo: "Redo",
     undoTitle: (edit: string) => `Undo ${edit} (Ctrl+Z)`,
     redoTitle: (edit: string) => `Redo ${edit} (Ctrl+Shift+Z)`,
-    nothingToUndo: "Nothing to undo",
-    nothingToRedo: "Nothing to redo",
+    nothingToUndo: "There's nothing to undo.",
+    nothingToRedo: "There's nothing to redo.",
     previewWidth: "Preview width",
     layouts: { desktop: "Desktop", tablet: "Tablet", mobile: "Mobile", "side-by-side": "Side by side" },
     colourMode: "App theme",
@@ -447,9 +454,10 @@ export const copy = {
     open: "Open",
     openFolder: "Open…",
     openTitle: "Open a Skeleton project",
-    noRecent: "No recent projects.",
+    noRecent: "No projects yet. Create one to get started.",
     recent: "Recent projects",
     missing: "(missing)",
+    missingHint: "That folder isn't there any more. Forget it, or put the folder back.",
     forget: "Forget",
     forgetLabel: (name: string) => `Forget ${name}`,
     newProject: "New project",
@@ -459,18 +467,18 @@ export const copy = {
     change: "Change…",
     create: "Create project",
     creating: "Creating…",
-    createProgress: "Writing files, installing dependencies, making the first commit…",
+    createProgress: "Creating your project. This takes about half a minute.",
   },
   canvas: {
     server: {
-      starting: "Starting the dev server…",
-      installing: "Installing dependencies…",
-      stopped: "The dev server isn't running.",
-      crashed: "The dev server stopped unexpectedly. See the log below.",
-      failed: "The dev server couldn't start. See the log below.",
+      starting: "Starting your app…",
+      installing: "Getting your app ready…",
+      stopped: "Your app isn't running. Start it from App preview in the ⋯ menu.",
+      crashed: "Your app stopped. App preview in the ⋯ menu shows what happened.",
+      failed: "Your app couldn't start. App preview in the ⋯ menu shows what happened.",
     } as Record<string, string>,
     withAgent: (round: number) => `Agent is working · round ${round}`,
-    veil: "The canvas is locked while your agent works. Press Take back when it's done.",
+    veil: "The agent is working on your project, so the canvas can't be changed. Take it back when the agent is done.",
     frameLabel: (width: string, pixels: number, scale: number) => `${width} · ${pixels}px${scale < 1 ? ` · ${Math.round(scale * 100)}%` : ""}`,
     updating: " · updating…",
     frameTitle: (width: string) => `Preview (${width})`,
@@ -502,9 +510,9 @@ export const copy = {
   pages: {
     title: "Pages",
     list: "Pages list",
-    dynamic: "Its web address needs details from the app; open it by going there in the app",
-    unreadable: "Skeleton can't read this page",
-    missing: (file: string) => `${file} is missing`,
+    dynamic: "Its web address needs details from your app. Open it by going there in the app.",
+    unreadable: "Skeleton can't read this page, so it can't be opened here.",
+    missing: (_file: string) => "This page isn't in your app any more.",
     noName: "Page",
     add: "Add page",
     rename: "Rename",
@@ -512,9 +520,8 @@ export const copy = {
     name: "Page name",
     path: "Web address",
     submitAdd: "Add",
-    confirmDeleteTitle: "Confirm delete page",
-    confirmDelete: "Delete",
-    confirmAnd: "and",
+    confirmDeleteTitle: "Delete page",
+    confirmDelete: (page: string, path: string) => `Delete the ${page} page? Its web address ${path} will stop working.`,
     deletePage: "Delete page",
   },
   palette: {
@@ -556,33 +563,33 @@ export const copy = {
   },
   properties: {
     title: "Properties",
-    noId: "This element has no data-ui-id, so Skeleton can't edit it.",
+    noId: (el: string) => `Can't change ${el} yet: ${OUTSIDE}`,
     custom: (value: string) => `${value} (custom)`,
     agentSet: "decided by the agent's code",
     agentSetTitle: "The agent's code decides this; ask the agent to change it",
     text: "Text",
     grid: "Grid",
     agentLayout: "The agent's code decides its look, so its layout can't be changed here.",
-    empty: "No properties to edit here.",
+    empty: "This element has no settings.",
   },
   selection: {
     title: "Selection",
     element: "Element",
     locked: "Agent code",
     agentLogic: "Agent controls",
-    clickToSelect: "Click to select.",
-    nothing: "Nothing selected.",
+    clickToSelect: "Click to select it.",
+    nothing: "Click an element on the page to change it.",
     moveUp: "Move up",
     moveUpTitle: "Move up (Alt+↑)",
     moveDown: "Move down",
     moveDownTitle: "Move down (Alt+↓)",
     deleteTitle: "Delete (Del)",
-    noTrigger: (name: string) => `Its trigger isn't on the canvas: the app opens this ${name} some other way.`,
-    openTitle: "Opens it the way the app does, by its trigger; the code doesn't change.",
+    noTrigger: (name: string) => `Can't open it here: its button isn't on the canvas, so the app opens this ${name} some other way.`,
+    openTitle: "Opens it the way your app does, with its button. Nothing in your project changes.",
     open: (name: string) => `Open ${name} in canvas`,
     close: (name: string) => `Close ${name}`,
     confirmDelete: "Confirm delete",
-    deletesAgentCode: "This deletes agent code too:",
+    deletesAgentCode: "This also deletes agent code the app may rely on:",
     deleteAnyway: "Delete anyway",
   },
   tokens: {
@@ -628,6 +635,8 @@ export const copy = {
     promoteForm: "Add to theme",
     tokenName: "Theme value name",
     namePlaceholder: "e.g. brand",
+    needName: "Type a name for the new theme value first.",
+    badName: "A theme value name starts with a lowercase letter and uses lowercase letters, numbers and dashes, like brand or brand-dark.",
     create: "Save",
   },
   viewSource: {
@@ -647,25 +656,27 @@ export const copy = {
     collapse: "Collapse",
     locked: "agent code",
   },
+  /** Why an element can't be moved or deleted: the disabled button's tooltip and the message. */
   nodes: {
-    lockedLogic: (element: string, reason: string) => `🔒 ${element} (${reason})`,
-    protectedLogic: (props: readonly string[], element: string) => `${props.join(", ")} on ${element}`,
-    gone: "It's no longer on the page.",
-    rootRemove: "The page's root element can't be removed.",
-    insideLockedRemove: (name: string) => `It's inside 🔒 ${name}, agent code that uses it: edit it in place, or delete the whole block.`,
-    noIds: "Neither it nor its parent has a data-ui-id.",
-    rootMove: "The page's root element can't be moved.",
-    insideLockedMove: (name: string) => `It's inside 🔒 ${name}: edit it in place.`,
-    noId: (name: string) => `${name} has no data-ui-id.`,
-    first: "It's already first.",
-    last: "It's already last.",
+    lockedLogic: (kind: string) => kind,
+    protectedLogic: (controls: readonly string[], element: string) => `${controls.join(", ")} of ${element}`,
+    gone: "Can't do that: the element isn't on the page any more.",
+    rootRemove: (el: string) => `Can't delete ${el}: it holds the whole page.`,
+    insideLockedRemove: (el: string, kind: string) => `Can't delete ${el} on its own: it's inside agent code (${kind}). You can delete the whole ${kind} instead.`,
+    noIds: (el: string) => `Can't delete ${el} yet: ${OUTSIDE}`,
+    noIdsMove: (el: string) => `Can't move ${el} yet: ${OUTSIDE}`,
+    rootMove: (el: string) => `Can't move ${el}: it holds the whole page.`,
+    insideLockedMove: (el: string, kind: string) => `Can't move ${el} on its own: it's inside agent code (${kind}). You can move the whole ${kind} instead.`,
+    noId: (el: string, parent: string) => `Can't move ${el} yet: ${parent} ${OUTSIDE_PARENT}`,
+    first: (el: string) => `${el} is already first.`,
+    last: (el: string) => `${el} is already last.`,
   },
   notes: {
     title: "Notes",
     onElement: "Notes on this element",
     types: { build: "Build", behaviour: "Behaviour", question: "Question" },
-    readOnly: "With the agent: notes can be changed again after Take back.",
-    cantPin: (name: string) => `${name} has no data-ui-id, so notes can't be pinned to it.`,
+    readOnly: "The agent is working: notes can be changed again after Take back.",
+    cantPin: (name: string) => `Can't pin a note to ${name} yet: ${OUTSIDE}`,
     selectToPin: "To add a note, select an element: its notes are at the end of the Element tab.",
     type: "Note type",
     status: "Note status",
@@ -674,7 +685,7 @@ export const copy = {
     focusOn: "On",
     focusOnly: "only",
     showAll: "Show every element's notes",
-    empty: "No notes here.",
+    empty: "No notes yet. Select an element and add a note for the agent.",
     otherReplies: "Other agent replies",
     replyPass: (round: number) => `(round ${round})`,
     orphaned: (n: number) => `Notes without an element (${n})`,
@@ -701,8 +712,8 @@ export const copy = {
   loop: {
     title: "Hand off",
     busy: {
-      handoff: "Handing off… (checking the build)",
-      takeBack: "Taking back… (analysing and building)",
+      handoff: "Handing off: checking your app still works…",
+      takeBack: "Taking back: reviewing the agent's work…",
       revert: "Undoing the agent's work…",
     },
     withAgent: (round: number | undefined) => `Agent is working · round ${round}`,
@@ -725,9 +736,9 @@ export const copy = {
     revertConfirm: (n: number) =>
       `Put the project back as it was when you handed it off in round ${n}? The agent's work and your changes since are saved in the project's history first.`,
     revert: "Undo the agent's work",
-    buildPassed: "Build passes",
-    buildPasses: (ms: number): string => `${copy.pass.buildPassed} (${(ms / 1000).toFixed(1)} s)`,
-    buildFails: "Build fails",
+    buildPassed: "Your app still works",
+    buildPasses: (ms: number): string => `${copy.pass.buildPassed} (checked in ${(ms / 1000).toFixed(1)} s)`,
+    buildFails: "Your app has a problem in its code and won't start. Ask the agent to fix it.",
     tasks: (resolved: number, sent: number, unmatched: number) =>
       `Notes: ${resolved} of ${sent} done${unmatched ? `; the agent ticked ${unmatched} ${plural(unmatched, "item")} that ${plural(unmatched, "matches", "match")} no note` : ""}`,
     replies: (n: number) => (n ? ` · ${n} ${plural(n, "reply", "replies")}` : ""),
@@ -745,7 +756,8 @@ export const copy = {
     onPage: (page: string) => `on the ${page} page`,
     reminted: "Told apart from a copy: ",
     gaveId: "Named so Skeleton can find it: ",
-    fileChange: (status: string, additions: number, deletions: number) => `${status === "modified" ? "" : `${status} `}+${additions} −${deletions}`,
+    fileChange: (status: string, additions: number, deletions: number) =>
+      `${status === "added" ? "new " : status === "deleted" ? "deleted " : ""}+${additions} −${deletions}`,
     orphaned: (n: number) => `${n} ${plural(n, "note has", "notes have")} no element now: see Notes without an element.`,
     inlineStyle: "Look set in the agent's code",
     diffTitle: "What the agent changed",
