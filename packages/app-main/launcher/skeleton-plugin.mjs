@@ -60,10 +60,27 @@ export function tagJsx(code, file, sourcePath = file) {
 }
 
 /**
+ * The project-relative path ("src/pages/HomePage.tsx") of a module Vite is
+ * transforming, if it's a page file to tag; null otherwise. `p` is the path module,
+ * a parameter so tests can use Windows' rules on any OS.
+ */
+export function pageFileOf(id, root, pagesDir = "src/pages", p = path) {
+  // Vite's ids use forward slashes on every OS; the root is a native path. Compare in
+  // forward slashes, and ignore case on Windows, whose paths (and drive letters) aren't
+  // case-sensitive.
+  const windows = p.sep === "\\";
+  const slashed = (x) => x.split(p.sep).join("/");
+  const same = (x) => (windows ? x.toLowerCase() : x);
+  const pagesAbs = same(slashed(p.join(root, pagesDir)) + "/");
+  const file = slashed(id.split("?")[0]);
+  if (!same(file).startsWith(pagesAbs) || !/\.(tsx|jsx)$/.test(file)) return null;
+  return slashed(p.relative(root, file));
+}
+
+/**
  * @param {{ root: string, overlayBundle: string, pagesDir?: string }} options
  */
 export function skeletonPlugin({ root, overlayBundle, pagesDir = "src/pages" }) {
-  const pagesAbs = path.join(root, pagesDir) + path.sep;
   return {
     name: "skeleton",
     enforce: "pre",
@@ -79,9 +96,9 @@ export function skeletonPlugin({ root, overlayBundle, pagesDir = "src/pages" }) 
       return readFileSync(overlayBundle, "utf8");
     },
     transform(code, id) {
+      const rel = pageFileOf(id, root, pagesDir);
+      if (rel === null) return null;
       const file = id.split("?")[0];
-      if (!file.startsWith(pagesAbs) || !/\.(tsx|jsx)$/.test(file)) return null;
-      const rel = path.relative(root, file).split(path.sep).join("/");
       try {
         return tagJsx(code, rel, file);
       } catch (cause) {

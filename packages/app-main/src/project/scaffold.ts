@@ -2,6 +2,7 @@
 // the initial commit. Main-process only: it owns the filesystem and child processes.
 
 import { execFile } from "node:child_process";
+import { commandLine } from "./command.js";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { reason, type Reason } from "@skeleton/core";
@@ -43,7 +44,8 @@ export type RunCommand = (command: string, args: string[], cwd: string) => Promi
 
 export const runCommand: RunCommand = (command, args, cwd) =>
   new Promise((resolve, reject) => {
-    execFile(command, args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, CI: "true" } }, (error, stdout, stderr) => {
+    const line = commandLine(command, args);
+    execFile(line.file, line.args, { cwd, shell: line.shell, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, CI: "true" } }, (error, stdout, stderr) => {
       if (error) reject(new Error(`${command} ${args.join(" ")} exited with ${error.code ?? "an error"}: ${stderr.trim() || error.message}`, { cause: error }));
       else resolve(stdout);
     });
