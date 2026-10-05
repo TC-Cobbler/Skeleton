@@ -3,6 +3,7 @@
 // goes through the editor's per-project queue, so it never interleaves with an edit.
 
 import { execFile } from "node:child_process";
+import { commandLine } from "./command.js";
 import path from "node:path";
 import {
   analyseTakeBack,
@@ -361,7 +362,8 @@ export function pnpmBuild(pnpm: string = process.env["SKELETON_PNPM"] ?? "pnpm")
   return (projectRoot) =>
     new Promise((resolve) => {
       const start = Date.now();
-      execFile(pnpm, ["run", "build"], { cwd: projectRoot, timeout: 300_000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, CI: "true" } }, (error, stdout, stderr) => {
+      const line = commandLine(pnpm, ["run", "build"]);
+      execFile(line.file, line.args, { cwd: projectRoot, shell: line.shell, timeout: 300_000, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, CI: "true" } }, (error, stdout, stderr) => {
         const ms = Date.now() - start;
         if (!error) return resolve({ ok: true, output: "", ms });
         const lines = `${stdout}\n${stderr}\n${error.message}`.split("\n").map((l) => l.trimEnd()).filter(Boolean);

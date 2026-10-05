@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildTree, sourceVersion, walkTree, type UiNode } from "@skeleton/core";
 import { describe, expect, it } from "vitest";
-import { skeletonPlugin, tagJsx } from "../launcher/skeleton-plugin.mjs";
+import { pageFileOf, skeletonPlugin, tagJsx } from "../launcher/skeleton-plugin.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const FILE = "src/pages/HomePage.tsx";
@@ -34,6 +34,24 @@ describe("tagJsx", () => {
     const out = tagJsx(code, "f.tsx")?.code;
     expect(out).toBe(`const a = <><Fragment><b data-skeleton-loc="f.tsx:22@${sourceVersion(code)}" /></Fragment></>;`);
     expect(tagJsx(`export const x = 1;`, "f.tsx")).toBeNull();
+  });
+});
+
+describe("pageFileOf", () => {
+  it("finds page files on POSIX", () => {
+    expect(pageFileOf("/p/src/pages/HomePage.tsx?v=1", "/p", "src/pages", path.posix)).toBe("src/pages/HomePage.tsx");
+    expect(pageFileOf("/p/src/components/ui/button.tsx", "/p", "src/pages", path.posix)).toBeNull();
+    expect(pageFileOf("/p/src/pages/data.ts", "/p", "src/pages", path.posix)).toBeNull();
+  });
+
+  // Vite gives plugins module ids with forward slashes on every OS ("C:/proj/src/…"),
+  // while the project root Skeleton passes in is a native Windows path ("C:\\proj").
+  it("finds page files on Windows, where Vite's ids use forward slashes", () => {
+    expect(pageFileOf("C:/Users/j/games/src/pages/HomePage.tsx", "C:\\Users\\j\\games", "src/pages", path.win32)).toBe("src/pages/HomePage.tsx");
+    expect(pageFileOf("C:/Users/j/games/src/pages/nested/Stats.tsx?t=1", "C:\\Users\\j\\games", "src/pages", path.win32)).toBe("src/pages/nested/Stats.tsx");
+    expect(pageFileOf("C:/Users/j/games/src/main.tsx", "C:\\Users\\j\\games", "src/pages", path.win32)).toBeNull();
+    // Drive letters come back in either case.
+    expect(pageFileOf("c:/Users/j/games/src/pages/HomePage.tsx", "C:\\Users\\j\\games", "src/pages", path.win32)).toBe("src/pages/HomePage.tsx");
   });
 });
 
