@@ -1,0 +1,3 @@
+# Check out text files with LF on every OS. Skeleton writes LF into projects it
+# scaffolds and edits; a Windows checkout with CRLF templates would mix the two.
+* text=auto eol=lf
