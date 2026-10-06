@@ -911,7 +911,9 @@ export class Overlay {
         this.closeTextEditor(false);
       }
     });
-    input.addEventListener("blur", () => this.closeTextEditor(true));
+    // Only while it's the open editor: a field already closed can still get a late blur
+    // when the next one takes focus, and must not close that one.
+    input.addEventListener("blur", () => this.textEditor?.input === input && this.closeTextEditor(true));
     this.shadow.appendChild(input);
     this.placeTextEditor();
     input.focus();

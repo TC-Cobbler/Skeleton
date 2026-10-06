@@ -32,7 +32,7 @@ The loop's state comes from git commit subjects, never from a separate store.
 
 ## Getting started
 
-Requirements: Node 22+ and pnpm 10.
+Requirements: Node 22.13+ or 24+, and pnpm 10.
 
 ```sh
 pnpm install
