@@ -22,11 +22,11 @@
     "prepare": "tsx scripts/build.ts"
   },
   "devDependencies": {
-    "@types/jsdom": "^30.0.0",
+    "@types/jsdom": "^28.0.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
-    "jsdom": "^30.1.1",
+    "jsdom": "^29.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }
