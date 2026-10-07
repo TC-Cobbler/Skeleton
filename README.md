@@ -37,6 +37,7 @@ Requirements: Node 22.13+ or 24+, and pnpm 10.
 ```sh
 pnpm install
 pnpm dev           # the Electron app, against the renderer's Vite dev server
+pnpm start         # builds the renderer and runs the app without the dev server
 ```
 
 When running as root (containers, CI), Electron needs `--no-sandbox`:
