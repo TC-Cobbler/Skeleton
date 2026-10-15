@@ -1,6 +1,6 @@
 # PRD — Skeleton (working name)
 
-**Status:** Draft v1 · **Owner:** Johnny · **Date:** 2026-09-28
+**Status:** v1 shipped (Gate 6, 2026-09-30); v1.0.x and v1.0.y done · **Owner:** Johnny · **Date:** 2026-09-28, updated 2026-10-15 (`docs/audit.md`)
 
 ---
 
@@ -81,7 +81,7 @@ Scaffold → Compose + tune → Hand off → [agent works] → Take back → Rev
 
 ### 7.3 Source of truth and editing
 - **The code is the only source of truth.** Skeleton holds no persistent parallel model of the layout. Its internal tree is derived by parsing the code and discarded whenever the code changes.
-- **Edits are surgical AST patches** (Babel or ts-morph) that preserve formatting and comments. A file is never regenerated wholesale.
+- **Edits are surgical AST patches** (`@babel/parser` + `recast`, ADR 001) that preserve formatting and comments. A file is never regenerated wholesale.
 - Every edit Skeleton makes is a minimal, reviewable diff.
 
 ### 7.4 Parsing and locked blocks
@@ -128,6 +128,8 @@ HANDOFF.md
 - **Overlay:** Dialog, Sheet, Dropdown Menu, Toast
 - **Navigation:** Sidebar/Nav
 - **Agent-built custom components:** appear as locked blocks and can be placed and moved.
+
+Form places a plain `<form>` of labelled fields, and Toast is listed but fired by code, so it can't be placed (`docs/decisions/007-palette.md`).
 
 The palette only expands once round-tripping is proven (see §15).
 
@@ -316,6 +318,8 @@ Dogfooded on a real personal project, v1 is done when **5 consecutive round trip
 
 Any single failure means it doesn't ship.
 
+**Met** on 2026-09-30 (`docs/dogfood-log.md`). The project was real, but its "user" was a script driving the UI. A by-hand dogfood is v1.1's first milestone (ROADMAP.md, M7).
+
 ## 16. Risks
 
 | Risk | Mitigation |
@@ -327,6 +331,8 @@ Any single failure means it doesn't ship.
 | Scope creep toward "general visual editor" | Hold the non-goals. The palette only expands after §15 passes |
 
 ## 17. Roadmap
+
+ROADMAP.md is the live roadmap. It re-scoped v1.1 on 2026-10-15 and moved most of the list below to v1.2. The list below is the original plan.
 
 **v1** — everything above.
 
