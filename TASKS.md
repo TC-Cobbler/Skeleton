@@ -348,11 +348,65 @@ Makes Skeleton's own UI plain-spoken and Adobe-style for someone who doesn't kno
 
 ---
 
+## v1.1 — Hand dogfood, elevation, four components (ROADMAP.md)
+
+Scope set in the adoption audit (`docs/audit.md`, 2026-10-15). Gate 6's "user" was a script, so a person's friction comes first and the feature work follows. Every task keeps the full unit suite green. Tasks that touch the canvas or a gate flow also keep the e2e suite green (`xvfb-run -a pnpm test:e2e`). Each task's **Done when** line names the command or artifact that proves it.
+
+### M7 — Hand dogfood
+
+- [ ] **T9.1** **Hand dogfood, by Johnny.** Scaffold a new real project in Skeleton and build its UI by hand over 3 hand off / take back loops, with any agent in a terminal. After each take back, run `dogfood-verify.mjs` as in Phase 6. Log the loops and every friction point (H-1, H-2…) in `docs/dogfood-log.md`, under a new "Hand dogfood (v1.1)" heading.
+  - **Done when:** the log has 3 loops, each with a verify result, and a friction list.
+- [ ] **T9.2** **Triage the hand friction.** Turn each H-n into a fix task here (T9.2a, T9.2b…) or a ROADMAP.md entry, with Johnny. Fixes to v1's own features only, as with v1.0.x. New scope goes to ROADMAP.md.
+  - **Done when:** every H-n in the log names a task or a ROADMAP entry.
+- [ ] **T9.3** **KI-3: a canvas press missed right after an edit.** Log the overlay's target lookup for each press (the next step KI-3 names), reproduce it in the full e2e run, and fix the root cause. Don't add waits to the tests.
+  - **Done when:** `compose`, `dogfood-fixes` and `tokens` pass in 5 consecutive full e2e runs, and KI-3 in `docs/known-issues.md` says resolved with the cause.
+- [ ] **M7 gate:** the T9.2 fixes are in, and a 3-loop hand run after them is clean (all four `dogfood-verify.mjs` checks, no workaround outside the UI).
+
+### M8 — Elevation
+
+- [ ] **T9.4** **ADR 014: elevation tokens.** Decide:
+  - the names in Tailwind v4's `--shadow-*` namespace and the utilities they give (`shadow-1` … `shadow-5`), and how they sit beside Tailwind's own `shadow-sm` …
+  - the light and dark values
+  - which vendored components start on which level (re-vendor adaptation, as with radii)
+  - the handle's three scopes (ADR 010's table)
+  - which shadows are violations, and what Snap and Promote do with them
+  - **Done when:** `docs/decisions/014-elevation.md` is accepted by Johnny.
+- [ ] **T9.5** **Core: shadow tokens.** The template's `globals.css` has the scale, light and dark. `readTheme`, `tokenUsage`, `findViolations`/`describeViolations` and Promote cover shadows. Existing projects without the scale still load (the Theme panel shows the scale as missing, not as an error).
+  - **Done when:** new fixture tests in `packages/core/tests` assert the four edit-op properties (CLAUDE.md) for each shadow write and fix, and `pnpm test:core` passes.
+- [ ] **T9.6** **Theme panel: shadows.** Plain names in `copy.names` (GLOSSARY.md gets the term first). Light and dark values shown side by side, editable, and undoable.
+  - **Done when:** renderer tests cover reading and writing a shadow, and `pnpm test` passes, including the plain-words check.
+- [ ] **T9.7** **Lift handle.** A gizmo on the selected element with a live preview and the three scopes from ADR 014. The hover label names the reach in plain words.
+  - **Done when:** `overlay/tests/gizmos.test.ts` covers planning the handle, and `e2e/tokens.test.ts` drags it with each scope in light and dark.
+- [ ] **M8 gate:** F3 for shadows (plain, Shift and Alt drag; the Alt result shows as off-theme and can be snapped back) passes in light and dark, in a new `e2e/gate8.test.ts`.
+
+### M9 — Four more components
+
+Each entry follows ADR 007: a template, a schema per element, plain names in `copy.palette.items` and `copy.names`, and availability checked against the project's exports.
+
+- [ ] **T9.8** **Vendor Accordion, Radio Group and Progress** through `scripts/vendor-shadcn.ts` (Tooltip is already vendored). Add their radix dependencies to the template's `package.json` and lockfile.
+  - **Done when:** `VENDORED.md` lists them, a freshly scaffolded project builds, and `pnpm test` passes.
+- [ ] **T9.9** **Tooltip and Progress in the palette.** Tooltip wraps a placed trigger (a Button by default) with its text as content. Progress has a `value` number prop (0–100).
+  - **Done when:** `palette-typecheck.test.ts` places both with every schema value, a core fixture test inserts, moves and removes each one with the four edit-op properties, and `pnpm test` passes.
+- [ ] **T9.10** **Radio Group in the palette:** a group of labelled items in a Stack (no mixed content, per ADR 007), with `defaultValue`, `orientation` and per-item `value` and `disabled`.
+  - **Done when:** the same tests as T9.9 pass for Radio Group.
+- [ ] **T9.11** **Accordion in the palette,** with "Open in canvas" for a closed item (as T7.4 does for Dialog and Sheet, without changing the code), so its content takes drops.
+  - **Done when:** the same tests as T9.9 pass, and an e2e test opens an item in the canvas and drops a Button into it with a one-insert diff.
+- [ ] **M9 gate:** a new `e2e/gate9.test.ts` drops each new entry onto a page, gives it a Build note, hands off, simulates an agent pass that keeps the IDs, and takes back with every ID intact and the build passing.
+
+**v1.1 gate:**
+- M7–M9 gates pass.
+- The full unit and e2e suites pass.
+- Johnny uses a shadow and two of the new components in one more by-hand loop, and signs off.
+
+---
+
 ## Parked (see ROADMAP.md)
 
-- Shadow / elevation tokens (v1.1)
-- Per-breakpoint editing via `max-*:` (v1.1)
-- Palette expansion toward the full shadcn set (v1.1)
+- Per-breakpoint editing via `max-*:` (v1.2)
+- Responsive stacks (v1.2)
+- More palette components, beyond v1.1's four (v1.2)
+- Motion tokens (v1.2)
+- Health metrics (v1.2)
 - MCP server (v2)
 - Spec-only export (v2)
 - Import existing projects (v2)

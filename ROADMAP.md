@@ -49,18 +49,29 @@ The roadmap is organised by milestone, not by date. A milestone ships when its g
 
 ---
 
-## v1.1 — Fill the system out
+## v1.1 — A person uses it, and the system fills out a little
 
-**Thesis:** With the loop proven, make the design system complete and the tool responsive-capable.
+**Thesis:** Gate 6 was passed by a script driving the UI, and nobody has built anything in Skeleton by hand yet. v1.1 starts with that: a by-hand dogfood, with its friction fixed first. Then it adds the two smallest items from the old v1.1 list, which follow patterns that already exist. Scope set in the adoption audit (2026-10-15, `docs/audit.md`). Tasks: T9.x in TASKS.md.
 
-- **Shadow / elevation tokens.** Add an elevation scale (`--shadow-1` … `--shadow-5`), a gizmo handle for drag-to-lift, and dark-mode-aware values.
+| Milestone | Delivers | Gate |
+|---|---|---|
+| **M7 — Hand dogfood** | Johnny builds a real project's UI by hand, over 3 hand off / take back loops. Friction is logged as H-1… and fixed. KI-3 (a canvas press missed right after an edit) is root-caused. | 3 clean loops by a person (`dogfood-verify.mjs` checks), friction triaged, its fixes in |
+| **M8 — Elevation** | Shadow tokens (`--shadow-1` … `--shadow-5`) with light and dark values, in the Theme panel and on the canvas as a lift handle with the three scopes. Off-theme shadows are violations. | F3-style checks pass for shadows, in light and dark |
+| **M9 — Four more components** | Tooltip, Accordion, Radio Group and Progress in the palette, each with a prop schema, plain names and round-trip tests. Accordion opens in the canvas the way Dialog does (T7.4). | Each new entry gives one minimal diff per drop, and its IDs survive a take back |
+
+**v1.1 gate:** the M7–M9 gates pass, the full unit and e2e suites pass, and Johnny signs off after using the new pieces in one more by-hand loop.
+
+---
+
+## v1.2 — Responsive, and the rest of the system
+
+**Thesis:** Make the tool responsive-capable and the design system complete. These items moved here from v1.1 on 2026-10-15: each one multiplies the surface that round-tripping has to survive, and per-breakpoint editing alone is bigger than all of v1.1. Revisit the order after the hand dogfood.
+
 - **Per-breakpoint editing.** Edit at tablet and mobile widths, writing `max-lg:` / `max-md:` / `max-sm:` overrides. The canvas shows which breakpoint "owns" each value.
 - **Responsive stacks.** Change a Stack's direction, wrap or Grid column count per breakpoint.
-- **Palette expansion.** Move toward the full shadcn set (Accordion, Popover, Tooltip, Command, Calendar, Slider, Radio Group, Breadcrumb, Pagination, Skeleton, Progress, Toggle Group…). Add each component only once its prop schema and round-trip behaviour are tested.
+- **More palette components.** Continue toward the full shadcn set (Popover, Command, Calendar, Slider, Breadcrumb, Pagination, Skeleton, Toggle Group…). Add each component only once its prop schema and round-trip behaviour are tested.
 - **Motion tokens.** Duration and easing tokens, plus a gizmo for transition timing.
 - **Health metrics.** Show the locked-block ratio per page, the violation count, and the contract breach history across passes.
-
-**Why deferred:** each of these multiplies the surface that round-tripping has to survive. Prove the core first.
 
 ---
 
