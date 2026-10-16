@@ -21,17 +21,19 @@ What's missing is a tool where *you* own structure and design system, the *agent
 
 ## 3. Positioning
 
-Onlook (open source, React + Tailwind) already does visual editing of live React code. Skeleton differs in centre of gravity:
+Onlook (open source, React + Tailwind) already does visual editing of live React code. Paper (paper.design) is a team design canvas drawn in HTML and CSS, which agents read and write over MCP. Skeleton differs from both in centre of gravity:
 
-| | Onlook | Skeleton |
-|---|---|---|
-| Starting point | Existing site | Greenfield skeleton |
-| Primary object | The page | The design system + the page |
-| Styling edits | Per element | Token-first, overrides flagged as violations |
-| Agent relationship | AI as an in-app editor | Formal handoff protocol with an external agent |
-| Component vocabulary | Anything | Fixed, curated shadcn palette |
+| | Onlook | Paper | Skeleton |
+|---|---|---|---|
+| Starting point | Existing site | Blank canvas | Greenfield skeleton |
+| Source of truth | The code | Paper's design file; code is exported or synced by an agent | The code; the canvas is the running app |
+| Primary object | The page | Artboards | The design system + the page |
+| Styling edits | Per element | Per element, with variables | Token-first, overrides flagged as violations |
+| Agent's logic | Edited in place | Not on the canvas (static markup) | Rendered live as locked blocks |
+| Agent relationship | AI as an in-app editor | Live MCP, both ways | Formal handoff protocol with an external agent |
+| Component vocabulary | Anything | Anything, absolute positioning allowed | Fixed, curated shadcn palette |
 
-Onlook's code-sync approach is worth studying as a reference. Skeleton should not inherit its scope.
+Onlook's code-sync approach is worth studying as a reference. Paper's MCP tools (read: JSX, screenshots, computed styles; write: HTML, styles) are a reference for v2's MCP server. Skeleton should not inherit either one's scope. Paper's gap is after the first pass: once the agent adds logic, the design file and the repo drift apart (§2). Closing that gap is Skeleton's edge.
 
 ## 4. User
 
