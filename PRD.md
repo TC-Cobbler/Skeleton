@@ -21,19 +21,19 @@ What's missing is a tool where *you* own structure and design system, the *agent
 
 ## 3. Positioning
 
-Onlook (open source, React + Tailwind) already does visual editing of live React code. Paper (paper.design) is a team design canvas drawn in HTML and CSS, which agents read and write over MCP. Skeleton differs from both in centre of gravity:
+Onlook (open source, React + Tailwind) already does visual editing of live React code. Paper (paper.design) is a team design canvas drawn in HTML and CSS, which agents read and write over MCP. Pencil (pencil.dev) is a design canvas inside VS Code or Cursor that saves `.pen` files in the repo, which Claude Code edits over MCP. Subframe is a design tool for React + Tailwind whose macOS app reads and writes local files. Skeleton differs from all four in centre of gravity:
 
-| | Onlook | Paper | Skeleton |
-|---|---|---|---|
-| Starting point | Existing site | Blank canvas | Greenfield skeleton |
-| Source of truth | The code | Paper's design file; code is exported or synced by an agent | The code; the canvas is the running app |
-| Primary object | The page | Artboards | The design system + the page |
-| Styling edits | Per element | Per element, with variables | Token-first, overrides flagged as violations |
-| Agent's logic | Edited in place | Not on the canvas (static markup) | Rendered live as locked blocks |
-| Agent relationship | AI as an in-app editor | Live MCP, both ways | Formal handoff protocol with an external agent |
-| Component vocabulary | Anything | Anything, absolute positioning allowed | Fixed, curated shadcn palette |
+| | Onlook | Paper | Pencil | Subframe | Skeleton |
+|---|---|---|---|---|---|
+| Starting point | Existing site | Blank canvas | Blank canvas | Blank canvas or a codebase | Greenfield skeleton |
+| Source of truth | The code | Paper's design file; code is exported or synced by an agent | `.pen` JSON in the repo; an agent turns it into code | Subframe's components and pages; code is exported or written to local files | The code; the canvas is the running app |
+| Primary object | The page | Artboards | Frames | Components + pages | The design system + the page |
+| Styling edits | Per element | Per element, with variables | Per element, with variables | Per element, with a theme | Token-first, overrides flagged as violations |
+| Agent's logic | Edited in place | Not on the canvas (static markup) | Not on the canvas (design file) | Kept in code outside the exported components | Rendered live as locked blocks |
+| Agent relationship | AI as an in-app editor | Live MCP, both ways | Live MCP; Claude-first | Built-in agent | Formal handoff protocol with an external agent |
+| Component vocabulary | Anything | Anything, absolute positioning allowed | Anything | Subframe's library + your own | Fixed, curated shadcn palette |
 
-Onlook's code-sync approach is worth studying as a reference. Paper's MCP tools (read: JSX, screenshots, computed styles; write: HTML, styles) are a reference for v2's MCP server. Skeleton should not inherit either one's scope. Paper's gap is after the first pass: once the agent adds logic, the design file and the repo drift apart (§2). Closing that gap is Skeleton's edge.
+Onlook's code-sync approach is worth studying as a reference. Paper's MCP tools (read: JSX, screenshots, computed styles; write: HTML, styles) are a reference for v2's MCP server. Skeleton should not inherit any of their scope. Paper, Pencil and Subframe each keep a design model beside the code, which non-negotiable #1 rules out. Their gap is after the first pass: once the agent adds logic, the design and the repo drift apart (§2). Closing that gap is Skeleton's edge. Pencil (same Claude Code workflow) and Subframe (moving toward local files) are the ones to watch.
 
 ## 4. User
 
