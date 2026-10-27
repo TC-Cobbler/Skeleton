@@ -3,6 +3,11 @@ import * as t from "@babel/types";
 import * as recast from "recast";
 import { ParseError } from "./errors.js";
 
+// recast joins lines with os.EOL by default. On Windows that prints an LF file as
+// CRLF, and the copy it hands the parser (which ignores this option) gets CRLF
+// too, shifting every node offset. Both are pinned to LF, as on Linux.
+const lineTerminator = "\n";
+
 const babelOptions: ParserOptions = {
   sourceType: "module",
   plugins: ["typescript", "jsx"],
@@ -16,7 +21,8 @@ const babelOptions: ParserOptions = {
 export function parseModule(source: string): t.File {
   try {
     const ast: unknown = recast.parse(source, {
-      parser: { parse: (s: string) => babelParse(s, babelOptions) },
+      parser: { parse: (s: string) => babelParse(s.replace(/\r\n/g, "\n"), babelOptions) },
+      lineTerminator,
     });
     if (!t.isFile(ast as t.Node)) throw new ParseError("recast did not return a File node");
     return ast as t.File;
@@ -28,7 +34,7 @@ export function parseModule(source: string): t.File {
 }
 
 export function printModule(ast: t.File): string {
-  return recast.print(ast).code;
+  return recast.print(ast, { lineTerminator }).code;
 }
 
 /** Parse a single JSX expression (e.g. a palette template). */

@@ -16,6 +16,9 @@
     },
     {
       "path": "../templates"
+    },
+    {
+      "path": "../overlay"
     }
   ]
 }
