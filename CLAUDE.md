@@ -115,3 +115,19 @@ pnpm test:e2e        # launches the built Electron app (needs a display: xvfb-ru
 ```
 
 Running Electron as root (containers, CI) needs `--no-sandbox`, e.g. `pnpm dev --no-sandbox`.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues (`TC-Cobbler/Skeleton`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical triage roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`GLOSSARY.md` and `docs/decisions/`). See `docs/agents/domain.md`.
